@@ -73,9 +73,25 @@ export default function DashboardPage() {
     setTemplateVersion((v) => v + 1)
   }
 
+  const handleUpdateLayerPosition = (id: string, x: number, y: number) => {
+    console.log('[Dashboard] update layer position', { id, x, y })
+    setLayers((prev) =>
+      prev.map((layer) =>
+        layer.id === id
+          ? { ...layer, x, y }
+          : layer
+      )
+    )
+  }
+
   return (
     <DashboardLayout selectedTemplate={selectedTemplate} onSelectTemplate={handleTemplateSelect} onAddShape={handleAddShape}>
-      <MotionCanvas template={selectedTemplate} templateVersion={templateVersion} layers={layers} />
+      <MotionCanvas 
+        template={selectedTemplate} 
+        templateVersion={templateVersion} 
+        layers={layers} 
+        onUpdateLayerPosition={handleUpdateLayerPosition}
+      />
     </DashboardLayout>
   )
 }

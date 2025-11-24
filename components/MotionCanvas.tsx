@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import * as PIXI from 'pixi.js'
 import 'pixi.js/app' // ensure Application plugins (ticker/resize) are registered
+import 'pixi.js/events' // enable pointer events
 
 interface MotionCanvasProps {
   template: string
@@ -16,12 +17,16 @@ interface MotionCanvasProps {
     height: number
     fillColor: number
   }>
+  onUpdateLayerPosition?: (id: string, x: number, y: number) => void
 }
 
-export default function MotionCanvas({ template, templateVersion, layers = [] }: MotionCanvasProps) {
+export default function MotionCanvas({ template, templateVersion, layers = [], onUpdateLayerPosition }: MotionCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<PIXI.Application | null>(null)
   const [isReady, setIsReady] = useState(false)
+  const dragRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null)
+  const graphicsByIdRef = useRef<Record<string, PIXI.Graphics>>({})
+  const domDragRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null)
 
   // 1. Initialize Pixi App ONCE
   useEffect(() => {
@@ -66,26 +71,99 @@ export default function MotionCanvas({ template, templateVersion, layers = [] }:
     }
   }, [])
 
+  // Debug: log raw DOM pointer events on the canvas to ensure we receive them
+  useEffect(() => {
+    const app = appRef.current
+    if (!app) return
+    const handler = (e: PointerEvent) => {
+      console.log('[MotionCanvas] canvas pointerdown DOM', { x: e.clientX, y: e.clientY })
+    }
+    app.canvas.addEventListener('pointerdown', handler)
+    return () => {
+      app.canvas.removeEventListener('pointerdown', handler)
+    }
+  }, [isReady])
+
+  // DOM drag handler as a fallback for Pixi events
+  useEffect(() => {
+    if (!containerRef.current) return
+    const handleMove = (e: PointerEvent) => {
+      if (!domDragRef.current || !containerRef.current) return
+      const bounds = containerRef.current.getBoundingClientRect()
+      const newX = e.clientX - bounds.left - domDragRef.current.offsetX
+      const newY = e.clientY - bounds.top - domDragRef.current.offsetY
+      const id = domDragRef.current.id
+      onUpdateLayerPosition?.(id, newX, newY)
+      const g = graphicsByIdRef.current[id]
+      if (g) {
+        g.x = newX
+        g.y = newY
+      }
+    }
+    const handleUp = () => {
+      domDragRef.current = null
+    }
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', handleUp)
+    return () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleUp)
+    }
+  }, [onUpdateLayerPosition])
+
   // 2. Handle Template Changes (Draw & Animate)
   useEffect(() => {
     if (!isReady || !appRef.current) return
 
     const app = appRef.current
+    const bounds = containerRef.current?.getBoundingClientRect()
+    const screenWidth = (bounds?.width && bounds.width > 0 ? bounds.width : containerRef.current?.clientWidth) || app.screen?.width || 800
+    const screenHeight = (bounds?.height && bounds.height > 0 ? bounds.height : containerRef.current?.clientHeight) || app.screen?.height || 450
     const stage = app.stage
+    stage.interactive = true
+    stage.eventMode = 'static'
+    stage.hitArea = new PIXI.Rectangle(0, 0, screenWidth, screenHeight)
+    stage.cursor = 'default'
     
     // Cleanup previous scene
     stage.removeChildren()
     
     // We need to define the ticker callback variable so we can remove it later
     let tickerCallback: ((ticker: PIXI.Ticker) => void) | null = null
-
-    const bounds = containerRef.current?.getBoundingClientRect()
-    const screenWidth = (bounds?.width && bounds.width > 0 ? bounds.width : containerRef.current?.clientWidth) || app.screen?.width || 800
-    const screenHeight = (bounds?.height && bounds.height > 0 ? bounds.height : containerRef.current?.clientHeight) || app.screen?.height || 450
     const centerX = screenWidth / 2
     const centerY = screenHeight / 2
     const tickerCallbacks: Array<(ticker: PIXI.Ticker) => void> = []
     console.log('[MotionCanvas] draw', { template, templateVersion, layersCount: layers.length, screenWidth, screenHeight })
+    graphicsByIdRef.current = {}
+
+    const handlePointerMove = (e: PIXI.FederatedPointerEvent) => {
+      if (!dragRef.current) return
+      const { id, offsetX, offsetY } = dragRef.current
+      const pos = e.global
+      const newX = pos.x - offsetX
+      const newY = pos.y - offsetY
+      const g = graphicsByIdRef.current[id]
+      if (g) {
+        g.x = newX
+        g.y = newY
+      }
+      onUpdateLayerPosition?.(id, newX, newY)
+      console.log('[MotionCanvas] pointermove drag', { id, newX, newY })
+    }
+
+    const clearDrag = () => {
+      dragRef.current = null
+      stage.cursor = 'default'
+    }
+
+    stage.on('pointermove', handlePointerMove)
+    const handleStagePointerDown = (e: PIXI.FederatedPointerEvent) => {
+      if (dragRef.current) return
+      console.log('[MotionCanvas] stage pointerdown', { x: e.global.x, y: e.global.y })
+    }
+    stage.on('pointerdown', handleStagePointerDown)
+    stage.on('pointerup', clearDrag)
+    stage.on('pointerupoutside', clearDrag)
 
     // If there are layers, render/animate them and skip the built-in preview
     if (layers.length > 0) {
@@ -98,6 +176,22 @@ export default function MotionCanvas({ template, templateVersion, layers = [] }:
         const posY = layer.y <= 1 ? layer.y * screenHeight : layer.y
         g.x = posX
         g.y = posY
+        g.interactive = true
+        g.eventMode = 'dynamic'
+        g.cursor = 'pointer'
+        g.hitArea = new PIXI.Circle(0, 0, layer.width / 2)
+        g.on('pointerdown', (e) => {
+          e.stopPropagation()
+          console.log('[MotionCanvas] pointerdown start drag', { layerId: layer.id })
+          const pos = e.global
+          dragRef.current = {
+            id: layer.id,
+            offsetX: pos.x - g.x,
+            offsetY: pos.y - g.y,
+          }
+          stage.cursor = 'grabbing'
+        })
+        graphicsByIdRef.current[layer.id] = g
         stage.addChild(g)
 
         // animate this circle when a template is chosen
@@ -158,6 +252,10 @@ export default function MotionCanvas({ template, templateVersion, layers = [] }:
       return () => {
         tickerCallbacks.forEach((cb) => app.ticker.remove(cb))
         stage.removeChildren()
+        stage.off('pointermove', handlePointerMove)
+        stage.off('pointerup', clearDrag)
+        stage.off('pointerupoutside', clearDrag)
+        stage.off('pointerdown', handleStagePointerDown)
       }
     }
 
@@ -251,16 +349,20 @@ export default function MotionCanvas({ template, templateVersion, layers = [] }:
             app.ticker.remove(tickerCallback)
         }
         stage.removeChildren()
+        stage.off('pointermove', handlePointerMove)
+        stage.off('pointerup', clearDrag)
+        stage.off('pointerupoutside', clearDrag)
+        stage.off('pointerdown', handleStagePointerDown)
     }
 
-  }, [template, templateVersion, isReady, layers]) // Re-run when template changes OR when app becomes ready
+  }, [template, templateVersion, isReady, layers, onUpdateLayerPosition]) // Re-run when template changes OR when app becomes ready
 
   return (
     <div className="relative h-full w-full overflow-hidden rounded-lg bg-[#0b0b0b]">
       <div ref={containerRef} className="h-full w-full" />
-      {/* DOM overlay for layers so a shape is always visible; mimic template motion with CSS */}
+      {/* DOM overlay for layers so a shape is always visible; mimic template motion with CSS AND enable dragging */}
       {layers.length > 0 && (
-        <div className="pointer-events-none absolute inset-0">
+        <div className="absolute inset-0">
           {layers.map((layer) => {
             const bounds = containerRef.current?.getBoundingClientRect()
             const screenWidth = bounds?.width || 1
@@ -289,6 +391,16 @@ export default function MotionCanvas({ template, templateVersion, layers = [] }:
                   borderRadius: '50%',
                   opacity: 0.9,
                   animation,
+                  touchAction: 'none',
+                  cursor: 'grab',
+                }}
+                onPointerDown={(e) => {
+                  const boundsNow = containerRef.current?.getBoundingClientRect()
+                  if (!boundsNow) return
+                  const offsetX = e.clientX - boundsNow.left - posX
+                  const offsetY = e.clientY - boundsNow.top - posY
+                  domDragRef.current = { id: layer.id, offsetX, offsetY }
+                  console.log('[MotionCanvas DOM] drag start', { id: layer.id, offsetX, offsetY })
                 }}
               />
             )
