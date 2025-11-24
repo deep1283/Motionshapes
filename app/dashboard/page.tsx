@@ -52,13 +52,13 @@ export default function DashboardPage() {
   }
 
   const handleTemplateSelect = (templateId: string) => {
-    setSelectedTemplate(templateId)
+    // toggle off if same template is clicked again
+    setSelectedTemplate((prev) => (prev === templateId ? '' : templateId))
     // bump so MotionCanvas fully resets and replays animation even on same template click
     setTemplateVersion((v) => v + 1)
   }
 
   const handleAddShape = () => {
-    console.log('[Dashboard] add circle')
     const newLayer: Layer = {
       id: crypto.randomUUID(),
       type: 'shape',
@@ -74,7 +74,6 @@ export default function DashboardPage() {
   }
 
   const handleUpdateLayerPosition = (id: string, x: number, y: number) => {
-    console.log('[Dashboard] update layer position', { id, x, y })
     setLayers((prev) =>
       prev.map((layer) =>
         layer.id === id

@@ -75,9 +75,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
   useEffect(() => {
     const app = appRef.current
     if (!app) return
-    const handler = (e: PointerEvent) => {
-      console.log('[MotionCanvas] canvas pointerdown DOM', { x: e.clientX, y: e.clientY })
-    }
+    const handler = (e: PointerEvent) => {}
     app.canvas.addEventListener('pointerdown', handler)
     return () => {
       app.canvas.removeEventListener('pointerdown', handler)
@@ -133,7 +131,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
     const centerX = screenWidth / 2
     const centerY = screenHeight / 2
     const tickerCallbacks: Array<(ticker: PIXI.Ticker) => void> = []
-    console.log('[MotionCanvas] draw', { template, templateVersion, layersCount: layers.length, screenWidth, screenHeight })
     graphicsByIdRef.current = {}
 
     const handlePointerMove = (e: PIXI.FederatedPointerEvent) => {
@@ -148,7 +145,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
         g.y = newY
       }
       onUpdateLayerPosition?.(id, newX, newY)
-      console.log('[MotionCanvas] pointermove drag', { id, newX, newY })
     }
 
     const clearDrag = () => {
@@ -159,7 +155,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
     stage.on('pointermove', handlePointerMove)
     const handleStagePointerDown = (e: PIXI.FederatedPointerEvent) => {
       if (dragRef.current) return
-      console.log('[MotionCanvas] stage pointerdown', { x: e.global.x, y: e.global.y })
     }
     stage.on('pointerdown', handleStagePointerDown)
     stage.on('pointerup', clearDrag)
@@ -182,7 +177,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
         g.hitArea = new PIXI.Circle(0, 0, layer.width / 2)
         g.on('pointerdown', (e) => {
           e.stopPropagation()
-          console.log('[MotionCanvas] pointerdown start drag', { layerId: layer.id })
           const pos = e.global
           dragRef.current = {
             id: layer.id,
@@ -240,9 +234,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
 
       tickerCallbacks.forEach((cb) => app.ticker.add(cb))
       if (tickerCallbacks.length > 0) {
-        console.log('[MotionCanvas] animating layers', tickerCallbacks.length)
-      }
-      if (tickerCallbacks.length > 0) {
         app.ticker.start()
       }
 
@@ -261,7 +252,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
 
     // No layers -> show built-in template preview
     if (template === 'simple-shape') {
-        console.log('[MotionCanvas] preview simple-shape')
         const graphics = new PIXI.Graphics()
         graphics.circle(0, 0, 60)
         graphics.fill(0xffffff)
@@ -281,7 +271,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
         }
 
     } else if (template === 'ui-screen') {
-        console.log('[MotionCanvas] preview ui-screen')
         const container = new PIXI.Container()
         container.x = centerX
         container.y = app.screen.height + 200
@@ -313,7 +302,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
         }
 
     } else if (template === 'logo-pop') {
-        console.log('[MotionCanvas] preview logo-pop')
         const graphics = new PIXI.Graphics()
         graphics.roundRect(-50, -50, 100, 100, 25)
         graphics.fill(0x10b981)
@@ -400,7 +388,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
                   const offsetX = e.clientX - boundsNow.left - posX
                   const offsetY = e.clientY - boundsNow.top - posY
                   domDragRef.current = { id: layer.id, offsetX, offsetY }
-                  console.log('[MotionCanvas DOM] drag start', { id: layer.id, offsetX, offsetY })
                 }}
               />
             )
