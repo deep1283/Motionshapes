@@ -444,10 +444,10 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
                   borderRadius: '50%',
                   opacity: 0.9,
                   animation,
-                  '--roll-travel': `${travel}px` as string,
+                  '--roll-travel': `${travel}px`,
                   touchAction: 'none',
                   cursor: 'grab',
-                }}
+                } as React.CSSProperties}
                 onPointerDown={(e) => {
                   const boundsNow = containerRef.current?.getBoundingClientRect()
                   if (!boundsNow) return
