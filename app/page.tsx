@@ -20,6 +20,21 @@ export default function Home() {
 
   return (
     <main className="relative flex min-h-screen w-full flex-col items-center overflow-hidden bg-gray-950 antialiased bg-grid-white/[0.02]">
+      {/* Video Background */}
+      <div className="fixed inset-0 z-0">
+        <video 
+          autoPlay 
+          loop 
+          muted 
+          playsInline
+          className="h-full w-full object-cover"
+        >
+          <source src="/resources/home-bg.mp4" type="video/mp4" />
+        </video>
+        {/* Dark overlay for better text readability */}
+        <div className="absolute inset-0 bg-black/60" />
+      </div>
+
       {/* Spotlight Effect */}
       <Spotlight
         className="-top-40 left-0 md:left-60 md:-top-20"
@@ -116,7 +131,7 @@ export default function Home() {
               </div>
 
               {/* Canvas Area */}
-              <div className="relative flex flex-1 items-center justify-center overflow-hidden bg-black/20 p-8">
+              <div className="relative flex flex-1 items-center justify-center overflow-hidden bg-neutral-950 p-8">
                 {/* Background Grid - Subtle */}
                 <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff05_1px,transparent_1px),linear-gradient(to_bottom,#ffffff05_1px,transparent_1px)] bg-size-[24px_24px]" />
 

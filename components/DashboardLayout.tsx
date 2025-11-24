@@ -1,6 +1,6 @@
 'use client'
 
-import { Layout, Play, Square, Monitor, Image as ImageIcon, LogOut, Settings, ChevronLeft, Layers, Zap, MousePointer2 } from 'lucide-react'
+import { Layout, Play, Square, LogOut, Settings, ChevronLeft, Layers, Zap, MousePointer2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
@@ -23,9 +23,9 @@ export default function DashboardLayout({ children, selectedTemplate, onSelectTe
   }
 
   const templates = [
-    { id: 'simple-shape', name: 'Simple Shape', icon: Square },
-    { id: 'ui-screen', name: 'UI Screen Slide', icon: Monitor },
-    { id: 'logo-pop', name: 'Logo Pop', icon: ImageIcon },
+    { id: 'roll', name: 'Roll', icon: Layers },
+    { id: 'jump', name: 'Jump', icon: Zap },
+    { id: 'pop', name: 'Pop Burst', icon: Square },
   ]
 
   return (
