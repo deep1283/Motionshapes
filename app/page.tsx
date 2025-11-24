@@ -19,7 +19,7 @@ export default function Home() {
   }
 
   return (
-    <main className="relative flex min-h-screen w-full flex-col items-center overflow-hidden bg-black/0.96 antialiased bg-grid-white/[0.02]">
+    <main className="relative flex min-h-screen w-full flex-col items-center overflow-hidden bg-gray-950 antialiased bg-grid-white/[0.02]">
       {/* Spotlight Effect */}
       <Spotlight
         className="-top-40 left-0 md:left-60 md:-top-20"

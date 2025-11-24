@@ -10,7 +10,7 @@ interface DashboardLayoutProps {
   children: React.ReactNode
   selectedTemplate: string
   onSelectTemplate: (template: string) => void
-  onAddShape?: (shape: 'circle' | 'square' | 'rounded-rect' | 'pill') => void
+  onAddShape?: () => void
 }
 
 export default function DashboardLayout({ children, selectedTemplate, onSelectTemplate, onAddShape }: DashboardLayoutProps) {
@@ -70,7 +70,7 @@ export default function DashboardLayout({ children, selectedTemplate, onSelectTe
                 {templates.map((template) => (
                   <button
                     key={template.id}
-                    onClick={() => onSelectTemplate(selectedTemplate === template.id ? '' : template.id)}
+                    onClick={() => onSelectTemplate(template.id)}
                     className={cn(
                       "group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
                       selectedTemplate === template.id
@@ -90,21 +90,9 @@ export default function DashboardLayout({ children, selectedTemplate, onSelectTe
                 Shapes
               </h2>
               <div className="grid grid-cols-1 gap-2">
-                <Button onClick={() => onAddShape?.('circle')} className="justify-start bg-white/10 text-white hover:bg-white/20">
+                <Button onClick={() => onAddShape?.()} className="justify-start bg-white/10 text-white hover:bg-white/20">
                   <Square className="mr-2 h-4 w-4 rotate-45" />
                   Circle
-                </Button>
-                <Button onClick={() => onAddShape?.('square')} className="justify-start bg-white/10 text-white hover:bg-white/20">
-                  <Square className="mr-2 h-4 w-4" />
-                  Square
-                </Button>
-                <Button onClick={() => onAddShape?.('rounded-rect')} className="justify-start bg-white/10 text-white hover:bg-white/20">
-                  <Monitor className="mr-2 h-4 w-4" />
-                  Rounded Rectangle
-                </Button>
-                <Button onClick={() => onAddShape?.('pill')} className="justify-start bg-white/10 text-white hover:bg-white/20">
-                  <Layout className="mr-2 h-4 w-4" />
-                  Pill
                 </Button>
               </div>
           </div>
