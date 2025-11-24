@@ -11,9 +11,11 @@ interface DashboardLayoutProps {
   selectedTemplate: string
   onSelectTemplate: (template: string) => void
   onAddShape?: () => void
+  onStartDrawPath?: () => void
+  showSelectShapeHint?: boolean
 }
 
-export default function DashboardLayout({ children, selectedTemplate, onSelectTemplate, onAddShape }: DashboardLayoutProps) {
+export default function DashboardLayout({ children, selectedTemplate, onSelectTemplate, onAddShape, onStartDrawPath, showSelectShapeHint }: DashboardLayoutProps) {
   const router = useRouter()
   const supabase = createClient()
 
@@ -83,6 +85,30 @@ export default function DashboardLayout({ children, selectedTemplate, onSelectTe
                   </button>
                 ))}
               </nav>
+          </div>
+
+          <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+            <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-neutral-500">
+              Custom
+            </h2>
+            <div className="space-y-3">
+              <Button
+                variant="ghost"
+                className="w-full justify-start bg-white/10 text-white hover:bg-white/20"
+                onClick={() => onStartDrawPath?.()}
+              >
+                <span className="mr-2 inline-block h-2 w-2 rounded-full bg-emerald-400" />
+                Draw Path
+              </Button>
+              {showSelectShapeHint && (
+                <p className="text-xs text-amber-300">
+                  Select a shape first, then click Draw Path.
+                </p>
+              )}
+              <p className="text-xs text-neutral-400">
+                Click “Draw Path” to mark a motion path on the canvas. Double-click to finish. (Coming next.)
+              </p>
+            </div>
           </div>
 
           <div>

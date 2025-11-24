@@ -19,9 +19,18 @@ interface MotionCanvasProps {
   }>
   onUpdateLayerPosition?: (id: string, x: number, y: number) => void
   onTemplateComplete?: () => void
+  isDrawingPath?: boolean
+  pathPoints?: Array<{ x: number; y: number }>
+  onAddPathPoint?: (x: number, y: number) => void
+  onFinishPath?: () => void
+  onSelectLayer?: (id: string) => void
+  selectedLayerId?: string
+  activePathPoints?: Array<{ x: number; y: number }>
+  pathVersion?: number
+  pathLayerId?: string
 }
 
-export default function MotionCanvas({ template, templateVersion, layers = [], onUpdateLayerPosition, onTemplateComplete }: MotionCanvasProps) {
+export default function MotionCanvas({ template, templateVersion, layers = [], onUpdateLayerPosition, onTemplateComplete, isDrawingPath = false, pathPoints = [], onAddPathPoint, onFinishPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId }: MotionCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<PIXI.Application | null>(null)
   const [isReady, setIsReady] = useState(false)
@@ -193,6 +202,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
         g.on('pointerdown', (e) => {
           e.stopPropagation()
           const pos = e.global
+          onSelectLayer?.(layer.id)
           dragRef.current = {
             id: layer.id,
             offsetX: pos.x - g.x,
@@ -203,8 +213,52 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
         graphicsByIdRef.current[layer.id] = g
         stage.addChild(g)
 
+        const shouldAnimateTemplate = selectedLayerId ? layer.id === selectedLayerId : true
+
         // animate this circle when a template is chosen
-        if (template === 'roll') {
+        if (!isDrawingPath && pathLayerId && layer.id === pathLayerId && activePathPoints.length >= 2) {
+          const pts = activePathPoints.map((pt) => ({
+            x: pt.x * screenWidth,
+            y: pt.y * screenHeight,
+          }))
+          const segments = []
+          let totalLen = 0
+          for (let i = 1; i < pts.length; i++) {
+            const a = pts[i - 1]
+            const b = pts[i]
+            const len = Math.hypot(b.x - a.x, b.y - a.y)
+            totalLen += len
+            segments.push({ a, b, len })
+          }
+          const durationMs = 1200
+          let elapsed = 0
+          const cb = (t?: PIXI.Ticker) => {
+            if (totalLen === 0) return
+            const deltaMs = t?.deltaMS ?? 16.67
+            elapsed = Math.min(durationMs, elapsed + deltaMs)
+            const progress = elapsed / durationMs
+            const targetDist = progress * totalLen
+            let acc = 0
+            for (let i = 0; i < segments.length; i++) {
+              const { a, b, len } = segments[i]
+              if (acc + len >= targetDist) {
+                const segT = len === 0 ? 0 : (targetDist - acc) / len
+                g.x = a.x + (b.x - a.x) * segT
+                g.y = a.y + (b.y - a.y) * segT
+                break
+              }
+              acc += len
+            }
+            if (progress >= 1) {
+              const last = pts[pts.length - 1]
+              g.x = last.x
+              g.y = last.y
+              onUpdateLayerPosition?.(layer.id, g.x, g.y)
+              notifyComplete()
+            }
+          }
+          tickerCallbacks.push(cb)
+        } else if (shouldAnimateTemplate && template === 'roll') {
           const startX = posX
           const travel = Math.min(screenWidth * 0.21, 200)
           const finalX = startX + travel
@@ -224,7 +278,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
             }
           }
           tickerCallbacks.push(cb)
-        } else if (template === 'jump') {
+        } else if (shouldAnimateTemplate && template === 'jump') {
           const startY = posY
           const amplitude = Math.min(screenHeight * 0.25, 220)
           const durationMs = 1000
@@ -242,7 +296,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
             }
           }
           tickerCallbacks.push(cb)
-        } else if (template === 'pop') {
+        } else if (shouldAnimateTemplate && template === 'pop') {
           const durationMs = 1000
           let elapsed = 0
           const cb = (t?: PIXI.Ticker) => {
@@ -407,14 +461,53 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
         stage.off('pointerdown', handleStagePointerDown)
     }
 
-  }, [template, templateVersion, isReady, onUpdateLayerPosition]) // Re-run on template switches or version bumps; layer moves are handled directly
+  }, [template, templateVersion, pathVersion, pathLayerId, activePathPoints, isReady, onUpdateLayerPosition]) // Re-run on template/path switches; layer moves are handled directly
 
   return (
     <div className="relative h-full w-full overflow-hidden rounded-lg bg-[#0b0b0b]">
       <div ref={containerRef} className="h-full w-full" />
+      {/* Path draw overlay */}
+      {isDrawingPath && (
+        <div
+          className="absolute inset-0 cursor-crosshair"
+          style={{ zIndex: 20 }}
+          onClick={(e) => {
+            if (!containerRef.current) return
+            const bounds = containerRef.current.getBoundingClientRect()
+            const x = (e.clientX - bounds.left) / bounds.width
+            const y = (e.clientY - bounds.top) / bounds.height
+            onAddPathPoint?.(x, y)
+          }}
+          onDoubleClick={(e) => {
+            e.preventDefault()
+            onFinishPath?.()
+          }}
+        >
+          <svg className="h-full w-full" style={{ pointerEvents: 'none' }}>
+            {(() => {
+              if (!containerRef.current || pathPoints.length === 0) return null
+              const bounds = containerRef.current.getBoundingClientRect()
+              const toPx = (pt: { x: number; y: number }) => ({
+                x: pt.x * bounds.width,
+                y: pt.y * bounds.height,
+              })
+              const pts = pathPoints.map(toPx)
+              const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
+              return (
+                <>
+                  <path d={d} stroke="#22c55e" strokeWidth={2} fill="none" strokeDasharray="6 4" />
+                  {pts.map((p, i) => (
+                    <circle key={i} cx={p.x} cy={p.y} r={4} fill="#22c55e" stroke="#0f0f0f" strokeWidth={2} />
+                  ))}
+                </>
+              )
+            })()}
+          </svg>
+        </div>
+      )}
       {/* DOM overlay for layers so a shape is always visible; mimic template motion with CSS AND enable dragging */}
       {layers.length > 0 && (
-        <div className="absolute inset-0">
+        <div className="absolute inset-0" style={{ pointerEvents: isDrawingPath ? 'none' : undefined }}>
           {layers.map((layer) => {
             const bounds = containerRef.current?.getBoundingClientRect()
             const screenWidth = bounds?.width || 1
@@ -422,14 +515,19 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
             const posX = layer.x <= 1 ? layer.x * screenWidth : layer.x
             const posY = layer.y <= 1 ? layer.y * screenHeight : layer.y
             const travel = Math.min(screenWidth * 0.21, 200)
-              const animation =
-                template === 'roll'
-                  ? `roll-x-var 1.2s linear forwards`
-                : template === 'jump'
-                  ? 'jump-y-once 1s ease-out forwards'
-                : template === 'pop'
-                  ? 'pop-burst 1s ease-out forwards'
-                  : undefined
+              let animation: string | undefined
+              if (!selectedLayerId || selectedLayerId === layer.id) {
+                animation =
+                  template === 'roll'
+                    ? `roll-x-var 1.2s linear forwards`
+                  : template === 'jump'
+                    ? 'jump-y-once 1s ease-out forwards'
+                  : template === 'pop'
+                    ? 'pop-burst 1s ease-out forwards'
+                    : undefined
+              } else {
+                animation = undefined
+              }
             return (
               <div
                 key={layer.id}
@@ -443,6 +541,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
                   background: '#fff',
                   borderRadius: '50%',
                   opacity: 0.9,
+                  outline: selectedLayerId === layer.id ? '2px solid #22c55e' : undefined,
+                  outlineOffset: '2px',
                   animation,
                   '--roll-travel': `${travel}px`,
                   touchAction: 'none',
@@ -451,6 +551,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
                 onPointerDown={(e) => {
                   const boundsNow = containerRef.current?.getBoundingClientRect()
                   if (!boundsNow) return
+                  onSelectLayer?.(layer.id)
                   const offsetX = e.clientX - boundsNow.left - posX
                   const offsetY = e.clientY - boundsNow.top - posY
                   domDragRef.current = { id: layer.id, offsetX, offsetY }

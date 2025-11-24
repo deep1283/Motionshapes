@@ -31,6 +31,12 @@ export default function DashboardPage() {
   const [selectedTemplate, setSelectedTemplate] = useState('')
   const [templateVersion, setTemplateVersion] = useState(0)
   const [layers, setLayers] = useState<Layer[]>([])
+  const [isDrawingPath, setIsDrawingPath] = useState(false)
+  const [pathPoints, setPathPoints] = useState<Array<{ x: number; y: number }>>([])
+  const [activePathPoints, setActivePathPoints] = useState<Array<{ x: number; y: number }>>([])
+  const [pathVersion, setPathVersion] = useState(0)
+  const [selectedLayerId, setSelectedLayerId] = useState('')
+  const [showSelectShapeHint, setShowSelectShapeHint] = useState(false)
 
   useEffect(() => {
     const checkUser = async () => {
@@ -87,14 +93,48 @@ export default function DashboardPage() {
     )
   }
 
+  const handleSelectLayer = (id: string) => {
+    setSelectedLayerId(id)
+    setShowSelectShapeHint(false)
+  }
+
+  const handleStartDrawPath = () => {
+    if (!selectedLayerId) {
+      setShowSelectShapeHint(true)
+      return
+    }
+    setSelectedTemplate('')
+    setPathPoints([])
+    setIsDrawingPath(true)
+  }
+
+  const handleAddPathPoint = (x: number, y: number) => {
+    setPathPoints((prev) => [...prev, { x, y }])
+  }
+
+  const handleFinishPath = () => {
+    setIsDrawingPath(false)
+    setActivePathPoints(pathPoints)
+    setPathVersion((v) => v + 1)
+  }
+
   return (
-    <DashboardLayout selectedTemplate={selectedTemplate} onSelectTemplate={handleTemplateSelect} onAddShape={handleAddShape}>
+    <DashboardLayout selectedTemplate={selectedTemplate} onSelectTemplate={handleTemplateSelect} onAddShape={handleAddShape} onStartDrawPath={handleStartDrawPath} showSelectShapeHint={showSelectShapeHint}>
       <MotionCanvas 
         template={selectedTemplate} 
         templateVersion={templateVersion} 
         layers={layers} 
         onUpdateLayerPosition={handleUpdateLayerPosition}
         onTemplateComplete={handleTemplateComplete}
+        onSelectLayer={handleSelectLayer}
+        selectedLayerId={selectedLayerId}
+        isDrawingPath={isDrawingPath}
+        pathPoints={pathPoints}
+        activePathPoints={activePathPoints}
+        pathVersion={pathVersion}
+        pathLayerId={selectedLayerId}
+        onAddPathPoint={handleAddPathPoint}
+        onFinishPath={handleFinishPath}
       />
     </DashboardLayout>
   )
