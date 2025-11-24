@@ -18,15 +18,17 @@ interface MotionCanvasProps {
     fillColor: number
   }>
   onUpdateLayerPosition?: (id: string, x: number, y: number) => void
+  onTemplateComplete?: () => void
 }
 
-export default function MotionCanvas({ template, templateVersion, layers = [], onUpdateLayerPosition }: MotionCanvasProps) {
+export default function MotionCanvas({ template, templateVersion, layers = [], onUpdateLayerPosition, onTemplateComplete }: MotionCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<PIXI.Application | null>(null)
   const [isReady, setIsReady] = useState(false)
   const dragRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null)
   const graphicsByIdRef = useRef<Record<string, PIXI.Graphics>>({})
   const domDragRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null)
+  const templateCompleteCalled = useRef(false)
 
   // 1. Initialize Pixi App ONCE
   useEffect(() => {
@@ -113,6 +115,13 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
   useEffect(() => {
     if (!isReady || !appRef.current) return
 
+    templateCompleteCalled.current = false
+    const notifyComplete = () => {
+      if (templateCompleteCalled.current) return
+      templateCompleteCalled.current = true
+      onTemplateComplete?.()
+    }
+
     const app = appRef.current
     const bounds = containerRef.current?.getBoundingClientRect()
     const screenWidth = (bounds?.width && bounds.width > 0 ? bounds.width : containerRef.current?.clientWidth) || app.screen?.width || 800
@@ -166,6 +175,12 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
         const g = new PIXI.Graphics()
         g.circle(0, 0, layer.width / 2)
         g.fill(layer.fillColor)
+        // add a small notch so roll rotation is visible
+        if (template === 'roll') {
+          g.moveTo(0, -layer.width / 2)
+          g.lineTo(0, -layer.width / 3)
+          g.stroke({ color: 0x000000, width: 6, alpha: 0.8 })
+        }
         g.pivot.set(layer.width / 2, layer.height / 2)
         const posX = layer.x <= 1 ? layer.x * screenWidth : layer.x
         const posY = layer.y <= 1 ? layer.y * screenHeight : layer.y
@@ -191,55 +206,78 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
         // animate this circle when a template is chosen
         if (template === 'roll') {
           const startX = posX
-          const travel = Math.min(screenWidth * 0.4, 320)
-          let theta = 0
+          const travel = Math.min(screenWidth * 0.21, 200)
+          const finalX = startX + travel
+          const durationMs = 1200
+          let elapsed = 0
           const cb = (t?: PIXI.Ticker) => {
-            const delta = t?.deltaTime ?? 1
-            theta += 0.05 * delta
-            g.x = startX + Math.sin(theta) * travel
-            g.rotation += 0.12 * delta
+            const deltaMs = t?.deltaMS ?? 16.67
+            elapsed = Math.min(durationMs, elapsed + deltaMs)
+            const progress = elapsed / durationMs
+            const ease = 1 - Math.pow(1 - progress, 2)
+            g.x = startX + travel * ease
+            g.rotation = ease * Math.PI * 4
+            if (progress >= 1) {
+              g.x = finalX
+              onUpdateLayerPosition?.(layer.id, finalX, g.y)
+              notifyComplete()
+            }
           }
           tickerCallbacks.push(cb)
         } else if (template === 'jump') {
           const startY = posY
           const amplitude = Math.min(screenHeight * 0.25, 220)
-          let progress = 0
+          const durationMs = 1000
+          let elapsed = 0
           const cb = (t?: PIXI.Ticker) => {
-            const delta = t?.deltaTime ?? 1
-            if (progress >= 1) return
-            progress = Math.min(1, progress + 0.035 * delta)
-            const hop = Math.sin(progress * Math.PI)
+            const deltaMs = t?.deltaMS ?? 16.67
+            elapsed = Math.min(durationMs, elapsed + deltaMs)
+            const progress = elapsed / durationMs
+            const hop = Math.sin(progress * Math.PI) // smooth up and down
             g.y = startY - hop * amplitude
             g.scale.set(1 + hop * 0.05, 1 - hop * 0.05)
+            if (progress >= 1) {
+              onUpdateLayerPosition?.(layer.id, g.x, g.y)
+              notifyComplete()
+            }
           }
           tickerCallbacks.push(cb)
         } else if (template === 'pop') {
-          let progress = 0
+          const durationMs = 1000
+          let elapsed = 0
           const cb = (t?: PIXI.Ticker) => {
-            const delta = t?.deltaTime ?? 1
-            if (progress >= 1) return
-            progress = Math.min(1, progress + 0.03 * delta)
+            const deltaMs = t?.deltaMS ?? 16.67
+            elapsed = Math.min(durationMs, elapsed + deltaMs)
+            const progress = elapsed / durationMs
 
-            // Inflate first
-            if (progress < 0.6) {
-              const inflate = 1 + 0.4 * (progress / 0.6)
+            if (progress < 0.5) {
+              // inflate
+              const inflate = 1 + 0.6 * (progress / 0.5)
               g.scale.set(inflate)
               g.alpha = 1
-            } else if (progress < 0.85) {
-              // Shake phase
-              const shake = Math.sin(progress * 40) * 6
-              const wobbleScale = 1.4 + 0.1 * Math.sin(progress * 20)
+              g.rotation = 0
+              g.x = posX
+            } else if (progress < 0.8) {
+              // shake near max size
+              const shakeT = (progress - 0.5) / 0.3
+              const shake = Math.sin(shakeT * Math.PI * 6) * 6
+              const wobbleScale = 1.6 + 0.12 * Math.sin(shakeT * Math.PI * 4)
               g.scale.set(wobbleScale)
               g.x = posX + shake
-              g.rotation = Math.sin(progress * 30) * 0.08
+              g.rotation = Math.sin(shakeT * Math.PI * 5) * 0.12
               g.alpha = 1
             } else {
-              // Burst fade-out
-              const burstProgress = (progress - 0.85) / 0.15
-              const eased = 1 - Math.pow(1 - burstProgress, 2)
-              g.scale.set(1.5 + 0.4 * eased)
+              // burst and fade
+              const burstT = (progress - 0.8) / 0.2
+              const eased = 1 - Math.pow(1 - burstT, 2)
+              g.scale.set(1.7 + 0.5 * eased)
               g.alpha = Math.max(0, 1 - eased)
               g.rotation = 0
+              g.x = posX
+            }
+            if (progress >= 1) {
+              onUpdateLayerPosition?.(layer.id, g.x, g.y)
+              notifyComplete()
             }
           }
           tickerCallbacks.push(cb)
@@ -255,15 +293,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
       app.render()
 
       return () => {
-        // persist final positions so deselecting the template keeps last coords
-        if (template === 'roll') {
-          layers.forEach((layer) => {
-            const g = graphicsByIdRef.current[layer.id]
-            if (g) {
-              onUpdateLayerPosition?.(layer.id, g.x, g.y)
-            }
-          })
-        }
         tickerCallbacks.forEach((cb) => app.ticker.remove(cb))
         stage.removeChildren()
         stage.off('pointermove', handlePointerMove)
@@ -278,12 +307,16 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
         const graphics = new PIXI.Graphics()
         graphics.circle(0, 0, 60)
         graphics.fill(0xffffff)
+        // notch for visible rotation
+        graphics.moveTo(0, -60)
+        graphics.lineTo(0, -40)
+        graphics.stroke({ color: 0x000000, width: 6, alpha: 0.8 })
         graphics.x = centerX
         graphics.y = centerY
         stage.addChild(graphics)
 
         let progress = 0
-        const travel = Math.min(app.screen.width * 0.4, 320)
+        const travel = Math.min(app.screen.width * 0.21, 200)
         tickerCallback = (t?: PIXI.Ticker) => {
           const delta = t?.deltaTime ?? 1
           if (progress >= 1) return
@@ -300,15 +333,17 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
         graphics.y = centerY
         stage.addChild(graphics)
 
-        let progress = 0
+        const durationMs = 1000
+        let elapsed = 0
         const amplitude = Math.min(app.screen.height * 0.25, 220)
         tickerCallback = (t?: PIXI.Ticker) => {
-          const delta = t?.deltaTime ?? 1
-          if (progress >= 1) return
-          progress = Math.min(1, progress + 0.02 * delta)
+          const deltaMs = t?.deltaMS ?? 16.67
+          elapsed = Math.min(durationMs, elapsed + deltaMs)
+          const progress = elapsed / durationMs
           const hop = Math.sin(progress * Math.PI)
           graphics.y = centerY - hop * amplitude
           graphics.scale.set(1 + hop * 0.05, 1 - hop * 0.05)
+          if (progress >= 1) notifyComplete()
         }
     } else if (template === 'pop') {
         const graphics = new PIXI.Graphics()
@@ -318,30 +353,36 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
         graphics.y = centerY
         stage.addChild(graphics)
 
-        let progress = 0
+        const durationMs = 1000
+        let elapsed = 0
         tickerCallback = (t?: PIXI.Ticker) => {
-          const delta = t?.deltaTime ?? 1
-          if (progress >= 1) return
-          progress = Math.min(1, progress + 0.03 * delta)
+          const deltaMs = t?.deltaMS ?? 16.67
+          elapsed = Math.min(durationMs, elapsed + deltaMs)
+          const progress = elapsed / durationMs
 
-          if (progress < 0.6) {
-            const inflate = 1 + 0.4 * (progress / 0.6)
+          if (progress < 0.5) {
+            const inflate = 1 + 0.6 * (progress / 0.5)
             graphics.scale.set(inflate)
             graphics.alpha = 1
-          } else if (progress < 0.85) {
-            const shake = Math.sin(progress * 40) * 6
-            const wobbleScale = 1.4 + 0.1 * Math.sin(progress * 20)
+            graphics.rotation = 0
+            graphics.x = centerX
+          } else if (progress < 0.8) {
+            const shakeT = (progress - 0.5) / 0.3
+            const shake = Math.sin(shakeT * Math.PI * 6) * 6
+            const wobbleScale = 1.6 + 0.12 * Math.sin(shakeT * Math.PI * 4)
             graphics.scale.set(wobbleScale)
             graphics.x = centerX + shake
-            graphics.rotation = Math.sin(progress * 30) * 0.08
+            graphics.rotation = Math.sin(shakeT * Math.PI * 5) * 0.12
             graphics.alpha = 1
           } else {
-            const burstProgress = (progress - 0.85) / 0.15
-            const eased = 1 - Math.pow(1 - burstProgress, 2)
-            graphics.scale.set(1.5 + 0.4 * eased)
+            const burstT = (progress - 0.8) / 0.2
+            const eased = 1 - Math.pow(1 - burstT, 2)
+            graphics.scale.set(1.7 + 0.5 * eased)
             graphics.alpha = Math.max(0, 1 - eased)
             graphics.rotation = 0
+            graphics.x = centerX
           }
+          if (progress >= 1) notifyComplete()
         }
     }
 
@@ -366,7 +407,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
         stage.off('pointerdown', handleStagePointerDown)
     }
 
-  }, [template, templateVersion, isReady, layers, onUpdateLayerPosition]) // Re-run when template changes OR when app becomes ready
+  }, [template, templateVersion, isReady, onUpdateLayerPosition]) // Re-run on template switches or version bumps; layer moves are handled directly
 
   return (
     <div className="relative h-full w-full overflow-hidden rounded-lg bg-[#0b0b0b]">
@@ -380,13 +421,14 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
             const screenHeight = bounds?.height || 1
             const posX = layer.x <= 1 ? layer.x * screenWidth : layer.x
             const posY = layer.y <= 1 ? layer.y * screenHeight : layer.y
+            const travel = Math.min(screenWidth * 0.21, 200)
               const animation =
                 template === 'roll'
-                  ? 'roll-x-once 2s linear forwards'
+                  ? `roll-x-var 1.2s linear forwards`
                 : template === 'jump'
-                  ? 'jump-y-once 1.2s ease-out forwards'
+                  ? 'jump-y-once 1s ease-out forwards'
                 : template === 'pop'
-                  ? 'pop-burst 1.2s ease-out forwards'
+                  ? 'pop-burst 1s ease-out forwards'
                   : undefined
             return (
               <div
@@ -402,6 +444,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
                   borderRadius: '50%',
                   opacity: 0.9,
                   animation,
+                  '--roll-travel': `${travel}px` as string,
                   touchAction: 'none',
                   cursor: 'grab',
                 }}
@@ -425,7 +468,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
             <div className="h-24 w-24 rounded-full bg-white/80 animate-[roll-x-once_2s_linear_forwards]" />
           )}
           {template === 'jump' && (
-            <div className="h-24 w-24 rounded-full bg-white/80 animate-[jump-y-once_0.95s_ease-out_forwards]" />
+            <div className="h-24 w-24 rounded-full bg-white/80 animate-[jump-y-once_1s_ease-out_forwards]" />
           )}
           {template === 'pop' && (
             <div className="h-24 w-24 rounded-full bg-white/80 animate-[pop-burst_1.2s_ease-out_forwards]" />
@@ -438,18 +481,22 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
           0% { transform: translate(-50%, -50%) translateX(0) rotate(0deg); }
           100% { transform: translate(-50%, -50%) translateX(140px) rotate(360deg); }
         }
+        @keyframes roll-x-var {
+          0% { transform: translate(-50%, -50%) translateX(0) rotate(0deg); }
+          100% { transform: translate(-50%, -50%) translateX(var(--roll-travel, 140px)) rotate(360deg); }
+        }
         @keyframes jump-y-once {
           0% { transform: translate(-50%, -50%) translateY(0) scale(1); }
-          40% { transform: translate(-50%, -50%) translateY(-120px) scale(1.05, 0.95); }
-          70% { transform: translate(-50%, -50%) translateY(-30px) scale(0.98, 1.02); }
+          45% { transform: translate(-50%, -50%) translateY(-120px) scale(1.05, 0.95); }
+          85% { transform: translate(-50%, -50%) translateY(-20px) scale(0.99, 1.01); }
           100% { transform: translate(-50%, -50%) translateY(0) scale(1); }
         }
         @keyframes pop-burst {
           0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
-          50% { transform: translate(-50%, -50%) scale(1.35); opacity: 1; }
-          70% { transform: translate(-50%, -50%) translateX(-8px) rotate(-2deg) scale(1.4); opacity: 1; }
-          80% { transform: translate(-50%, -50%) translateX(8px) rotate(2deg) scale(1.45); opacity: 1; }
-          100% { transform: translate(-50%, -50%) scale(1.9) rotate(0deg); opacity: 0; }
+          50% { transform: translate(-50%, -50%) scale(1.6); opacity: 1; }
+          75% { transform: translate(-50%, -50%) translateX(-8px) rotate(-2deg) scale(1.7); opacity: 1; }
+          90% { transform: translate(-50%, -50%) translateX(8px) rotate(2deg) scale(1.8); opacity: 1; }
+          100% { transform: translate(-50%, -50%) scale(2.1) rotate(0deg); opacity: 0; }
         }
       `}</style>
     </div>

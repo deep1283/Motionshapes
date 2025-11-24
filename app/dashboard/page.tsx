@@ -58,6 +58,10 @@ export default function DashboardPage() {
     setTemplateVersion((v) => v + 1)
   }
 
+  const handleTemplateComplete = () => {
+    setSelectedTemplate('')
+  }
+
   const handleAddShape = () => {
     const newLayer: Layer = {
       id: crypto.randomUUID(),
@@ -90,6 +94,7 @@ export default function DashboardPage() {
         templateVersion={templateVersion} 
         layers={layers} 
         onUpdateLayerPosition={handleUpdateLayerPosition}
+        onTemplateComplete={handleTemplateComplete}
       />
     </DashboardLayout>
   )
