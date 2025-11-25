@@ -1,9 +1,11 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import * as PIXI from 'pixi.js'
 import 'pixi.js/app' // ensure Application plugins (ticker/resize) are registered
 import 'pixi.js/events' // enable pointer events
+import { sampleTimeline } from '@/lib/timeline'
+import { useTimeline } from '@/lib/timeline-store'
 
 interface MotionCanvasProps {
   template: string
@@ -28,9 +30,10 @@ interface MotionCanvasProps {
   activePathPoints?: Array<{ x: number; y: number }>
   pathVersion?: number
   pathLayerId?: string
+  onPathPlaybackComplete?: () => void
 }
 
-export default function MotionCanvas({ template, templateVersion, layers = [], onUpdateLayerPosition, onTemplateComplete, isDrawingPath = false, pathPoints = [], onAddPathPoint, onFinishPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId }: MotionCanvasProps) {
+export default function MotionCanvas({ template, templateVersion, layers = [], onUpdateLayerPosition, onTemplateComplete, isDrawingPath = false, pathPoints = [], onAddPathPoint, onFinishPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete }: MotionCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<PIXI.Application | null>(null)
   const [isReady, setIsReady] = useState(false)
@@ -38,6 +41,9 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
   const graphicsByIdRef = useRef<Record<string, PIXI.Graphics>>({})
   const domDragRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null)
   const templateCompleteCalled = useRef(false)
+  const timelineTracks = useTimeline((s) => s.tracks)
+  const playhead = useTimeline((s) => s.currentTime)
+  const sampledTimeline = useMemo(() => sampleTimeline(timelineTracks, playhead), [timelineTracks, playhead])
 
   // 1. Initialize Pixi App ONCE
   useEffect(() => {
@@ -82,14 +88,35 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
     }
   }, [])
 
+  // Apply timeline-sampled transforms onto Pixi graphics so playhead/scrub reflects on-canvas
+  useEffect(() => {
+    if (!isReady || !containerRef.current) return
+    const bounds = containerRef.current.getBoundingClientRect()
+    const screenWidth = bounds.width || 1
+    const screenHeight = bounds.height || 1
+    Object.entries(sampledTimeline).forEach(([id, state]) => {
+      const g = graphicsByIdRef.current[id]
+      if (!g) return
+      const posX = state.position.x <= 1 ? state.position.x * screenWidth : state.position.x
+      const posY = state.position.y <= 1 ? state.position.y * screenHeight : state.position.y
+      g.x = posX
+      g.y = posY
+      g.scale.set(state.scale)
+      g.rotation = state.rotation
+      g.alpha = state.opacity
+    })
+    appRef.current?.render()
+  }, [sampledTimeline, isReady])
+
   // Debug: log raw DOM pointer events on the canvas to ensure we receive them
   useEffect(() => {
     const app = appRef.current
-    if (!app) return
+    const canvas = app?.canvas
+    if (!app || !canvas) return
     const handler = (e: PointerEvent) => {}
-    app.canvas.addEventListener('pointerdown', handler)
+    canvas.addEventListener('pointerdown', handler)
     return () => {
-      app.canvas.removeEventListener('pointerdown', handler)
+      canvas.removeEventListener('pointerdown', handler)
     }
   }, [isReady])
 
@@ -102,7 +129,9 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
       const newX = e.clientX - bounds.left - domDragRef.current.offsetX
       const newY = e.clientY - bounds.top - domDragRef.current.offsetY
       const id = domDragRef.current.id
-      onUpdateLayerPosition?.(id, newX, newY)
+      const nx = bounds.width > 0 ? newX / bounds.width : 0
+      const ny = bounds.height > 0 ? newY / bounds.height : 0
+      onUpdateLayerPosition?.(id, nx, ny)
       const g = graphicsByIdRef.current[id]
       if (g) {
         g.x = newX
@@ -150,6 +179,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
     const centerY = screenHeight / 2
     const tickerCallbacks: Array<(ticker: PIXI.Ticker) => void> = []
     graphicsByIdRef.current = {}
+    const templateEnabled = false
 
     const handlePointerMove = (e: PIXI.FederatedPointerEvent) => {
       if (!dragRef.current) return
@@ -162,7 +192,9 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
         g.x = newX
         g.y = newY
       }
-      onUpdateLayerPosition?.(id, newX, newY)
+      const nx = screenWidth > 0 ? newX / screenWidth : 0
+      const ny = screenHeight > 0 ? newY / screenHeight : 0
+      onUpdateLayerPosition?.(id, nx, ny)
     }
 
     const clearDrag = () => {
@@ -185,7 +217,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
         g.circle(0, 0, layer.width / 2)
         g.fill(layer.fillColor)
         // add a small notch so roll rotation is visible
-        if (template === 'roll') {
+        if (templateEnabled && template === 'roll') {
           g.moveTo(0, -layer.width / 2)
           g.lineTo(0, -layer.width / 3)
           g.stroke({ color: 0x000000, width: 6, alpha: 0.8 })
@@ -216,12 +248,22 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
         const shouldAnimateTemplate = selectedLayerId ? layer.id === selectedLayerId : true
 
         // animate this circle when a template is chosen
-        if (!isDrawingPath && pathLayerId && layer.id === pathLayerId && activePathPoints.length >= 2) {
+        if (!isDrawingPath && !template && pathLayerId && layer.id === pathLayerId && activePathPoints.length >= 2) {
+          if (activePathPoints.length < 2) {
+            return
+          }
           const pts = activePathPoints.map((pt) => ({
             x: pt.x * screenWidth,
             y: pt.y * screenHeight,
           }))
-          const segments = []
+          const segments: Array<{ a: { x: number; y: number }; b: { x: number; y: number }; len: number }> = []
+          if (pts.length > 0) {
+            g.x = pts[0].x
+            g.y = pts[0].y
+            g.alpha = 1
+            g.rotation = 0
+            g.visible = true
+          }
           let totalLen = 0
           for (let i = 1; i < pts.length; i++) {
             const a = pts[i - 1]
@@ -230,11 +272,12 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
             totalLen += len
             segments.push({ a, b, len })
           }
-          const durationMs = 1200
+          console.log('[path] start', { id: layer.id, pts, totalLen, segments: segments.length })
+          const durationMs = 2000
           let elapsed = 0
-          const cb = (t?: PIXI.Ticker) => {
+          const cb = (ticker?: PIXI.Ticker) => {
             if (totalLen === 0) return
-            const deltaMs = t?.deltaMS ?? 16.67
+            const deltaMs = ticker?.deltaMS ?? 16.67
             elapsed = Math.min(durationMs, elapsed + deltaMs)
             const progress = elapsed / durationMs
             const targetDist = progress * totalLen
@@ -245,6 +288,11 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
                 const segT = len === 0 ? 0 : (targetDist - acc) / len
                 g.x = a.x + (b.x - a.x) * segT
                 g.y = a.y + (b.y - a.y) * segT
+                g.alpha = 1
+                const nx = screenWidth > 0 ? g.x / screenWidth : 0
+                const ny = screenHeight > 0 ? g.y / screenHeight : 0
+                onUpdateLayerPosition?.(layer.id, nx, ny)
+                app.render()
                 break
               }
               acc += len
@@ -253,12 +301,18 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
               const last = pts[pts.length - 1]
               g.x = last.x
               g.y = last.y
-              onUpdateLayerPosition?.(layer.id, g.x, g.y)
+              const nx = screenWidth > 0 ? g.x / screenWidth : 0
+              const ny = screenHeight > 0 ? g.y / screenHeight : 0
+              onUpdateLayerPosition?.(layer.id, nx, ny)
               notifyComplete()
+              onPathPlaybackComplete?.()
+              app.ticker.remove(cb)
+              console.log('[path] end', { id: layer.id, x: g.x, y: g.y })
             }
           }
+          app.ticker.add(cb)
           tickerCallbacks.push(cb)
-        } else if (shouldAnimateTemplate && template === 'roll') {
+        } else if (templateEnabled && shouldAnimateTemplate && template === 'roll') {
           const startX = posX
           const travel = Math.min(screenWidth * 0.21, 200)
           const finalX = startX + travel
@@ -278,7 +332,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
             }
           }
           tickerCallbacks.push(cb)
-        } else if (shouldAnimateTemplate && template === 'jump') {
+        } else if (templateEnabled && shouldAnimateTemplate && template === 'jump') {
           const startY = posY
           const amplitude = Math.min(screenHeight * 0.25, 220)
           const durationMs = 1000
@@ -296,7 +350,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
             }
           }
           tickerCallbacks.push(cb)
-        } else if (shouldAnimateTemplate && template === 'pop') {
+        } else if (templateEnabled && shouldAnimateTemplate && template === 'pop') {
           const durationMs = 1000
           let elapsed = 0
           const cb = (t?: PIXI.Ticker) => {
@@ -357,7 +411,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
     }
 
     // No layers -> show built-in template preview
-    if (template === 'roll') {
+    if (templateEnabled && template === 'roll') {
         const graphics = new PIXI.Graphics()
         graphics.circle(0, 0, 60)
         graphics.fill(0xffffff)
@@ -379,7 +433,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
           graphics.rotation = ease * Math.PI * 4
           graphics.x = centerX + travel * ease
         }
-    } else if (template === 'jump') {
+    } else if (templateEnabled && template === 'jump') {
         const graphics = new PIXI.Graphics()
         graphics.circle(0, 0, 60)
         graphics.fill(0xffffff)
@@ -399,7 +453,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
           graphics.scale.set(1 + hop * 0.05, 1 - hop * 0.05)
           if (progress >= 1) notifyComplete()
         }
-    } else if (template === 'pop') {
+    } else if (templateEnabled && template === 'pop') {
         const graphics = new PIXI.Graphics()
         graphics.circle(0, 0, 60)
         graphics.fill(0xffffff)
@@ -461,10 +515,19 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
         stage.off('pointerdown', handleStagePointerDown)
     }
 
-  }, [template, templateVersion, pathVersion, pathLayerId, activePathPoints, isReady, onUpdateLayerPosition]) // Re-run on template/path switches; layer moves are handled directly
+  }, [template, templateVersion, pathVersion, pathLayerId, activePathPoints, isReady]) // Re-run on template/path switches; layer moves are handled directly
 
   return (
-    <div className="relative h-full w-full overflow-hidden rounded-lg bg-[#0b0b0b]">
+    <div className="relative h-full w-full overflow-hidden rounded-lg bg-gray-900">
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          backgroundImage:
+            'linear-gradient(to right, rgba(255,255,255,0.12) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.12) 1px, transparent 1px)',
+          backgroundSize: '32px 32px',
+          opacity: 0.6,
+        }}
+      />
       <div ref={containerRef} className="h-full w-full" />
       {/* Path draw overlay */}
       {isDrawingPath && (
@@ -508,47 +571,39 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
       {/* DOM overlay for layers so a shape is always visible; mimic template motion with CSS AND enable dragging */}
       {layers.length > 0 && (
         <div className="absolute inset-0" style={{ pointerEvents: isDrawingPath ? 'none' : undefined }}>
-          {layers.map((layer) => {
-            const bounds = containerRef.current?.getBoundingClientRect()
-            const screenWidth = bounds?.width || 1
-            const screenHeight = bounds?.height || 1
-            const posX = layer.x <= 1 ? layer.x * screenWidth : layer.x
-            const posY = layer.y <= 1 ? layer.y * screenHeight : layer.y
-            const travel = Math.min(screenWidth * 0.21, 200)
-              let animation: string | undefined
-              if (!selectedLayerId || selectedLayerId === layer.id) {
-                animation =
-                  template === 'roll'
-                    ? `roll-x-var 1.2s linear forwards`
-                  : template === 'jump'
-                    ? 'jump-y-once 1s ease-out forwards'
-                  : template === 'pop'
-                    ? 'pop-burst 1s ease-out forwards'
-                    : undefined
-              } else {
-                animation = undefined
-              }
-            return (
-              <div
-                key={layer.id}
-                style={{
-                  position: 'absolute',
-                  left: posX,
-                  top: posY,
-                  width: layer.width,
-                  height: layer.height,
-                  transform: 'translate(-50%, -50%)',
-                  background: '#fff',
-                  borderRadius: '50%',
-                  opacity: 0.9,
-                  outline: selectedLayerId === layer.id ? '2px solid #22c55e' : undefined,
-                  outlineOffset: '2px',
-                  animation,
-                  '--roll-travel': `${travel}px`,
-                  touchAction: 'none',
-                  cursor: 'grab',
-                } as React.CSSProperties}
+      {layers.map((layer) => {
+        const bounds = containerRef.current?.getBoundingClientRect()
+        const screenWidth = bounds?.width || 1
+        const screenHeight = bounds?.height || 1
+        const sampled = sampledTimeline[layer.id]
+        const baseX = sampled ? sampled.position.x : layer.x
+        const baseY = sampled ? sampled.position.y : layer.y
+        const posX = baseX <= 1 ? baseX * screenWidth : baseX
+        const posY = baseY <= 1 ? baseY * screenHeight : baseY
+        return (
+          <div
+            key={layer.id}
+            style={{
+              position: 'absolute',
+              left: posX,
+              top: posY,
+              width: layer.width,
+              height: layer.height,
+              transform: `translate(-50%, -50%) scale(${sampled?.scale ?? 1}) rotate(${sampled?.rotation ?? 0}rad)`,
+              background: '#fff',
+              borderRadius: '50%',
+              opacity: sampled?.opacity ?? 0.9,
+              outline: selectedLayerId === layer.id ? '1px solid #d1d5db' : undefined,
+              outlineOffset: '1px',
+              touchAction: 'none',
+              userSelect: 'none',
+              cursor: 'grab',
+            } as React.CSSProperties}
+            draggable={false}
+                onDragStart={(e) => e.preventDefault()}
                 onPointerDown={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
                   const boundsNow = containerRef.current?.getBoundingClientRect()
                   if (!boundsNow) return
                   onSelectLayer?.(layer.id)
@@ -562,44 +617,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
         </div>
       )}
 
-      {/* Fallback DOM previews when no layers exist but a template is chosen */}
-      {layers.length === 0 && template && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          {template === 'roll' && (
-            <div className="h-24 w-24 rounded-full bg-white/80 animate-[roll-x-once_2s_linear_forwards]" />
-          )}
-          {template === 'jump' && (
-            <div className="h-24 w-24 rounded-full bg-white/80 animate-[jump-y-once_1s_ease-out_forwards]" />
-          )}
-          {template === 'pop' && (
-            <div className="h-24 w-24 rounded-full bg-white/80 animate-[pop-burst_1.2s_ease-out_forwards]" />
-          )}
-        </div>
-      )}
-
-      <style jsx>{`
-        @keyframes roll-x-once {
-          0% { transform: translate(-50%, -50%) translateX(0) rotate(0deg); }
-          100% { transform: translate(-50%, -50%) translateX(140px) rotate(360deg); }
-        }
-        @keyframes roll-x-var {
-          0% { transform: translate(-50%, -50%) translateX(0) rotate(0deg); }
-          100% { transform: translate(-50%, -50%) translateX(var(--roll-travel, 140px)) rotate(360deg); }
-        }
-        @keyframes jump-y-once {
-          0% { transform: translate(-50%, -50%) translateY(0) scale(1); }
-          45% { transform: translate(-50%, -50%) translateY(-120px) scale(1.05, 0.95); }
-          85% { transform: translate(-50%, -50%) translateY(-20px) scale(0.99, 1.01); }
-          100% { transform: translate(-50%, -50%) translateY(0) scale(1); }
-        }
-        @keyframes pop-burst {
-          0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
-          50% { transform: translate(-50%, -50%) scale(1.6); opacity: 1; }
-          75% { transform: translate(-50%, -50%) translateX(-8px) rotate(-2deg) scale(1.7); opacity: 1; }
-          90% { transform: translate(-50%, -50%) translateX(8px) rotate(2deg) scale(1.8); opacity: 1; }
-          100% { transform: translate(-50%, -50%) scale(2.1) rotate(0deg); opacity: 0; }
-        }
-      `}</style>
+      {/* Fallback DOM previews removed; timeline drives all motion */}
     </div>
   )
 }

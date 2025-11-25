@@ -47,13 +47,13 @@ export default function Home() {
           initial={{ opacity: 0, scale: 0.5 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.5 }}
-          className="mb-8 inline-flex items-center gap-2 rounded-full border border-neutral-800 bg-neutral-900/50 px-4 py-1.5 text-sm font-medium text-neutral-300 backdrop-blur-md"
+          className="mb-8 inline-flex items-center gap-2 rounded-full border border-white/5 bg-white/5 px-4 py-1.5 text-sm font-medium text-neutral-300 backdrop-blur-md shadow-[0_0_15px_rgba(255,255,255,0.05)] hover:bg-white/10 transition-colors duration-300"
         >
           <span className="relative flex h-2 w-2">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
             <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
           </span>
-          v1.0 is now live
+          <span className="tracking-wide text-xs uppercase text-neutral-400">v1.0 is now live</span>
         </motion.div>
 
         {/* Hero Title */}
@@ -61,7 +61,7 @@ export default function Home() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.1 }}
-          className="bg-opacity-50 bg-linear-to-b from-neutral-50 to-neutral-400 bg-clip-text text-center text-5xl font-bold text-transparent md:text-7xl lg:text-8xl"
+          className="bg-opacity-50 bg-gradient-to-b from-white via-white/90 to-white/50 bg-clip-text text-center text-5xl font-bold tracking-tight text-transparent md:text-7xl lg:text-8xl drop-shadow-sm"
         >
           Motion Animation <br />
           Reimagined
@@ -72,7 +72,7 @@ export default function Home() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.2 }}
-          className="mt-6 max-w-2xl text-center text-lg text-neutral-400 md:text-xl"
+          className="mt-6 max-w-2xl text-center text-lg text-neutral-400 md:text-xl leading-relaxed font-light tracking-wide"
         >
           Create stunning, Apple-quality product animations directly in your browser.
           No heavy software, no steep learning curve. Just pure flow.
@@ -89,7 +89,8 @@ export default function Home() {
 
           <Button
             onClick={handleLogin}
-            className="group relative h-12 overflow-hidden rounded-full bg-white px-8 text-base font-medium text-neutral-950 transition-all hover:w-64 hover:bg-neutral-200 hover:scale-105 duration-500 active:scale-95"
+            style={{ transition: 'all 300ms ease-in-out' }}
+            className="group relative h-12 w-48 overflow-hidden rounded-full bg-white px-8 text-base font-medium text-neutral-950 hover:w-64 hover:bg-neutral-200 hover:scale-105 active:scale-95"
           >
             <div className="absolute inset-0 flex h-full w-full justify-center  group-hover:duration-1000 group-hover:transform-[skew(-12deg)_translateX(100%)]">
               <div className="relative h-full w-8 bg-white/20" />
@@ -108,24 +109,24 @@ export default function Home() {
           transition={{ duration: 1, delay: 0.4, type: "spring", bounce: 0.2 }}
           className="mt-20 w-full perspective-1000"
         >
-          <div className="relative mx-auto aspect-video w-full max-w-5xl overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900/50 shadow-2xl backdrop-blur-sm">
+          <div className="relative mx-auto aspect-video w-full max-w-5xl overflow-hidden rounded-xl border border-white/10 bg-neutral-900/50 shadow-[0_0_50px_-12px_rgba(0,0,0,0.5)] backdrop-blur-md">
             {/* Fake UI Header */}
-            <div className="flex h-12 items-center border-b border-neutral-800 bg-neutral-900/80 px-4">
+            <div className="flex h-12 items-center border-b border-white/5 bg-white/5 px-4 backdrop-blur-xl">
               <div className="flex gap-2">
-                <div className="h-3 w-3 rounded-full bg-red-500/20" />
-                <div className="h-3 w-3 rounded-full bg-yellow-500/20" />
-                <div className="h-3 w-3 rounded-full bg-green-500/20" />
+                <div className="h-3 w-3 rounded-full bg-[#FF5F57] shadow-inner" />
+                <div className="h-3 w-3 rounded-full bg-[#FEBC2E] shadow-inner" />
+                <div className="h-3 w-3 rounded-full bg-[#28C840] shadow-inner" />
               </div>
-              <div className="mx-auto h-6 w-64 rounded-full bg-neutral-800/50" />
+              <div className="mx-auto h-6 w-64 rounded-md bg-white/5 border border-white/5" />
             </div>
 
             {/* Fake UI Body */}
             <div className="flex h-full">
               {/* Sidebar */}
-              <div className="w-64 border-r border-neutral-800 bg-neutral-900/30 p-4 hidden md:block">
+              <div className="w-64 border-r border-white/5 bg-neutral-900/30 p-4 hidden md:block backdrop-blur-sm">
                 <div className="space-y-3">
                   {[1, 2, 3].map((i) => (
-                    <div key={i} className="h-10 w-full rounded-lg bg-neutral-800/30 animate-pulse" style={{ animationDelay: `${i * 0.1}s` }} />
+                    <div key={i} className="h-8 w-full rounded-md bg-white/5 animate-pulse" style={{ animationDelay: `${i * 0.1}s` }} />
                   ))}
                 </div>
               </div>
@@ -259,7 +260,7 @@ export default function Home() {
       </div>
 
       {/* Simple Footer */}
-      <footer className="w-full border-t border-white/10 bg-black py-8 text-center text-sm text-neutral-500">
+      <footer className="w-full border-t border-white/5 bg-transparent py-8 text-center text-sm text-neutral-500 backdrop-blur-sm">
         <p>&copy; {new Date().getFullYear()} MotionShapes. All rights reserved.</p>
       </footer>
     </main>
