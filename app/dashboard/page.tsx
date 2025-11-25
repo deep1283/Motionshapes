@@ -161,18 +161,24 @@ function DashboardContent() {
 
   const handleFinishPath = () => {
     setIsDrawingPath(false)
-    setActivePathPoints(pathPoints)
+    // lightly simplify consecutive points to avoid over-sampling but keep curvature
+    const simplified = pathPoints.filter((pt, idx, arr) => {
+      if (idx === 0 || idx === arr.length - 1) return true
+      const prev = arr[idx - 1]
+      const dist = Math.hypot(pt.x - prev.x, pt.y - prev.y)
+      return dist > 0.005
+    })
+    setActivePathPoints(simplified)
     setPathVersion((v) => v + 1)
-    setPathPoints([])
     setShowSelectShapeHint(false)
-    if (selectedLayerId && pathPoints.length >= 2) {
+    if (selectedLayerId && simplified.length >= 2) {
       const now = timeline.getState().currentTime
       const duration = 2000
       timeline.addPathClip(selectedLayerId, {
         id: crypto.randomUUID(),
         startTime: now,
         duration,
-        points: pathPoints,
+        points: simplified,
       })
       const desiredDuration = Math.max(timeline.getState().duration, now + duration)
       timeline.setDuration(desiredDuration)
@@ -186,6 +192,25 @@ function DashboardContent() {
   }
 
   const handlePathPlaybackComplete = () => {
+    // keep path so it can be edited/replayed
+  }
+
+  const handleUpdateActivePathPoint = (index: number, x: number, y: number) => {
+    setActivePathPoints((prev) =>
+      prev.map((pt, i) => (i === index ? { x, y } : pt))
+    )
+    setPathVersion((v) => v + 1)
+  }
+
+  const handleInsertPathPoint = (indexAfter: number, x: number, y: number) => {
+    setActivePathPoints((prev) => {
+      const next = [...prev.slice(0, indexAfter + 1), { x, y }, ...prev.slice(indexAfter + 1)]
+      return next
+    })
+    setPathVersion((v) => v + 1)
+  }
+
+  const handleClearPath = () => {
     setIsDrawingPath(false)
     setPathPoints([])
     setActivePathPoints([])
@@ -215,13 +240,16 @@ function DashboardContent() {
         onSelectLayer={handleSelectLayer}
         selectedLayerId={selectedLayerId}
         isDrawingPath={isDrawingPath}
-        pathPoints={pathPoints}
-        activePathPoints={activePathPoints}
+      pathPoints={pathPoints}
+      activePathPoints={activePathPoints}
         pathVersion={pathVersion}
         pathLayerId={selectedLayerId}
         onAddPathPoint={handleAddPathPoint}
         onFinishPath={handleFinishPath}
         onPathPlaybackComplete={handlePathPlaybackComplete}
+        onUpdateActivePathPoint={handleUpdateActivePathPoint}
+        onClearPath={handleClearPath}
+        onInsertPathPoint={handleInsertPathPoint}
       />
     </DashboardLayout>
   )

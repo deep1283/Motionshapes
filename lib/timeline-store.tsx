@@ -131,19 +131,35 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     }))
   }
 
+  const getMaxPathEnd = (tracks: LayerTracks[]) => {
+    let maxEnd = 0
+    tracks.forEach((t) => {
+      (t.paths ?? []).forEach((p) => {
+        maxEnd = Math.max(maxEnd, p.startTime + p.duration)
+      })
+    })
+    return maxEnd
+  }
+
   const addPathClip = (layerId: string, clip: PathClip) => {
     ensureTrack(layerId)
-    setState((prev) => ({
-      ...prev,
-      tracks: prev.tracks.map((track) =>
+    setState((prev) => {
+      const tracks = prev.tracks.map((track) =>
         track.layerId === layerId
           ? {
               ...track,
               paths: [...(track.paths ?? []), clip].sort((a, b) => a.startTime - b.startTime),
             }
           : track
-      ),
-    }))
+      )
+      const newDuration = Math.max(getMaxPathEnd(tracks), 1000)
+      return {
+        ...prev,
+        tracks,
+        duration: newDuration,
+        currentTime: clampTime(prev.currentTime, newDuration),
+      }
+    })
   }
 
   const removePathClip = (layerId: string, clipId: string) => {
@@ -158,6 +174,34 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           : track
       ),
     }))
+  }
+
+  const updatePathClip = (
+    layerId: string,
+    clipId: string,
+    updates: Partial<Pick<PathClip, 'startTime' | 'duration' | 'points'>>
+  ) => {
+    setState((prev) => {
+      let updatedDuration = 0
+      const tracks = prev.tracks.map((track) => {
+        if (track.layerId !== layerId) return track
+        const paths = (track.paths ?? []).map((clip) => {
+          if (clip.id !== clipId) return clip
+          const next = { ...clip, ...updates }
+          const end = next.startTime + next.duration
+          updatedDuration = Math.max(updatedDuration, end)
+          return next
+        })
+        return { ...track, paths }
+      })
+      const maxEnd = Math.max(getMaxPathEnd(tracks), 1000, updatedDuration)
+      return {
+        ...prev,
+        tracks,
+        duration: maxEnd,
+        currentTime: clampTime(prev.currentTime, maxEnd),
+      }
+    })
   }
 
   const replaceTracks = (tracks: LayerTracks[]) => {
@@ -411,6 +455,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       setKeyframe(layerId, 'opacity', frame),
     addPathClip,
     removePathClip,
+    updatePathClip,
     replaceTracks,
     applyPresetToLayer,
     clear,

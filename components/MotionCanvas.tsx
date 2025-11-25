@@ -5,7 +5,7 @@ import * as PIXI from 'pixi.js'
 import 'pixi.js/app' // ensure Application plugins (ticker/resize) are registered
 import 'pixi.js/events' // enable pointer events
 import { sampleTimeline } from '@/lib/timeline'
-import { useTimeline } from '@/lib/timeline-store'
+import { useTimeline, useTimelineActions } from '@/lib/timeline-store'
 
 interface MotionCanvasProps {
   template: string
@@ -31,19 +31,50 @@ interface MotionCanvasProps {
   pathVersion?: number
   pathLayerId?: string
   onPathPlaybackComplete?: () => void
+  onUpdateActivePathPoint?: (index: number, x: number, y: number) => void
+  onClearPath?: () => void
+  onInsertPathPoint?: (indexAfter: number, x: number, y: number) => void
 }
 
-export default function MotionCanvas({ template, templateVersion, layers = [], onUpdateLayerPosition, onTemplateComplete, isDrawingPath = false, pathPoints = [], onAddPathPoint, onFinishPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete }: MotionCanvasProps) {
+export default function MotionCanvas({ template, templateVersion, layers = [], onUpdateLayerPosition, onTemplateComplete, isDrawingPath = false, pathPoints = [], onAddPathPoint, onFinishPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint }: MotionCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<PIXI.Application | null>(null)
   const [isReady, setIsReady] = useState(false)
   const dragRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null)
   const graphicsByIdRef = useRef<Record<string, PIXI.Graphics>>({})
   const domDragRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null)
+  const pathDragIndexRef = useRef<number | null>(null)
+  const pathDragClipRef = useRef<{ layerId: string; clipId: string } | null>(null)
+  const pathTranslateRef = useRef<{ startX: number; startY: number; origPoints: Array<{ x: number; y: number }> } | null>(null)
+  const pathTraceActiveRef = useRef(false)
+  const lastPathPointRef = useRef<{ x: number; y: number } | null>(null)
   const templateCompleteCalled = useRef(false)
   const timelineTracks = useTimeline((s) => s.tracks)
   const playhead = useTimeline((s) => s.currentTime)
   const sampledTimeline = useMemo(() => sampleTimeline(timelineTracks, playhead), [timelineTracks, playhead])
+  const timelineActions = useTimelineActions()
+  const currentPathClip = useMemo(() => {
+    if (!selectedLayerId) return null
+    const track = timelineTracks.find((t) => t.layerId === selectedLayerId)
+    return track?.paths?.[0] ?? null
+  }, [timelineTracks, selectedLayerId])
+  const [pathHandleIndices, setPathHandleIndices] = useState<number[]>([])
+  const [showPathOverlay, setShowPathOverlay] = useState(true)
+
+  useEffect(() => {
+    // reset handles when the clip/layer changes; show endpoints by default if clip exists
+    if (currentPathClip && currentPathClip.points.length > 0) {
+      // if we already have handles for this clip, keep them; otherwise init to endpoints
+      if (pathHandleIndices.length === 0 || pathHandleIndices.some((i) => i >= currentPathClip.points.length)) {
+        const last = currentPathClip.points.length - 1
+        setPathHandleIndices([0, last])
+      }
+      setShowPathOverlay(true)
+    } else {
+      setPathHandleIndices([])
+      setShowPathOverlay(false)
+    }
+  }, [currentPathClip?.id, selectedLayerId]) // do not reset on length change so added nodes persist
 
   // 1. Initialize Pixi App ONCE
   useEffect(() => {
@@ -120,34 +151,135 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
     }
   }, [isReady])
 
-  // DOM drag handler as a fallback for Pixi events
-  useEffect(() => {
-    if (!containerRef.current) return
-    const handleMove = (e: PointerEvent) => {
-      if (!domDragRef.current || !containerRef.current) return
-      const bounds = containerRef.current.getBoundingClientRect()
-      const newX = e.clientX - bounds.left - domDragRef.current.offsetX
-      const newY = e.clientY - bounds.top - domDragRef.current.offsetY
-      const id = domDragRef.current.id
-      const nx = bounds.width > 0 ? newX / bounds.width : 0
-      const ny = bounds.height > 0 ? newY / bounds.height : 0
-      onUpdateLayerPosition?.(id, nx, ny)
-      const g = graphicsByIdRef.current[id]
-      if (g) {
-        g.x = newX
-        g.y = newY
+  const handleCanvasPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isDrawingPath) return
+    const hasPath = activePathPoints.length > 0 || currentPathClip
+    if (!hasPath) return
+    const target = e.target as HTMLElement | null
+    if (!target) return
+    const isPath = target.closest('[data-path-element="true"]')
+    const isShape = target.closest('[data-shape-element="true"]')
+    if (isPath || isShape) return
+    // keep overlay visible; no action on background click
+  }
+
+  // Ensure the editable path contains only the current handles (nodes) so stretching is strictly between nodes
+  const normalizePathToHandles = (clip: { id: string; points: Array<{ x: number; y: number }> } | null) => {
+    if (!clip || !selectedLayerId) return clip?.points ?? []
+    if (pathHandleIndices.length === 0) return clip.points
+    if (pathHandleIndices.length === clip.points.length) return clip.points
+    const compressed = pathHandleIndices.map((idx) => clip.points[idx]).filter(Boolean)
+    timelineActions.updatePathClip(selectedLayerId, clip.id, { points: compressed })
+    setPathHandleIndices(compressed.map((_, i) => i))
+    return compressed
+  }
+
+  const insertPointIntoPath = (x: number, y: number) => {
+    if (!currentPathClip || !selectedLayerId) return
+    console.log('[path] insertPointIntoPath', { x, y, clipId: currentPathClip.id })
+    const normalizedPoints = normalizePathToHandles(currentPathClip)
+    const pts = [...normalizedPoints]
+    let insertIdx = pts.length
+    if (pts.length === 0) {
+      pts.push({ x, y })
+      insertIdx = 0
+    } else if (pts.length === 1) {
+      pts.push({ x, y })
+      insertIdx = 1
+    } else {
+      let bestIdx = 0
+      let bestDist = Infinity
+      for (let i = 0; i < pts.length - 1; i++) {
+        const a = pts[i]
+        const b = pts[i + 1]
+        const abx = b.x - a.x
+        const aby = b.y - a.y
+        const apx = x - a.x
+        const apy = y - a.y
+        const abLen2 = abx * abx + aby * aby
+        const t = abLen2 === 0 ? 0 : Math.max(0, Math.min(1, (apx * abx + apy * aby) / abLen2))
+        const projX = a.x + abx * t
+        const projY = a.y + aby * t
+        const dx = x - projX
+        const dy = y - projY
+        const dist2 = dx * dx + dy * dy
+        if (dist2 < bestDist) {
+          bestDist = dist2
+          bestIdx = i + 1
+        }
       }
+      insertIdx = bestIdx
+      pts.splice(insertIdx, 0, { x, y })
     }
-    const handleUp = () => {
-      domDragRef.current = null
-    }
-    window.addEventListener('pointermove', handleMove)
-    window.addEventListener('pointerup', handleUp)
-    return () => {
-      window.removeEventListener('pointermove', handleMove)
-      window.removeEventListener('pointerup', handleUp)
-    }
-  }, [onUpdateLayerPosition])
+    // shift existing handle indices that are at/after the insert point
+    const remappedHandles =
+      pathHandleIndices.length > 0
+        ? pathHandleIndices.map((idx) => (idx >= insertIdx ? idx + 1 : idx))
+        : [0, Math.max(pts.length - 1, 0)]
+    const nextHandles = Array.from(new Set([...remappedHandles, insertIdx].filter((n) => n >= 0))).sort((a, b) => a - b)
+    timelineActions.updatePathClip(selectedLayerId, currentPathClip.id, { points: pts })
+    setPathHandleIndices(nextHandles)
+    setShowPathOverlay(true)
+  }
+
+    // DOM drag handler as a fallback for Pixi events
+    useEffect(() => {
+      if (!containerRef.current) return
+      const handleMove = (e: PointerEvent) => {
+        // translate whole path on right-drag
+        if (pathTranslateRef.current && containerRef.current && currentPathClip && selectedLayerId) {
+          const bounds = containerRef.current.getBoundingClientRect()
+          const currentX = (e.clientX - bounds.left) / bounds.width
+          const currentY = (e.clientY - bounds.top) / bounds.height
+          const { startX, startY, origPoints } = pathTranslateRef.current
+          const dx = currentX - startX
+          const dy = currentY - startY
+          const translated = origPoints.map((p) => ({ x: p.x + dx, y: p.y + dy }))
+          timelineActions.updatePathClip(selectedLayerId, currentPathClip.id, { points: translated })
+          return
+        }
+        if (pathDragIndexRef.current !== null && containerRef.current && pathDragClipRef.current) {
+          const bounds = containerRef.current.getBoundingClientRect()
+          const x = (e.clientX - bounds.left) / bounds.width
+          const y = (e.clientY - bounds.top) / bounds.height
+          const { layerId, clipId } = pathDragClipRef.current
+            if (!layerId || !clipId) return
+            const track = timelineTracks.find((t) => t.layerId === layerId)
+            const clip = track?.paths?.find((p) => p.id === clipId)
+            if (clip) {
+              const normalizedPoints = pathHandleIndices.length === clip.points.length ? clip.points : pathHandleIndices.map((idx) => clip.points[idx]).filter(Boolean)
+              const pts = [...normalizedPoints]
+              pts[pathDragIndexRef.current] = { x, y }
+              timelineActions.updatePathClip(layerId, clipId, { points: pts })
+            }
+          }
+          if (!domDragRef.current || !containerRef.current) return
+          const bounds = containerRef.current.getBoundingClientRect()
+          const newX = e.clientX - bounds.left - domDragRef.current.offsetX
+          const newY = e.clientY - bounds.top - domDragRef.current.offsetY
+          const id = domDragRef.current.id
+          const nx = bounds.width > 0 ? newX / bounds.width : 0
+          const ny = bounds.height > 0 ? newY / bounds.height : 0
+          onUpdateLayerPosition?.(id, nx, ny)
+          const g = graphicsByIdRef.current[id]
+          if (g) {
+            g.x = newX
+            g.y = newY
+          }
+        }
+        const handleUp = () => {
+          pathDragIndexRef.current = null
+          pathDragClipRef.current = null
+          pathTranslateRef.current = null
+          domDragRef.current = null
+        }
+        window.addEventListener('pointermove', handleMove)
+        window.addEventListener('pointerup', handleUp)
+        return () => {
+          window.removeEventListener('pointermove', handleMove)
+          window.removeEventListener('pointerup', handleUp)
+        }
+      }, [onUpdateLayerPosition, timelineTracks, timelineActions])
 
   // 2. Handle Template Changes (Draw & Animate)
   useEffect(() => {
@@ -181,7 +313,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
     graphicsByIdRef.current = {}
     const templateEnabled = false
 
-    const handlePointerMove = (e: PIXI.FederatedPointerEvent) => {
+  const handlePointerMove = (e: PIXI.FederatedPointerEvent) => {
       if (!dragRef.current) return
       const { id, offsetX, offsetY } = dragRef.current
       const pos = e.global
@@ -195,12 +327,13 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
       const nx = screenWidth > 0 ? newX / screenWidth : 0
       const ny = screenHeight > 0 ? newY / screenHeight : 0
       onUpdateLayerPosition?.(id, nx, ny)
-    }
+  }
 
-    const clearDrag = () => {
-      dragRef.current = null
-      stage.cursor = 'default'
-    }
+  const clearDrag = () => {
+    dragRef.current = null
+    stage.cursor = 'default'
+  }
+
 
     stage.on('pointermove', handlePointerMove)
     const handleStagePointerDown = (e: PIXI.FederatedPointerEvent) => {
@@ -518,7 +651,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
   }, [template, templateVersion, pathVersion, pathLayerId, activePathPoints, isReady]) // Re-run on template/path switches; layer moves are handled directly
 
   return (
-    <div className="relative h-full w-full overflow-hidden rounded-lg bg-gray-900">
+    <div className="relative h-full w-full overflow-hidden rounded-lg bg-gray-900" onPointerDown={handleCanvasPointerDown}>
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
@@ -534,15 +667,35 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
         <div
           className="absolute inset-0 cursor-crosshair"
           style={{ zIndex: 20 }}
-          onClick={(e) => {
+          onPointerDown={(e) => {
             if (!containerRef.current) return
             const bounds = containerRef.current.getBoundingClientRect()
             const x = (e.clientX - bounds.left) / bounds.width
             const y = (e.clientY - bounds.top) / bounds.height
+            pathTraceActiveRef.current = true
+            lastPathPointRef.current = { x, y }
             onAddPathPoint?.(x, y)
           }}
-          onDoubleClick={(e) => {
-            e.preventDefault()
+          onPointerMove={(e) => {
+            if (!pathTraceActiveRef.current || !containerRef.current) return
+            const bounds = containerRef.current.getBoundingClientRect()
+            const x = (e.clientX - bounds.left) / bounds.width
+            const y = (e.clientY - bounds.top) / bounds.height
+            const last = lastPathPointRef.current
+            const dx = last ? x - last.x : 0
+            const dy = last ? y - last.y : 0
+            if (!last || Math.hypot(dx, dy) > 0.02) {
+              lastPathPointRef.current = { x, y }
+              onAddPathPoint?.(x, y)
+            }
+          }}
+          onPointerUp={(e) => {
+            if (!pathTraceActiveRef.current || !containerRef.current) return
+            const bounds = containerRef.current.getBoundingClientRect()
+            const x = (e.clientX - bounds.left) / bounds.width
+            const y = (e.clientY - bounds.top) / bounds.height
+            onAddPathPoint?.(x, y)
+            pathTraceActiveRef.current = false
             onFinishPath?.()
           }}
         >
@@ -554,14 +707,86 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
                 x: pt.x * bounds.width,
                 y: pt.y * bounds.height,
               })
-              const pts = pathPoints.map(toPx)
+            const pts = pathPoints.map(toPx)
+            const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
+            return (
+              <>
+                <path d={d} stroke="#22c55e" strokeWidth={2} fill="none" data-path-element="true" />
+              </>
+            )
+         })()}
+        </svg>
+       </div>
+     )}
+      {!isDrawingPath && currentPathClip && showPathOverlay && (
+        <div className="absolute inset-0" style={{ zIndex: 25, pointerEvents: 'none' }}>
+          <svg className="h-full w-full" style={{ pointerEvents: 'auto' }}>
+            {(() => {
+              if (!containerRef.current || currentPathClip.points.length === 0) return null
+              const bounds = containerRef.current.getBoundingClientRect()
+              const toPx = (pt: { x: number; y: number }) => ({
+                x: pt.x * bounds.width,
+                y: pt.y * bounds.height,
+              })
+              const pts = currentPathClip.points.map(toPx)
+              const defaultHandles = pts.length > 1 ? [0, pts.length - 1] : pts.length === 1 ? [0] : []
+              const handles = pathHandleIndices.length > 0 ? pathHandleIndices : defaultHandles
               const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
               return (
                 <>
-                  <path d={d} stroke="#22c55e" strokeWidth={2} fill="none" strokeDasharray="6 4" />
-                  {pts.map((p, i) => (
-                    <circle key={i} cx={p.x} cy={p.y} r={4} fill="#22c55e" stroke="#0f0f0f" strokeWidth={2} />
-                  ))}
+                  <path
+                    d={d}
+                    stroke="#22c55e"
+                    strokeWidth={2}
+                    fill="none"
+                    data-path-element="true"
+                    style={{ pointerEvents: 'auto', cursor: 'crosshair' }}
+                    onPointerDown={(e) => {
+                      e.preventDefault()
+                      // right-click drag translates the whole path without adding a node
+                      if (e.button === 2) {
+                        if (!containerRef.current || !currentPathClip) return
+                        const boundsPath = containerRef.current.getBoundingClientRect()
+                        const startX = (e.clientX - boundsPath.left) / boundsPath.width
+                        const startY = (e.clientY - boundsPath.top) / boundsPath.height
+                        pathTranslateRef.current = {
+                          startX,
+                          startY,
+                          origPoints: [...currentPathClip.points],
+                        }
+                        return
+                      }
+                      if (e.button !== 0) return
+                      if (!containerRef.current) return
+                      const boundsPath = containerRef.current.getBoundingClientRect()
+                      const x = (e.clientX - boundsPath.left) / boundsPath.width
+                      const y = (e.clientY - boundsPath.top) / boundsPath.height
+                      console.log('[path] insert handle at', { x, y })
+                      insertPointIntoPath(x, y)
+                    }}
+                    onContextMenu={(e) => e.preventDefault()}
+                  />
+                  {pts.map((p, i) =>
+                    handles.includes(i) ? (
+                      <circle
+                        key={i}
+                        cx={p.x}
+                        cy={p.y}
+                        r={6}
+                        fill="#22c55e"
+                        stroke="#0f172a"
+                        strokeWidth={2}
+                        data-path-element="true"
+                        data-path-handle="true"
+                        style={{ pointerEvents: 'auto', cursor: 'grab' }}
+                        onPointerDown={(e) => {
+                          e.stopPropagation()
+                          pathDragIndexRef.current = i
+                          pathDragClipRef.current = { layerId: selectedLayerId ?? '', clipId: currentPathClip.id }
+                        }}
+                      />
+                    ) : null
+                  )}
                 </>
               )
             })()}
@@ -570,8 +795,11 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
       )}
       {/* DOM overlay for layers so a shape is always visible; mimic template motion with CSS AND enable dragging */}
       {layers.length > 0 && (
-        <div className="absolute inset-0" style={{ pointerEvents: isDrawingPath ? 'none' : undefined }}>
-      {layers.map((layer) => {
+        <div
+          className="absolute inset-0"
+          style={{ pointerEvents: isDrawingPath ? 'none' : undefined }}
+        >
+          {layers.map((layer) => {
         const bounds = containerRef.current?.getBoundingClientRect()
         const screenWidth = bounds?.width || 1
         const screenHeight = bounds?.height || 1
@@ -581,11 +809,11 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
         const posX = baseX <= 1 ? baseX * screenWidth : baseX
         const posY = baseY <= 1 ? baseY * screenHeight : baseY
         return (
-          <div
-            key={layer.id}
-            style={{
-              position: 'absolute',
-              left: posX,
+              <div
+                key={layer.id}
+                style={{
+                  position: 'absolute',
+                  left: posX,
               top: posY,
               width: layer.width,
               height: layer.height,
@@ -597,9 +825,11 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
               outlineOffset: '1px',
               touchAction: 'none',
               userSelect: 'none',
-              cursor: 'grab',
-            } as React.CSSProperties}
-            draggable={false}
+                  cursor: 'grab',
+                  '--shape-id': layer.id,
+                } as React.CSSProperties}
+                data-shape-element="true"
+                draggable={false}
                 onDragStart={(e) => e.preventDefault()}
                 onPointerDown={(e) => {
                   e.preventDefault()

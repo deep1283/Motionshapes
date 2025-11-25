@@ -43,7 +43,11 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
   const safeDuration = Math.max(1, duration)
   const sampled = useMemo(() => sampleTimeline(tracks, currentTime), [tracks, currentTime])
   const selectedSample = selectedLayerId ? sampled[selectedLayerId] : undefined
-  const state = useTimeline((s) => s)
+  const pathClip = useMemo(() => {
+    if (!selectedLayerId) return null
+    const track = tracks.find((t) => t.layerId === selectedLayerId)
+    return track?.paths?.[0] ?? null
+  }, [tracks, selectedLayerId])
   const handlePlayClick = () => {
     if (!isPlaying && currentTime >= duration) {
       timeline.setCurrentTime(0)
@@ -117,6 +121,50 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
                 >
                   Cancel
                 </button>
+              </div>
+            </div>
+          )}
+          {pathClip && (
+            <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3 shadow-inner">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-semibold text-neutral-200">Path Clip</span>
+                <span className="text-[10px] text-neutral-400">Dur: {formatTime(pathClip.duration)}</span>
+              </div>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-[10px] text-neutral-400">Start</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={Math.max(safeDuration, pathClip.startTime + pathClip.duration)}
+                  step={50}
+                  value={pathClip.startTime}
+                  onChange={(e) => {
+                    const start = Number(e.target.value)
+                    timeline.updatePathClip(selectedLayerId ?? '', pathClip.id, { startTime: start })
+                  }}
+                  className="flex-1 accent-emerald-500"
+                />
+                <button
+                  onClick={() => timeline.updatePathClip(selectedLayerId ?? '', pathClip.id, { startTime: currentTime })}
+                  className="inline-flex items-center rounded border border-white/10 px-2 py-1 text-[10px] text-neutral-200 hover:bg-white/5"
+                >
+                  Set to Playhead
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-neutral-400">Duration</span>
+                <input
+                  type="range"
+                  min={300}
+                  max={6000}
+                  step={50}
+                  value={pathClip.duration}
+                  onChange={(e) => {
+                    const dur = Number(e.target.value)
+                    timeline.updatePathClip(selectedLayerId ?? '', pathClip.id, { duration: dur })
+                  }}
+                  className="flex-1 accent-emerald-500"
+                />
               </div>
             </div>
           )}
@@ -265,7 +313,7 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
                         <div className="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-white transition-transform peer-checked:translate-x-3" />
                       </label>
                     </div>
-                    {!state.popCollapse && (
+                    {!popCollapse && (
                       <div className="flex items-center justify-between pt-2">
                         <span className="text-[11px] font-semibold text-neutral-200">Wobble</span>
                         <label className="relative inline-flex cursor-pointer items-center">
