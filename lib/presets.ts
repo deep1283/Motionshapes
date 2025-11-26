@@ -13,8 +13,13 @@ export interface PresetResult {
   }
 }
 
-const rollPreset = (distance: number = 0.2): PresetResult => {
-  const duration = 1200
+const BASE_ROLL_DISTANCE = 0.2
+const BASE_ROLL_DURATION = 1200
+
+const rollPreset = (distance: number = BASE_ROLL_DISTANCE): PresetResult => {
+  const clampedDistance = Math.max(0.05, distance)
+  // distance = speed * time with speed set by baseDistance/baseDuration; duration scales with distance
+  const duration = Math.max(300, (clampedDistance / BASE_ROLL_DISTANCE) * BASE_ROLL_DURATION)
   return {
     duration,
     position: [
@@ -31,14 +36,24 @@ const rollPreset = (distance: number = 0.2): PresetResult => {
   }
 }
 
-const jumpPreset = (height: number = 0.25): PresetResult => {
-  const duration = 1000
+const GRAVITY = 9.8 // normalized units per second^2
+
+const jumpPreset = (height: number = 0.25, initialVelocity: number = 1.5): PresetResult => {
+  const clampedHeight = Math.max(0.05, height)
+  const clampedVelocity = Math.max(0.2, initialVelocity)
+  // ensure chosen velocity can reach desired height: v0^2 / (2g) >= h
+  const minVelocityForHeight = Math.sqrt(2 * GRAVITY * clampedHeight)
+  const v0 = Math.max(clampedVelocity, minVelocityForHeight)
+  // time to reach specified height on the way up: h = v0*t - 0.5*g*t^2 -> t = (v0 - sqrt(v0^2 - 2gh)) / g
+  const underRoot = Math.max(0, v0 * v0 - 2 * GRAVITY * clampedHeight)
+  const timeUpSec = (v0 - Math.sqrt(underRoot)) / GRAVITY
+  const duration = Math.max(300, Math.min(2400, timeUpSec * 2 * 1000))
   return {
     duration,
     position: [
       { time: 0, value: { x: 0, y: 0 } },
       // vertical offset (normalized or pixels depending on base)
-      { time: duration * 0.5, value: { x: 0, y: -height }, easing: 'easeOutQuad' },
+      { time: duration * 0.5, value: { x: 0, y: -clampedHeight }, easing: 'easeOutQuad' },
       { time: duration, value: { x: 0, y: 0 }, easing: 'easeInQuad' },
     ],
     scale: [

@@ -1,8 +1,18 @@
 'use client'
 
-import { createContext, useContext, useRef, useSyncExternalStore } from 'react'
+import { createContext, useContext, useMemo, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
-import { LayerTracks, PathClip, SampledLayerState, TimelineKeyframe, Vec2, DEFAULT_LAYER_STATE, sampleTimeline, upsertKeyframe } from '@/lib/timeline'
+import {
+  LayerTracks,
+  PathClip,
+  SampledLayerState,
+  TimelineKeyframe,
+  Vec2,
+  DEFAULT_LAYER_STATE,
+  sampleTimeline,
+  sampleLayerTracks,
+  upsertKeyframe,
+} from '@/lib/timeline'
 import { PRESET_BUILDERS, TemplateId } from '@/lib/presets'
 
 type TimelineState = {
@@ -16,6 +26,7 @@ type TimelineState = {
   templateSpeed: number
   rollDistance: number
   jumpHeight: number
+  jumpVelocity: number
   popScale: number
   popWobble: boolean
   popSpeed: number
@@ -36,6 +47,7 @@ const defaultState: TimelineState = {
   templateSpeed: 1,
   rollDistance: 0.2,
   jumpHeight: 0.25,
+  jumpVelocity: 1.5,
   popScale: 1.6,
   popWobble: false,
   popSpeed: 1,
@@ -49,6 +61,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     tracks: initialState?.tracks ?? defaultState.tracks,
     rollDistance: initialState?.rollDistance ?? defaultState.rollDistance,
     jumpHeight: initialState?.jumpHeight ?? defaultState.jumpHeight,
+    jumpVelocity: initialState?.jumpVelocity ?? defaultState.jumpVelocity,
     popScale: initialState?.popScale ?? defaultState.popScale,
     popWobble: initialState?.popWobble ?? defaultState.popWobble,
     popSpeed: initialState?.popSpeed ?? defaultState.popSpeed,
@@ -214,21 +227,31 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
   const applyPresetToLayer = (
     layerId: string,
     template: TemplateId,
-    base?: { position?: Vec2; scale?: number; rotation?: number; opacity?: number }
+    base?: { position?: Vec2; scale?: number; rotation?: number; opacity?: number },
+    options?: { append?: boolean; startAt?: number; targetDuration?: number }
   ) => {
     const preset =
       template === 'roll'
         ? PRESET_BUILDERS.roll(state.rollDistance)
         : template === 'jump'
-          ? PRESET_BUILDERS.jump(state.jumpHeight)
+          ? PRESET_BUILDERS.jump(state.jumpHeight, state.jumpVelocity)
           : template === 'pop'
             ? PRESET_BUILDERS.pop(state.popScale, state.popWobble, state.popSpeed, state.popCollapse)
             : PRESET_BUILDERS[template]?.()
     if (!preset) return
     ensureTrack(layerId)
 
-    const normalizePositionFrame = (frame: TimelineKeyframe<Vec2>): TimelineKeyframe<Vec2> => {
-      const basePos = base?.position
+    const getTrackEndTime = (track: LayerTracks): number => {
+      const times: number[] = []
+      if (track.position && track.position.length) times.push(track.position[track.position.length - 1].time)
+      if (track.scale && track.scale.length) times.push(track.scale[track.scale.length - 1].time)
+      if (track.rotation && track.rotation.length) times.push(track.rotation[track.rotation.length - 1].time)
+      if (track.opacity && track.opacity.length) times.push(track.opacity[track.opacity.length - 1].time)
+      return times.length ? Math.max(...times) : 0
+    }
+
+    const normalizePositionFrame = (frame: TimelineKeyframe<Vec2>, overrideBase?: Vec2): TimelineKeyframe<Vec2> => {
+      const basePos = overrideBase ?? base?.position
       if (!basePos) return frame
       const isNormalized = basePos.x <= 1 && basePos.y <= 1
       const offset = frame.value
@@ -247,29 +270,108 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
 
     setState((prev) => {
       const speed = prev.templateSpeed || 1
-      const scaleTime = (t: number) => t / speed
+      const durationScale = options?.targetDuration ? options.targetDuration / Math.max(1, preset.duration || 1) : 1
+      const scaleTime = (t: number) => (t * durationScale) / speed
+      let appliedStartOffset = 0
+
+      const tracks = prev.tracks.map((track) => {
+        if (track.layerId !== layerId) return track
+
+        const append = options?.append ?? false
+        const startOffset = typeof options?.startAt === 'number' ? options.startAt : append ? getTrackEndTime(track) : 0
+        appliedStartOffset = startOffset
+
+        const trimFrames = <T,>(frames: TimelineKeyframe<T>[] | undefined) =>
+          (frames ?? []).filter((f) => f.time < startOffset)
+
+        const baseSample = sampleLayerTracks(track, startOffset, DEFAULT_LAYER_STATE)
+        const basePosition = base?.position ?? baseSample.position
+        const baseScale = base?.scale ?? baseSample.scale
+        const baseRotation = base?.rotation ?? baseSample.rotation
+        const baseOpacity = base?.opacity ?? baseSample.opacity
+
+        const clearedTrack: LayerTracks = {
+          ...track,
+          position: trimFrames(track.position),
+          scale: trimFrames(track.scale),
+          rotation: trimFrames(track.rotation),
+          opacity: trimFrames(track.opacity),
+        }
+        if (!append && startOffset === 0) {
+          clearedTrack.position = [
+            {
+              time: 0,
+              value: basePosition,
+            },
+          ]
+          clearedTrack.scale = [
+            {
+              time: 0,
+              value: baseScale,
+            },
+          ]
+          clearedTrack.rotation = [
+            {
+              time: 0,
+              value: baseRotation,
+            },
+          ]
+          clearedTrack.opacity = [
+            {
+              time: 0,
+              value: baseOpacity,
+            },
+          ]
+        }
+
+        const baseState = sampleLayerTracks(clearedTrack, startOffset, DEFAULT_LAYER_STATE)
+
+        const mergeFrames = <T,>(existing: TimelineKeyframe<T>[] | undefined, incoming: TimelineKeyframe<T>[]) =>
+          incoming.reduce((acc, frame) => upsertKeyframe(acc, frame), existing ?? [])
+
+        const mappedPosition =
+          preset.position?.map((frame) => ({
+            ...normalizePositionFrame(frame, baseState.position),
+            time: startOffset + scaleTime(frame.time),
+          })) ?? []
+
+        const mappedScale =
+          preset.scale?.map((f) => ({
+            ...normalizeNumberFrame(f, baseState.scale, false),
+            time: startOffset + scaleTime(f.time),
+          })) ?? []
+
+        const mappedRotation =
+          preset.rotation?.map((f) => ({
+            ...normalizeNumberFrame(f, baseState.rotation, true),
+            time: startOffset + scaleTime(f.time),
+          })) ?? []
+
+        const mappedOpacity =
+          preset.opacity?.map((f) => ({
+            ...normalizeNumberFrame(f, baseState.opacity, false),
+            time: startOffset + scaleTime(f.time),
+          })) ?? []
+
+        return {
+          ...track,
+          position: mergeFrames(clearedTrack.position, mappedPosition).sort((a, b) => a.time - b.time),
+          scale: mergeFrames(clearedTrack.scale, mappedScale).sort((a, b) => a.time - b.time),
+          rotation: mergeFrames(clearedTrack.rotation, mappedRotation).sort((a, b) => a.time - b.time),
+          opacity: mergeFrames(clearedTrack.opacity, mappedOpacity).sort((a, b) => a.time - b.time),
+        }
+      })
+
+      const contentEnd = tracks.reduce((max, t) => Math.max(max, getTrackEndTime(t)), 0)
+      const pathsEnd = getMaxPathEnd(tracks)
+      const segmentDuration = scaleTime(preset.duration ?? 0)
+      const newDuration = Math.max(contentEnd, pathsEnd, appliedStartOffset + segmentDuration, 1)
+
       return {
         ...prev,
-        duration: preset.duration / speed,
-        currentTime: 0,
-        tracks: prev.tracks.map((track) => {
-          if (track.layerId !== layerId) return track
-          return {
-            ...track,
-            position: preset.position
-              ? [...preset.position.map((frame) => ({ ...normalizePositionFrame(frame), time: scaleTime(frame.time) }))].sort((a, b) => a.time - b.time)
-              : track.position,
-            scale: preset.scale
-              ? [...preset.scale.map((f) => ({ ...normalizeNumberFrame(f, base?.scale ?? 1), time: scaleTime(f.time) }))].sort((a, b) => a.time - b.time)
-              : track.scale,
-            rotation: preset.rotation
-              ? [...preset.rotation.map((f) => ({ ...normalizeNumberFrame(f, base?.rotation ?? 0, true), time: scaleTime(f.time) }))].sort((a, b) => a.time - b.time)
-              : track.rotation,
-            opacity: preset.opacity
-              ? [...preset.opacity.map((f) => ({ ...normalizeNumberFrame(f, base?.opacity ?? 1), time: scaleTime(f.time) }))].sort((a, b) => a.time - b.time)
-              : track.opacity,
-          }
-        }),
+        tracks,
+        duration: newDuration,
+        currentTime: clampTime(prev.currentTime, newDuration),
       }
     })
   }
@@ -318,6 +420,14 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     setState((prev) => ({
       ...prev,
       jumpHeight: clamped,
+    }))
+  }
+
+  const setJumpVelocity = (velocity: number) => {
+    const clamped = Math.max(0.2, Math.min(6, velocity))
+    setState((prev) => ({
+      ...prev,
+      jumpVelocity: clamped,
     }))
   }
 
@@ -438,6 +548,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     setPlaybackRate,
     setRollDistance,
     setJumpHeight,
+    setJumpVelocity,
     setPopScale,
     setPopSpeed,
     setPopWobble,
@@ -466,12 +577,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
 const TimelineStoreContext = createContext<TimelineStore | null>(null)
 
 export const TimelineProvider = ({ children }: { children: ReactNode }) => {
-  const storeRef = useRef<TimelineStore>()
-  if (!storeRef.current) {
-    storeRef.current = createTimelineStore()
-  }
-
-  return <TimelineStoreContext.Provider value={storeRef.current}>{children}</TimelineStoreContext.Provider>
+  const store = useMemo(() => createTimelineStore(), [])
+  return <TimelineStoreContext.Provider value={store}>{children}</TimelineStoreContext.Provider>
 }
 
 const useTimelineStoreContext = () => {

@@ -1,7 +1,7 @@
 'use client'
 
 import { Pause, Play, Repeat, SlidersHorizontal } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTimeline, useTimelineActions } from '@/lib/timeline-store'
 import { sampleTimeline } from '@/lib/timeline'
 
@@ -25,7 +25,7 @@ const formatTime = (ms: number) => {
 }
 
 export default function TimelinePanel({ layers, selectedLayerId, selectedTemplate, isDrawingPath, onFinishPath, onCancelPath, pathPointCount = 0 }: TimelinePanelProps) {
-  const { currentTime, duration, isPlaying, loop, tracks, templateSpeed, rollDistance, jumpHeight, popScale, popWobble, popSpeed, popCollapse } = useTimeline((s) => ({
+  const { currentTime, duration, isPlaying, loop, tracks, templateSpeed, rollDistance, jumpHeight, jumpVelocity, popScale, popWobble, popSpeed, popCollapse } = useTimeline((s) => ({
     currentTime: s.currentTime,
     duration: s.duration,
     isPlaying: s.isPlaying,
@@ -34,6 +34,7 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
     templateSpeed: s.templateSpeed,
     rollDistance: s.rollDistance,
     jumpHeight: s.jumpHeight,
+    jumpVelocity: s.jumpVelocity,
     popScale: s.popScale,
     popWobble: s.popWobble,
     popSpeed: s.popSpeed,
@@ -54,13 +55,8 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
     }
     timeline.togglePlay()
   }
-  const [showTemplateControls, setShowTemplateControls] = useState(false)
-
-  useEffect(() => {
-    if (selectedTemplate) {
-      setShowTemplateControls(true)
-    }
-  }, [selectedTemplate])
+  const [showTemplateControls, setShowTemplateControls] = useState(true)
+  const templateControlsVisible = showTemplateControls || !!selectedTemplate
 
   return (
     <div className="h-64 border-t border-white/5 bg-[#0a0a0a] z-40 flex flex-col">
@@ -198,9 +194,9 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
                 <SlidersHorizontal className="h-3.5 w-3.5" />
                 Template Controls
               </span>
-              <span className="text-[10px] text-neutral-400">{showTemplateControls ? 'Hide' : 'Show'}</span>
+              <span className="text-[10px] text-neutral-400">{templateControlsVisible ? 'Hide' : 'Show'}</span>
             </button>
-            {showTemplateControls && (
+            {templateControlsVisible && (
               <div className="mt-3 space-y-4">
                 {selectedTemplate === 'roll' && (
                   <>
@@ -257,6 +253,22 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
                       onChange={(e) => {
                         const val = Number(e.target.value)
                         timeline.setJumpHeight(val)
+                      }}
+                      className="w-full accent-emerald-500"
+                    />
+                    <div className="flex items-center justify-between mb-2 mt-3">
+                      <span className="text-[11px] font-semibold text-neutral-200">Initial Velocity</span>
+                      <span className="text-[10px] text-neutral-400">{(jumpVelocity ?? 1.5).toFixed(2)} u/s</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0.2}
+                      max={6}
+                      step={0.05}
+                      value={jumpVelocity ?? 1.5}
+                      onChange={(e) => {
+                        const val = Number(e.target.value)
+                        timeline.setJumpVelocity(val)
                       }}
                       className="w-full accent-emerald-500"
                     />

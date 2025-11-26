@@ -1,11 +1,21 @@
 'use client'
 
+import { useState } from 'react'
+import type { SVGProps } from 'react'
 import { Layout, Play, Square, Circle, LogOut, Settings, ChevronLeft, Layers, Zap, MousePointer2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import TimelinePanel from '@/components/TimelinePanel'
+
+export type BackgroundSettings = {
+  mode: 'solid' | 'gradient'
+  solid: string
+  from: string
+  to: string
+  opacity: number
+}
 
 interface DashboardLayoutProps {
   children: React.ReactNode
@@ -20,11 +30,14 @@ interface DashboardLayoutProps {
   onFinishPath?: () => void
   onCancelPath?: () => void
   pathPointCount?: number
+  background: BackgroundSettings
+  onBackgroundChange: (value: BackgroundSettings) => void
 }
 
-export default function DashboardLayout({ children, selectedTemplate, onSelectTemplate, onAddShape, onStartDrawPath, showSelectShapeHint, layers, selectedLayerId, isDrawingPath, onFinishPath, onCancelPath, pathPointCount = 0 }: DashboardLayoutProps) {
+export default function DashboardLayout({ children, selectedTemplate, onSelectTemplate, onAddShape, onStartDrawPath, showSelectShapeHint, layers, selectedLayerId, isDrawingPath, onFinishPath, onCancelPath, pathPointCount = 0, background, onBackgroundChange }: DashboardLayoutProps) {
   const router = useRouter()
   const supabase = createClient()
+  const [showBackgroundPanel, setShowBackgroundPanel] = useState(false)
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -35,7 +48,7 @@ export default function DashboardLayout({ children, selectedTemplate, onSelectTe
     { 
       id: 'roll', 
       name: 'Roll', 
-      icon: (props: any) => (
+      icon: (props: SVGProps<SVGSVGElement>) => (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
           <circle cx="12" cy="12" r="10" />
           <path d="M12 2v20" className="opacity-30" />
@@ -47,7 +60,7 @@ export default function DashboardLayout({ children, selectedTemplate, onSelectTe
     { 
       id: 'jump', 
       name: 'Jump', 
-      icon: (props: any) => (
+      icon: (props: SVGProps<SVGSVGElement>) => (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
           <path d="M4 22h16" />
           <path d="M8 22c0-8 4-14 8-14" />
@@ -58,7 +71,7 @@ export default function DashboardLayout({ children, selectedTemplate, onSelectTe
     { 
       id: 'pop', 
       name: 'Pop Burst', 
-      icon: (props: any) => (
+      icon: (props: SVGProps<SVGSVGElement>) => (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
           <circle cx="12" cy="12" r="3" />
           <path d="M12 5V3" />
@@ -73,6 +86,36 @@ export default function DashboardLayout({ children, selectedTemplate, onSelectTe
       )
     },
   ]
+
+  const updateBackground = (patch: Partial<BackgroundSettings>) => {
+    onBackgroundChange({ ...background, ...patch })
+  }
+
+  const normalizeHex = (value: string) => {
+    if (!value) return '#000000'
+    const trimmed = value.trim().replace(/[^#a-fA-F0-9]/g, '')
+    const withHash = trimmed.startsWith('#') ? trimmed : `#${trimmed}`
+    return withHash.slice(0, 7)
+  }
+
+  const hexToRgba = (hex: string, alpha = 1) => {
+    const normalized = normalizeHex(hex)
+    const raw = normalized.slice(1)
+    const full = raw.length === 3 ? raw.split('').map((c) => c + c).join('') : raw.padEnd(6, '0').slice(0, 6)
+    const r = Number.parseInt(full.slice(0, 2), 16) || 0
+    const g = Number.parseInt(full.slice(2, 4), 16) || 0
+    const b = Number.parseInt(full.slice(4, 6), 16) || 0
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`
+  }
+
+  const canvasBgStyle =
+    background.mode === 'gradient'
+      ? {
+          backgroundImage: `linear-gradient(135deg, ${hexToRgba(background.from, background.opacity)}, ${hexToRgba(background.to, background.opacity)})`,
+        }
+      : {
+          backgroundColor: hexToRgba(background.solid, background.opacity),
+        }
 
   return (
     <div className="flex h-screen w-screen flex-col bg-[#0a0a0a] text-white overflow-hidden font-sans selection:bg-white/20">
@@ -170,14 +213,26 @@ export default function DashboardLayout({ children, selectedTemplate, onSelectTe
         </aside>
 
         {/* Center Canvas Area */}
-        <main className="relative flex flex-1 flex-col bg-[#050505] overflow-hidden">
+        <main
+          className="relative flex flex-1 flex-col overflow-hidden bg-[#050505]"
+        >
             {/* Toolbar */}
             <div className="absolute top-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 rounded-full border border-white/10 bg-[#0a0a0a]/80 px-2 py-1.5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-xl">
                 <Button size="icon" variant="ghost" className="h-8 w-8 rounded-full hover:bg-white/10 text-neutral-400 hover:text-white transition-colors">
                     <MousePointer2 className="h-4 w-4" />
                 </Button>
                 <div className="h-4 w-px bg-white/10 mx-1" />
-                <Button size="icon" variant="ghost" className="h-8 w-8 rounded-full hover:bg-white/10 text-neutral-400 hover:text-white transition-colors">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className={cn(
+                    "h-8 w-8 rounded-full hover:bg-white/10 text-neutral-400 hover:text-white transition-colors",
+                    showBackgroundPanel ? "bg-white/10 text-white" : ""
+                  )}
+                  onClick={() => setShowBackgroundPanel((open) => !open)}
+                  aria-pressed={showBackgroundPanel}
+                  aria-label="Background settings"
+                >
                     <Layers className="h-4 w-4" />
                 </Button>
                 <Button size="icon" variant="ghost" className="h-8 w-8 rounded-full hover:bg-white/10 text-neutral-400 hover:text-white transition-colors">
@@ -185,12 +240,117 @@ export default function DashboardLayout({ children, selectedTemplate, onSelectTe
                 </Button>
             </div>
 
+            {showBackgroundPanel && (
+              <div className="absolute top-16 left-1/2 z-40 w-[360px] -translate-x-1/2 rounded-xl border border-white/10 bg-[#0a0a0a]/95 p-4 shadow-[0_12px_45px_rgba(0,0,0,0.45)] backdrop-blur-md">
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">Background</div>
+                  <div className="flex gap-1">
+                    <button
+                      className={cn(
+                        "px-2 py-1 text-[11px] rounded-md border border-white/10 text-neutral-300 hover:text-white hover:border-white/30 transition-colors",
+                        background.mode === 'solid' && "bg-white/10 text-white border-white/30"
+                      )}
+                      onClick={() => updateBackground({ mode: 'solid' })}
+                    >
+                      Solid
+                    </button>
+                    <button
+                      className={cn(
+                        "px-2 py-1 text-[11px] rounded-md border border-white/10 text-neutral-300 hover:text-white hover:border-white/30 transition-colors",
+                        background.mode === 'gradient' && "bg-white/10 text-white border-white/30"
+                      )}
+                      onClick={() => updateBackground({ mode: 'gradient' })}
+                    >
+                      Gradient
+                    </button>
+                  </div>
+                </div>
+
+                {background.mode === 'solid' ? (
+                  <div className="grid grid-cols-[auto,1fr] items-center gap-3">
+                    <input
+                      type="color"
+                      value={background.solid}
+                      onChange={(e) => updateBackground({ solid: normalizeHex(e.target.value) })}
+                      className="h-10 w-10 cursor-pointer rounded border border-white/10 bg-transparent p-0"
+                      aria-label="Solid background color"
+                    />
+                    <input
+                      type="text"
+                      value={background.solid}
+                      onChange={(e) => updateBackground({ solid: normalizeHex(e.target.value) })}
+                      className="h-10 rounded-md border border-white/10 bg-white/5 px-3 text-sm text-white outline-none transition-colors placeholder:text-neutral-500 focus:border-white/30"
+                      placeholder="#0f0f0f"
+                    />
+                  </div>
+                ) : (
+                  <div className="grid gap-3">
+                    <div className="grid grid-cols-[auto,1fr] items-center gap-3">
+                      <input
+                        type="color"
+                        value={background.from}
+                        onChange={(e) => updateBackground({ from: normalizeHex(e.target.value) })}
+                        className="h-10 w-10 cursor-pointer rounded border border-white/10 bg-transparent p-0"
+                        aria-label="Gradient start color"
+                      />
+                      <input
+                        type="text"
+                        value={background.from}
+                        onChange={(e) => updateBackground({ from: normalizeHex(e.target.value) })}
+                        className="h-10 rounded-md border border-white/10 bg-white/5 px-3 text-sm text-white outline-none transition-colors placeholder:text-neutral-500 focus:border-white/30"
+                        placeholder="#0f172a"
+                      />
+                    </div>
+                    <div className="grid grid-cols-[auto,1fr] items-center gap-3">
+                      <input
+                        type="color"
+                        value={background.to}
+                        onChange={(e) => updateBackground({ to: normalizeHex(e.target.value) })}
+                        className="h-10 w-10 cursor-pointer rounded border border-white/10 bg-transparent p-0"
+                        aria-label="Gradient end color"
+                      />
+                      <input
+                        type="text"
+                        value={background.to}
+                        onChange={(e) => updateBackground({ to: normalizeHex(e.target.value) })}
+                        className="h-10 rounded-md border border-white/10 bg-white/5 px-3 text-sm text-white outline-none transition-colors placeholder:text-neutral-500 focus:border-white/30"
+                        placeholder="#0b1223"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-4 space-y-2">
+                  <div className="flex items-center justify-between text-xs text-neutral-400">
+                    <span>Opacity</span>
+                    <span className="font-semibold text-white">{Math.round((background.opacity ?? 1) * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={background.opacity}
+                    onChange={(e) => updateBackground({ opacity: Math.min(1, Math.max(0, parseFloat(e.target.value) || 0)) })}
+                    className="w-full accent-white"
+                    aria-label="Background opacity"
+                  />
+                </div>
+              </div>
+            )}
+
           <div className="flex flex-1 items-center justify-center p-8 md:p-12 overflow-hidden relative">
              {/* Grid Background */}
-             <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff03_1px,transparent_1px),linear-gradient(to_bottom,#ffffff03_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_at_center,black_40%,transparent_100%)] pointer-events-none" />
+             <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff03_1px,transparent_1px),linear-gradient(to_bottom,#ffffff03_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none" />
              
              {/* 16:9 Aspect Ratio Container */}
-            <div className="relative aspect-video w-full max-w-5xl overflow-hidden rounded-xl border border-white/5 bg-gray-700 shadow-[0_0_100px_-20px_rgba(0,0,0,0.7)] ring-1 ring-white/[0.02]">
+            <div
+              className="relative aspect-video w-full max-w-5xl overflow-hidden rounded-xl border border-white/5 shadow-[0_0_100px_-20px_rgba(0,0,0,0.7)] ring-1 ring-white/[0.02]"
+              style={{
+                ...canvasBgStyle,
+                transition: 'background 150ms ease, opacity 150ms ease',
+              }}
+            >
               {children}
             </div>
           </div>

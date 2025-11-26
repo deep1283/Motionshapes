@@ -34,9 +34,16 @@ interface MotionCanvasProps {
   onUpdateActivePathPoint?: (index: number, x: number, y: number) => void
   onClearPath?: () => void
   onInsertPathPoint?: (indexAfter: number, x: number, y: number) => void
+  background?: {
+    mode: 'solid' | 'gradient'
+    solid: string
+    from: string
+    to: string
+    opacity: number
+  }
 }
 
-export default function MotionCanvas({ template, templateVersion, layers = [], onUpdateLayerPosition, onTemplateComplete, isDrawingPath = false, pathPoints = [], onAddPathPoint, onFinishPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint }: MotionCanvasProps) {
+export default function MotionCanvas({ template, templateVersion, layers = [], onUpdateLayerPosition, onTemplateComplete, isDrawingPath = false, pathPoints = [], onAddPathPoint, onFinishPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint, background }: MotionCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<PIXI.Application | null>(null)
   const [isReady, setIsReady] = useState(false)
@@ -60,21 +67,25 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
   }, [timelineTracks, selectedLayerId])
   const [pathHandleIndices, setPathHandleIndices] = useState<number[]>([])
   const [showPathOverlay, setShowPathOverlay] = useState(true)
-
-  useEffect(() => {
-    // reset handles when the clip/layer changes; show endpoints by default if clip exists
-    if (currentPathClip && currentPathClip.points.length > 0) {
-      // if we already have handles for this clip, keep them; otherwise init to endpoints
-      if (pathHandleIndices.length === 0 || pathHandleIndices.some((i) => i >= currentPathClip.points.length)) {
-        const last = currentPathClip.points.length - 1
-        setPathHandleIndices([0, last])
-      }
-      setShowPathOverlay(true)
-    } else {
-      setPathHandleIndices([])
-      setShowPathOverlay(false)
+  const resolvedBackground = useMemo(() => {
+    const defaults = {
+      mode: 'solid' as const,
+      solid: '#0f0f0f',
+      from: '#0f172a',
+      to: '#0b1223',
+      opacity: 1,
     }
-  }, [currentPathClip?.id, selectedLayerId]) // do not reset on length change so added nodes persist
+    return { ...defaults, ...(background ?? {}) }
+  }, [background])
+  const [canvasBounds, setCanvasBounds] = useState({ width: 1, height: 1, left: 0, top: 0 })
+  const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
+  const toHexNumber = (value: string) => {
+    const normalized = (value || '').trim()
+    const hex = normalized.startsWith('#') ? normalized.slice(1) : normalized
+    const six = hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex.padEnd(6, '0').slice(0, 6)
+    const parsed = Number.parseInt(six, 16)
+    return Number.isNaN(parsed) ? 0x0f0f0f : parsed
+  }
 
   // 1. Initialize Pixi App ONCE
   useEffect(() => {
@@ -83,7 +94,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
     const initPixi = async () => {
       const app = new PIXI.Application()
       await app.init({ 
-        background: '#0f0f0f',
+        background: '#000000',
+        backgroundAlpha: 0, // make the canvas transparent so CSS background shows through
         resizeTo: containerRef.current!,
         antialias: true,
         resolution: window.devicePixelRatio || 1,
@@ -128,16 +140,29 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
     Object.entries(sampledTimeline).forEach(([id, state]) => {
       const g = graphicsByIdRef.current[id]
       if (!g) return
+      const shapeSize = (g as PIXI.Graphics & { __shapeSize?: { width?: number; height?: number } })?.__shapeSize
+      const halfW = shapeSize?.width ? (shapeSize.width * state.scale) / 2 : 0
+      const halfH = shapeSize?.height ? (shapeSize.height * state.scale) / 2 : 0
       const posX = state.position.x <= 1 ? state.position.x * screenWidth : state.position.x
       const posY = state.position.y <= 1 ? state.position.y * screenHeight : state.position.y
-      g.x = posX
-      g.y = posY
+      const clampedX = Math.min(Math.max(posX, halfW), screenWidth - halfW)
+      const clampedY = Math.min(Math.max(posY, halfH), screenHeight - halfH)
+      if (Number.isFinite(clampedX)) g.x = clampedX
+      if (Number.isFinite(clampedY)) g.y = clampedY
       g.scale.set(state.scale)
       g.rotation = state.rotation
       g.alpha = state.opacity
     })
     appRef.current?.render()
   }, [sampledTimeline, isReady])
+
+  useEffect(() => {
+    const app = appRef.current
+    if (!app) return
+    // keep Pixi canvas transparent; CSS layers handle the color/opacity
+    app.renderer.background.alpha = 0
+    app.render()
+  }, [resolvedBackground.mode, resolvedBackground.solid, resolvedBackground.from, resolvedBackground.opacity])
 
   // Debug: log raw DOM pointer events on the canvas to ensure we receive them
   useEffect(() => {
@@ -148,6 +173,31 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
     canvas.addEventListener('pointerdown', handler)
     return () => {
       canvas.removeEventListener('pointerdown', handler)
+    }
+  }, [isReady])
+
+  useEffect(() => {
+    const updateBounds = () => {
+      if (!containerRef.current) return
+      const rect = containerRef.current.getBoundingClientRect()
+      setCanvasBounds({
+        width: rect.width || 1,
+        height: rect.height || 1,
+        left: rect.left,
+        top: rect.top,
+      })
+    }
+
+    updateBounds()
+    const observer = new ResizeObserver(updateBounds)
+    if (containerRef.current) {
+      observer.observe(containerRef.current)
+    }
+    window.addEventListener('resize', updateBounds)
+
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', updateBounds)
     }
   }, [isReady])
 
@@ -221,6 +271,27 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
     setPathHandleIndices(nextHandles)
     setShowPathOverlay(true)
   }
+
+  const pathPointsSvg = useMemo(() => {
+    if (pathPoints.length === 0) return null
+    const { width, height } = canvasBounds
+    if (!width || !height) return null
+    const pts = pathPoints.map((pt) => ({ x: pt.x * width, y: pt.y * height }))
+    const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
+    return { pts, d }
+  }, [canvasBounds, pathPoints])
+
+  const currentPathOverlay = useMemo(() => {
+    if (!currentPathClip || currentPathClip.points.length === 0) return null
+    const { width, height } = canvasBounds
+    if (!width || !height) return null
+    const pts = currentPathClip.points.map((pt) => ({ x: pt.x * width, y: pt.y * height }))
+    const defaultHandles = pts.length > 1 ? [0, pts.length - 1] : pts.length === 1 ? [0] : []
+    const validHandles = pathHandleIndices.filter((i) => i >= 0 && i < pts.length)
+    const handles = validHandles.length > 0 ? validHandles : defaultHandles
+    const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
+    return { pts, handles, d }
+  }, [canvasBounds, currentPathClip, pathHandleIndices])
 
     // DOM drag handler as a fallback for Pixi events
     useEffect(() => {
@@ -311,6 +382,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
     const centerY = screenHeight / 2
     const tickerCallbacks: Array<(ticker: PIXI.Ticker) => void> = []
     graphicsByIdRef.current = {}
+    // templates are driven by timeline keyframes; built-in previews are disabled
     const templateEnabled = false
 
   const handlePointerMove = (e: PIXI.FederatedPointerEvent) => {
@@ -349,6 +421,10 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
         const g = new PIXI.Graphics()
         g.circle(0, 0, layer.width / 2)
         g.fill(layer.fillColor)
+        ;(g as PIXI.Graphics & { __shapeSize?: { width: number; height: number } }).__shapeSize = {
+          width: layer.width,
+          height: layer.height,
+        }
         // add a small notch so roll rotation is visible
         if (templateEnabled && template === 'roll') {
           g.moveTo(0, -layer.width / 2)
@@ -628,7 +704,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
     }
 
     // Add the ticker if we have one
-    if (tickerCallback) {
+    if (tickerCallback && app?.ticker) {
         app.ticker.add(tickerCallback)
         app.ticker.start()
     }
@@ -638,7 +714,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
 
     // Cleanup function for this effect
     return () => {
-        if (tickerCallback) {
+        if (tickerCallback && app?.ticker) {
             app.ticker.remove(tickerCallback)
         }
         stage.removeChildren()
@@ -651,7 +727,19 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
   }, [template, templateVersion, pathVersion, pathLayerId, activePathPoints, isReady]) // Re-run on template/path switches; layer moves are handled directly
 
   return (
-    <div className="relative h-full w-full overflow-hidden rounded-lg bg-gray-900" onPointerDown={handleCanvasPointerDown}>
+    <div className="relative h-full w-full overflow-hidden rounded-lg" onPointerDown={handleCanvasPointerDown}>
+      <div
+        className="absolute inset-0"
+        aria-hidden="true"
+        style={{
+          ...(resolvedBackground.mode === 'gradient'
+            ? { backgroundImage: `linear-gradient(135deg, ${resolvedBackground.from}, ${resolvedBackground.to})` }
+            : { backgroundColor: resolvedBackground.solid }),
+          opacity: clamp01(resolvedBackground.opacity ?? 1),
+          zIndex: 0,
+          transition: 'background 150ms ease, opacity 150ms ease',
+        }}
+      />
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
@@ -659,9 +747,10 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
             'linear-gradient(to right, rgba(255,255,255,0.12) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.12) 1px, transparent 1px)',
           backgroundSize: '32px 32px',
           opacity: 0.6,
+          zIndex: 1,
         }}
       />
-      <div ref={containerRef} className="h-full w-full" />
+      <div ref={containerRef} className="relative z-10 h-full w-full" />
       {/* Path draw overlay */}
       {isDrawingPath && (
         <div
@@ -689,107 +778,83 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
               onAddPathPoint?.(x, y)
             }
           }}
-          onPointerUp={(e) => {
-            if (!pathTraceActiveRef.current || !containerRef.current) return
-            const bounds = containerRef.current.getBoundingClientRect()
-            const x = (e.clientX - bounds.left) / bounds.width
-            const y = (e.clientY - bounds.top) / bounds.height
+      onPointerUp={(e) => {
+        if (!pathTraceActiveRef.current || !containerRef.current) return
+        const bounds = containerRef.current.getBoundingClientRect()
+        const x = (e.clientX - bounds.left) / bounds.width
+        const y = (e.clientY - bounds.top) / bounds.height
             onAddPathPoint?.(x, y)
             pathTraceActiveRef.current = false
             onFinishPath?.()
-          }}
-        >
-          <svg className="h-full w-full" style={{ pointerEvents: 'none' }}>
-            {(() => {
-              if (!containerRef.current || pathPoints.length === 0) return null
-              const bounds = containerRef.current.getBoundingClientRect()
-              const toPx = (pt: { x: number; y: number }) => ({
-                x: pt.x * bounds.width,
-                y: pt.y * bounds.height,
-              })
-            const pts = pathPoints.map(toPx)
-            const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
-            return (
-              <>
-                <path d={d} stroke="#22c55e" strokeWidth={2} fill="none" data-path-element="true" />
-              </>
-            )
-         })()}
+      }}
+    >
+      <svg className="h-full w-full" style={{ pointerEvents: 'none' }}>
+          {pathPointsSvg && (
+            <path d={pathPointsSvg.d} stroke="#22c55e" strokeWidth={2} fill="none" data-path-element="true" />
+          )}
         </svg>
-       </div>
-     )}
+      </div>
+    )}
       {!isDrawingPath && currentPathClip && showPathOverlay && (
         <div className="absolute inset-0" style={{ zIndex: 25, pointerEvents: 'none' }}>
           <svg className="h-full w-full" style={{ pointerEvents: 'auto' }}>
-            {(() => {
-              if (!containerRef.current || currentPathClip.points.length === 0) return null
-              const bounds = containerRef.current.getBoundingClientRect()
-              const toPx = (pt: { x: number; y: number }) => ({
-                x: pt.x * bounds.width,
-                y: pt.y * bounds.height,
-              })
-              const pts = currentPathClip.points.map(toPx)
-              const defaultHandles = pts.length > 1 ? [0, pts.length - 1] : pts.length === 1 ? [0] : []
-              const handles = pathHandleIndices.length > 0 ? pathHandleIndices : defaultHandles
-              const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
-              return (
-                <>
-                  <path
-                    d={d}
-                    stroke="#22c55e"
-                    strokeWidth={2}
-                    fill="none"
-                    data-path-element="true"
-                    style={{ pointerEvents: 'auto', cursor: 'crosshair' }}
-                    onPointerDown={(e) => {
-                      e.preventDefault()
-                      // right-click drag translates the whole path without adding a node
-                      if (e.button === 2) {
-                        if (!containerRef.current || !currentPathClip) return
-                        const boundsPath = containerRef.current.getBoundingClientRect()
-                        const startX = (e.clientX - boundsPath.left) / boundsPath.width
-                        const startY = (e.clientY - boundsPath.top) / boundsPath.height
-                        pathTranslateRef.current = {
-                          startX,
-                          startY,
-                          origPoints: [...currentPathClip.points],
-                        }
-                        return
-                      }
-                      if (e.button !== 0) return
-                      if (!containerRef.current) return
+            {currentPathOverlay && (
+              <>
+                <path
+                  d={currentPathOverlay.d}
+                  stroke="#22c55e"
+                  strokeWidth={2}
+                  fill="none"
+                  data-path-element="true"
+                  style={{ pointerEvents: 'auto', cursor: 'crosshair' }}
+                  onPointerDown={(e) => {
+                    e.preventDefault()
+                    // right-click drag translates the whole path without adding a node
+                    if (e.button === 2) {
+                      if (!containerRef.current || !currentPathClip) return
                       const boundsPath = containerRef.current.getBoundingClientRect()
-                      const x = (e.clientX - boundsPath.left) / boundsPath.width
-                      const y = (e.clientY - boundsPath.top) / boundsPath.height
-                      console.log('[path] insert handle at', { x, y })
-                      insertPointIntoPath(x, y)
-                    }}
-                    onContextMenu={(e) => e.preventDefault()}
-                  />
-                  {pts.map((p, i) =>
-                    handles.includes(i) ? (
-                      <circle
-                        key={i}
-                        cx={p.x}
-                        cy={p.y}
-                        r={6}
-                        fill="#22c55e"
-                        stroke="#0f172a"
-                        strokeWidth={2}
-                        data-path-element="true"
-                        data-path-handle="true"
-                        style={{ pointerEvents: 'auto', cursor: 'grab' }}
-                        onPointerDown={(e) => {
-                          e.stopPropagation()
-                          pathDragIndexRef.current = i
-                          pathDragClipRef.current = { layerId: selectedLayerId ?? '', clipId: currentPathClip.id }
-                        }}
-                      />
-                    ) : null
-                  )}
-                </>
-              )
-            })()}
+                      const startX = (e.clientX - boundsPath.left) / boundsPath.width
+                      const startY = (e.clientY - boundsPath.top) / boundsPath.height
+                      pathTranslateRef.current = {
+                        startX,
+                        startY,
+                        origPoints: [...currentPathClip.points],
+                      }
+                      return
+                    }
+                    if (e.button !== 0) return
+                    if (!containerRef.current) return
+                    const boundsPath = containerRef.current.getBoundingClientRect()
+                    const x = (e.clientX - boundsPath.left) / boundsPath.width
+                    const y = (e.clientY - boundsPath.top) / boundsPath.height
+                    console.log('[path] insert handle at', { x, y })
+                    insertPointIntoPath(x, y)
+                  }}
+                  onContextMenu={(e) => e.preventDefault()}
+                />
+                {currentPathOverlay.pts.map((p, i) =>
+                  currentPathOverlay.handles.includes(i) ? (
+                    <circle
+                      key={i}
+                      cx={p.x}
+                      cy={p.y}
+                      r={6}
+                      fill="#22c55e"
+                      stroke="#0f172a"
+                      strokeWidth={2}
+                      data-path-element="true"
+                      data-path-handle="true"
+                      style={{ pointerEvents: 'auto', cursor: 'grab' }}
+                      onPointerDown={(e) => {
+                        e.stopPropagation()
+                        pathDragIndexRef.current = i
+                        pathDragClipRef.current = { layerId: selectedLayerId ?? '', clipId: currentPathClip?.id ?? '' }
+                      }}
+                    />
+                  ) : null
+                )}
+              </>
+            )}
           </svg>
         </div>
       )}
@@ -797,27 +862,31 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
       {layers.length > 0 && (
         <div
           className="absolute inset-0"
-          style={{ pointerEvents: isDrawingPath ? 'none' : undefined }}
+          style={{ pointerEvents: isDrawingPath ? 'none' : undefined, zIndex: 15 }}
         >
           {layers.map((layer) => {
-        const bounds = containerRef.current?.getBoundingClientRect()
-        const screenWidth = bounds?.width || 1
-        const screenHeight = bounds?.height || 1
-        const sampled = sampledTimeline[layer.id]
-        const baseX = sampled ? sampled.position.x : layer.x
-        const baseY = sampled ? sampled.position.y : layer.y
-        const posX = baseX <= 1 ? baseX * screenWidth : baseX
-        const posY = baseY <= 1 ? baseY * screenHeight : baseY
-        return (
+            const screenWidth = canvasBounds.width || 1
+            const screenHeight = canvasBounds.height || 1
+            const sampled = sampledTimeline[layer.id]
+            const baseX = sampled ? sampled.position.x : layer.x
+            const baseY = sampled ? sampled.position.y : layer.y
+            const posX = baseX <= 1 ? baseX * screenWidth : baseX
+            const posY = baseY <= 1 ? baseY * screenHeight : baseY
+            const scale = sampled?.scale ?? 1
+            const halfW = (layer.width * scale) / 2
+            const halfH = (layer.height * scale) / 2
+            const clampedX = Math.min(Math.max(posX, halfW), screenWidth - halfW)
+            const clampedY = Math.min(Math.max(posY, halfH), screenHeight - halfH)
+            return (
               <div
                 key={layer.id}
                 style={{
                   position: 'absolute',
-                  left: posX,
-              top: posY,
+                  left: clampedX,
+              top: clampedY,
               width: layer.width,
               height: layer.height,
-              transform: `translate(-50%, -50%) scale(${sampled?.scale ?? 1}) rotate(${sampled?.rotation ?? 0}rad)`,
+              transform: `translate(-50%, -50%) scale(${scale}) rotate(${sampled?.rotation ?? 0}rad)`,
               background: '#fff',
               borderRadius: '50%',
               opacity: sampled?.opacity ?? 0.9,
