@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import type { SVGProps } from 'react'
-import { Layout, Play, Square, Circle, LogOut, Settings, ChevronLeft, Layers, Zap, MousePointer2 } from 'lucide-react'
+import { Layout, Play, Square, Circle, LogOut, Settings, ChevronLeft, Layers, Zap, MousePointer2, SlidersHorizontal } from 'lucide-react'
 import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
@@ -32,9 +32,55 @@ interface DashboardLayoutProps {
   pathPointCount?: number
   background: BackgroundSettings
   onBackgroundChange: (value: BackgroundSettings) => void
+  // Timeline controls
+  templateSpeed?: number
+  rollDistance?: number
+  jumpHeight?: number
+  jumpVelocity?: number
+  popScale?: number
+  popSpeed?: number
+  popCollapse?: boolean
+  onTemplateSpeedChange?: (value: number) => void
+  onRollDistanceChange?: (value: number) => void
+  onJumpHeightChange?: (value: number) => void
+  onJumpVelocityChange?: (value: number) => void
+  onPopScaleChange?: (value: number) => void
+  onPopSpeedChange?: (value: number) => void
+  onPopCollapseChange?: (value: boolean) => void
+  selectedLayerScale?: number
+  onSelectedLayerScaleChange?: (value: number) => void
 }
 
-export default function DashboardLayout({ children, selectedTemplate, onSelectTemplate, onAddShape, onStartDrawPath, showSelectShapeHint, layers, selectedLayerId, isDrawingPath, onFinishPath, onCancelPath, pathPointCount = 0, background, onBackgroundChange }: DashboardLayoutProps) {
+export default function DashboardLayout({ 
+  children, 
+  selectedTemplate, 
+  onSelectTemplate, 
+  onAddShape, 
+  onStartDrawPath, 
+  showSelectShapeHint, 
+  layers, 
+  selectedLayerId, 
+  isDrawingPath, 
+  onFinishPath, 
+  onCancelPath, 
+  pathPointCount = 0, 
+  background, 
+  onBackgroundChange,
+  templateSpeed = 1,
+  rollDistance = 0.2,
+  jumpHeight = 0.25,
+  jumpVelocity = 1.5,
+  popScale = 1.6,
+  popSpeed = 1,
+  popCollapse = true,
+  onTemplateSpeedChange,
+  onRollDistanceChange,
+  onJumpHeightChange,
+  onJumpVelocityChange,
+  onPopScaleChange,
+  onPopSpeedChange,
+  onPopCollapseChange,
+}: DashboardLayoutProps) {
   const router = useRouter()
   const supabase = createClient()
   const [showBackgroundPanel, setShowBackgroundPanel] = useState(false)
@@ -193,7 +239,7 @@ export default function DashboardLayout({ children, selectedTemplate, onSelectTe
                 </p>
               )}
               <p className="text-[10px] text-neutral-500 leading-relaxed px-2">
-                Click “Draw Path” to mark a motion path on the canvas. Double-click to finish.
+                Click "Draw Path" to mark a motion path on the canvas. Double-click to finish.
               </p>
             </div>
           </div>
@@ -354,19 +400,186 @@ export default function DashboardLayout({ children, selectedTemplate, onSelectTe
               {children}
             </div>
           </div>
-
-          {/* Bottom Timeline */}
-          <TimelinePanel
-            layers={layers}
-            selectedLayerId={selectedLayerId}
-            selectedTemplate={selectedTemplate}
-            isDrawingPath={isDrawingPath}
-            onFinishPath={onFinishPath}
-            onCancelPath={onCancelPath}
-            pathPointCount={pathPointCount}
-          />
         </main>
+
+        {/* Right Sidebar - Template Controls */}
+        <aside className="w-80 border-l border-white/5 bg-[#0a0a0a] p-4 space-y-4 overflow-y-auto">
+          {isDrawingPath && (
+            <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/5 p-3 shadow-inner">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[11px] font-semibold text-neutral-100">Path Recording</span>
+                <span className="text-[10px] text-emerald-400 font-mono">{pathPointCount} pts</span>
+              </div>
+              <p className="text-[11px] text-neutral-300 mb-2">Click on canvas to add points. Double-click or press Finish.</p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => onFinishPath?.()}
+                  className="inline-flex items-center justify-center rounded-md bg-emerald-500/80 px-3 py-1 text-[11px] font-semibold text-black hover:bg-emerald-400"
+                >
+                  Finish Path
+                </button>
+                <button
+                  onClick={() => onCancelPath?.()}
+                  className="inline-flex items-center justify-center rounded-md border border-white/10 px-3 py-1 text-[11px] font-semibold text-neutral-200 hover:bg-white/5"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {selectedLayerId && (
+            <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3 shadow-inner">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-semibold text-neutral-200">Size</span>
+                <span className="text-[10px] text-neutral-400">Scale: 1.00</span>
+              </div>
+              <input
+                type="range"
+                min={0.2}
+                max={3}
+                step={0.01}
+                defaultValue={1}
+                className="w-full accent-emerald-500"
+              />
+            </div>
+          )}
+
+          <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3 shadow-inner space-y-4">
+            <div className="flex items-center gap-2 text-[11px] font-semibold text-neutral-200">
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              Template Controls
+            </div>
+            {selectedTemplate === 'roll' && (
+              <>
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-semibold text-neutral-200">Roll Speed</span>
+                    <span className="text-[10px] text-neutral-400">{templateSpeed.toFixed(2)}x</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.25}
+                    max={3}
+                    step={0.05}
+                    value={templateSpeed}
+                    onChange={(e) => onTemplateSpeedChange?.(Number(e.target.value))}
+                    className="w-full accent-emerald-500"
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-2 mt-1">
+                    <span className="text-[11px] font-semibold text-neutral-200">Roll Distance</span>
+                    <span className="text-[10px] text-neutral-400">{rollDistance.toFixed(2)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.05}
+                    max={1}
+                    step={0.01}
+                    value={rollDistance}
+                    onChange={(e) => onRollDistanceChange?.(Number(e.target.value))}
+                    className="w-full accent-emerald-500"
+                  />
+                </div>
+              </>
+            )}
+            {selectedTemplate === 'jump' && (
+              <div className="space-y-3">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-semibold text-neutral-200">Jump Height</span>
+                    <span className="text-[10px] text-neutral-400">{jumpHeight.toFixed(2)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.05}
+                    max={0.8}
+                    step={0.01}
+                    value={jumpHeight}
+                    onChange={(e) => onJumpHeightChange?.(Number(e.target.value))}
+                    className="w-full accent-emerald-500"
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-semibold text-neutral-200">Initial Velocity</span>
+                    <span className="text-[10px] text-neutral-400">{jumpVelocity.toFixed(2)} u/s</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.2}
+                    max={6}
+                    step={0.05}
+                    value={jumpVelocity}
+                    onChange={(e) => onJumpVelocityChange?.(Number(e.target.value))}
+                    className="w-full accent-emerald-500"
+                  />
+                </div>
+              </div>
+            )}
+            {selectedTemplate === 'pop' && (
+              <>
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-semibold text-neutral-200">Scale</span>
+                    <span className="text-[10px] text-neutral-400">{popScale.toFixed(2)}x</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={1}
+                    max={3}
+                    step={0.05}
+                    value={popScale}
+                    onChange={(e) => onPopScaleChange?.(Number(e.target.value))}
+                    className="w-full accent-emerald-500"
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-2 mt-2">
+                    <span className="text-[11px] font-semibold text-neutral-200">Speed</span>
+                    <span className="text-[10px] text-neutral-400">{popSpeed.toFixed(2)}x</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.25}
+                    max={3}
+                    step={0.05}
+                    value={popSpeed}
+                    onChange={(e) => onPopSpeedChange?.(Number(e.target.value))}
+                    className="w-full accent-emerald-500"
+                  />
+                </div>
+                <div className="flex items-center justify-between pt-2">
+                  <span className="text-[11px] font-semibold text-neutral-200">Collapse</span>
+                  <label className="relative inline-flex cursor-pointer items-center">
+                    <input
+                      type="checkbox"
+                      className="peer sr-only"
+                      checked={popCollapse}
+                      onChange={(e) => onPopCollapseChange?.(e.target.checked)}
+                    />
+                    <div className="peer h-4 w-7 rounded-full bg-neutral-700 peer-checked:bg-emerald-500 transition-colors" />
+                    <div className="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-white transition-transform peer-checked:translate-x-3" />
+                  </label>
+                </div>
+              </>
+            )}
+            {!selectedTemplate && <p className="text-[11px] text-neutral-500">Select a template to adjust its controls.</p>}
+          </div>
+        </aside>
       </div>
+
+      {/* Bottom Timeline - Full Width */}
+      <TimelinePanel
+        layers={layers}
+        selectedLayerId={selectedLayerId}
+        selectedTemplate={selectedTemplate}
+        isDrawingPath={isDrawingPath}
+        onFinishPath={onFinishPath}
+        onCancelPath={onCancelPath}
+        pathPointCount={pathPointCount}
+      />
     </div>
   )
 }

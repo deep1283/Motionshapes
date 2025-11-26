@@ -147,11 +147,11 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
       const posY = state.position.y <= 1 ? state.position.y * screenHeight : state.position.y
       const clampedX = Math.min(Math.max(posX, halfW), screenWidth - halfW)
       const clampedY = Math.min(Math.max(posY, halfH), screenHeight - halfH)
-      if (Number.isFinite(clampedX)) g.x = clampedX
-      if (Number.isFinite(clampedY)) g.y = clampedY
-      g.scale.set(state.scale)
-      g.rotation = state.rotation
-      g.alpha = state.opacity
+      if (g && Number.isFinite(clampedX)) g.x = clampedX
+      if (g && Number.isFinite(clampedY)) g.y = clampedY
+      if (g && g.scale) g.scale.set(state.scale)
+      if (g) g.rotation = state.rotation
+      if (g) g.alpha = state.opacity
     })
     appRef.current?.render()
   }, [sampledTimeline, isReady])

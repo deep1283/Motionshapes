@@ -31,6 +31,13 @@ type TimelineState = {
   popWobble: boolean
   popSpeed: number
   popCollapse: boolean
+  templateClips: Array<{
+    id: string
+    layerId: string
+    template: TemplateId
+    start: number
+    duration: number
+  }>
 }
 
 export type TimelineStore = ReturnType<typeof createTimelineStore>
@@ -52,6 +59,7 @@ const defaultState: TimelineState = {
   popWobble: false,
   popSpeed: 1,
   popCollapse: true,
+  templateClips: [],
 }
 
 export function createTimelineStore(initialState?: Partial<TimelineState>) {
@@ -66,6 +74,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     popWobble: initialState?.popWobble ?? defaultState.popWobble,
     popSpeed: initialState?.popSpeed ?? defaultState.popSpeed,
     popCollapse: initialState?.popCollapse ?? defaultState.popCollapse,
+    templateClips: initialState?.templateClips ?? defaultState.templateClips,
   }
 
   const listeners = new Set<() => void>()
@@ -237,7 +246,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           ? PRESET_BUILDERS.jump(state.jumpHeight, state.jumpVelocity)
           : template === 'pop'
             ? PRESET_BUILDERS.pop(state.popScale, state.popWobble, state.popSpeed, state.popCollapse)
-            : PRESET_BUILDERS[template]?.()
+            : undefined
     if (!preset) return
     ensureTrack(layerId)
 
@@ -297,7 +306,38 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           rotation: trimFrames(track.rotation),
           opacity: trimFrames(track.opacity),
         }
-        if (!append && startOffset === 0) {
+        
+        // When appending, add a keyframe at startOffset with the sampled state to ensure continuity
+        if (append && startOffset > 0) {
+          clearedTrack.position = [
+            ...(clearedTrack.position ?? []),
+            {
+              time: startOffset,
+              value: basePosition,
+            },
+          ]
+          clearedTrack.scale = [
+            ...(clearedTrack.scale ?? []),
+            {
+              time: startOffset,
+              value: baseScale,
+            },
+          ]
+          clearedTrack.rotation = [
+            ...(clearedTrack.rotation ?? []),
+            {
+              time: startOffset,
+              value: baseRotation,
+            },
+          ]
+          clearedTrack.opacity = [
+            ...(clearedTrack.opacity ?? []),
+            {
+              time: startOffset,
+              value: baseOpacity,
+            },
+          ]
+        } else if (!append && startOffset === 0) {
           clearedTrack.position = [
             {
               time: 0,
@@ -330,25 +370,25 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           incoming.reduce((acc, frame) => upsertKeyframe(acc, frame), existing ?? [])
 
         const mappedPosition =
-          preset.position?.map((frame) => ({
+          preset.position?.map((frame: TimelineKeyframe<Vec2>) => ({
             ...normalizePositionFrame(frame, baseState.position),
             time: startOffset + scaleTime(frame.time),
           })) ?? []
 
         const mappedScale =
-          preset.scale?.map((f) => ({
+          preset.scale?.map((f: TimelineKeyframe<number>) => ({
             ...normalizeNumberFrame(f, baseState.scale, false),
             time: startOffset + scaleTime(f.time),
           })) ?? []
 
         const mappedRotation =
-          preset.rotation?.map((f) => ({
+          preset.rotation?.map((f: TimelineKeyframe<number>) => ({
             ...normalizeNumberFrame(f, baseState.rotation, true),
             time: startOffset + scaleTime(f.time),
           })) ?? []
 
         const mappedOpacity =
-          preset.opacity?.map((f) => ({
+          preset.opacity?.map((f: TimelineKeyframe<number>) => ({
             ...normalizeNumberFrame(f, baseState.opacity, false),
             time: startOffset + scaleTime(f.time),
           })) ?? []
@@ -365,11 +405,29 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       const contentEnd = tracks.reduce((max, t) => Math.max(max, getTrackEndTime(t)), 0)
       const pathsEnd = getMaxPathEnd(tracks)
       const segmentDuration = scaleTime(preset.duration ?? 0)
-      const newDuration = Math.max(contentEnd, pathsEnd, appliedStartOffset + segmentDuration, 1)
+      const clipId = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `clip-${Date.now()}-${Math.random()}`)
+      const nextClips = [
+        ...prev.templateClips.filter(
+          (c) => !(c.layerId === layerId && Math.abs(c.start - appliedStartOffset) < 1 && c.template === template)
+        ),
+        {
+          id: clipId,
+          layerId,
+          template,
+          start: appliedStartOffset,
+          duration: segmentDuration,
+        },
+      ]
+      const clipsEnd = nextClips.reduce((max, c) => Math.max(max, c.start + c.duration), 0)
+
+      const newDuration = Math.max(contentEnd, pathsEnd, appliedStartOffset + segmentDuration, clipsEnd, 1)
 
       return {
         ...prev,
         tracks,
+        templateClips: nextClips,
         duration: newDuration,
         currentTime: clampTime(prev.currentTime, newDuration),
       }
@@ -482,7 +540,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       const lastTick = prev.lastTick ?? timestamp
       const deltaMs = (timestamp - lastTick) * prev.playbackRate
       let nextTime = prev.currentTime + deltaMs
-      let playing = prev.isPlaying
+      let playing: boolean = prev.isPlaying
 
       if (nextTime >= prev.duration) {
         if (prev.loop && prev.duration > 0) {
@@ -556,6 +614,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     setTemplateSpeed,
     setPlaying,
     togglePlay,
+    templateClips: state.templateClips,
     setPositionKeyframe: (layerId: string, frame: TimelineKeyframe<Vec2>) =>
       setKeyframe(layerId, 'position', frame),
     setScaleKeyframe: (layerId: string, frame: TimelineKeyframe<number>) =>

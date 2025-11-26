@@ -1,7 +1,7 @@
 'use client'
 
 import { Pause, Play, Repeat, SlidersHorizontal } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useRef, useEffect } from 'react'
 import { useTimeline, useTimelineActions } from '@/lib/timeline-store'
 import { sampleTimeline } from '@/lib/timeline'
 
@@ -25,7 +25,7 @@ const formatTime = (ms: number) => {
 }
 
 export default function TimelinePanel({ layers, selectedLayerId, selectedTemplate, isDrawingPath, onFinishPath, onCancelPath, pathPointCount = 0 }: TimelinePanelProps) {
-  const { currentTime, duration, isPlaying, loop, tracks, templateSpeed, rollDistance, jumpHeight, jumpVelocity, popScale, popWobble, popSpeed, popCollapse } = useTimeline((s) => ({
+  const { currentTime, duration, isPlaying, loop, tracks, templateSpeed, rollDistance, jumpHeight, jumpVelocity, popScale, popWobble, popSpeed, popCollapse, templateClips } = useTimeline((s) => ({
     currentTime: s.currentTime,
     duration: s.duration,
     isPlaying: s.isPlaying,
@@ -39,6 +39,7 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
     popWobble: s.popWobble,
     popSpeed: s.popSpeed,
     popCollapse: s.popCollapse,
+    templateClips: s.templateClips,
   }))
   const timeline = useTimelineActions()
   const safeDuration = Math.max(1, duration)
@@ -55,8 +56,36 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
     }
     timeline.togglePlay()
   }
-  const [showTemplateControls, setShowTemplateControls] = useState(true)
-  const templateControlsVisible = showTemplateControls || !!selectedTemplate
+  const [showTemplateControls] = useState(true)
+  const templateControlsVisible = true
+  const timelineAreaRef = useRef<HTMLDivElement>(null)
+  const [isScrubbing, setIsScrubbing] = useState(false)
+  const [scrubTarget, setScrubTarget] = useState<boolean>(false)
+
+  const applyScrub = (clientX: number) => {
+    const rect = timelineAreaRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const t = ((clientX - rect.left) / rect.width) * safeDuration
+    timeline.setCurrentTime(Math.max(0, Math.min(safeDuration, t)))
+  }
+
+  const handleScrubStart = (e: React.PointerEvent<HTMLDivElement>) => {
+    setIsScrubbing(true)
+    setScrubTarget(true)
+    applyScrub(e.clientX)
+  }
+
+  useEffect(() => {
+    if (!isScrubbing || !scrubTarget) return
+    const move = (e: PointerEvent) => applyScrub(e.clientX)
+    const up = () => setIsScrubbing(false)
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    return () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+    }
+  }, [isScrubbing, scrubTarget])
 
   return (
     <div className="h-64 border-t border-white/5 bg-[#0a0a0a] z-40 flex flex-col">
@@ -84,300 +113,81 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
           </button>
         </div>
       </div>
-      <div className="px-4 py-3">
-        <input
-          type="range"
-          min={0}
-          max={safeDuration}
-          step={16}
-          value={Math.min(currentTime, safeDuration)}
-          onChange={(e) => timeline.setCurrentTime(Number(e.target.value))}
-          className="w-full accent-emerald-500"
-        />
-      </div>
-      <div className="relative flex-1 w-full px-4 pb-4 overflow-x-auto">
-        <div className="space-y-2">
-          {isDrawingPath && (
-            <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/5 p-3 shadow-inner">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[11px] font-semibold text-neutral-100">Path Recording</span>
-                <span className="text-[10px] text-emerald-400 font-mono">{pathPointCount} pts</span>
-              </div>
-              <p className="text-[11px] text-neutral-300 mb-2">Click on canvas to add points. Double-click or press Finish.</p>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => onFinishPath?.()}
-                  className="inline-flex items-center justify-center rounded-md bg-emerald-500/80 px-3 py-1 text-[11px] font-semibold text-black hover:bg-emerald-400"
-                >
-                  Finish Path
-                </button>
-                <button
-                  onClick={() => onCancelPath?.()}
-                  className="inline-flex items-center justify-center rounded-md border border-white/10 px-3 py-1 text-[11px] font-semibold text-neutral-200 hover:bg-white/5"
-                >
-                  Cancel
-                </button>
-              </div>
+
+      <div className="flex flex-1 overflow-hidden">
+        {/* Full Width Timeline */}
+        <div className="flex-1 flex flex-col overflow-hidden relative">
+          {/* Playhead */}
+          <div
+            className="absolute top-0 bottom-0 w-[2px] bg-rose-500 z-10 pointer-events-none"
+            style={{ left: `calc(200px + ${(Math.min(currentTime, safeDuration) / safeDuration) * (100 - (200 / (typeof window !== 'undefined' ? window.innerWidth : 1920)) * 100)}%)` }}
+          />
+
+          {/* Time Ruler */}
+          <div className="flex h-8 border-b border-white/5 bg-white/[0.01]">
+            <div className="w-[200px] border-r border-white/5 flex items-center px-4">
+              <span className="text-[10px] font-semibold text-neutral-500">LAYER</span>
             </div>
-          )}
-          {pathClip && (
-            <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3 shadow-inner">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] font-semibold text-neutral-200">Path Clip</span>
-                <span className="text-[10px] text-neutral-400">Dur: {formatTime(pathClip.duration)}</span>
-              </div>
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-[10px] text-neutral-400">Start</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={Math.max(safeDuration, pathClip.startTime + pathClip.duration)}
-                  step={50}
-                  value={pathClip.startTime}
-                  onChange={(e) => {
-                    const start = Number(e.target.value)
-                    timeline.updatePathClip(selectedLayerId ?? '', pathClip.id, { startTime: start })
-                  }}
-                  className="flex-1 accent-emerald-500"
-                />
-                <button
-                  onClick={() => timeline.updatePathClip(selectedLayerId ?? '', pathClip.id, { startTime: currentTime })}
-                  className="inline-flex items-center rounded border border-white/10 px-2 py-1 text-[10px] text-neutral-200 hover:bg-white/5"
-                >
-                  Set to Playhead
-                </button>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-neutral-400">Duration</span>
-                <input
-                  type="range"
-                  min={300}
-                  max={6000}
-                  step={50}
-                  value={pathClip.duration}
-                  onChange={(e) => {
-                    const dur = Number(e.target.value)
-                    timeline.updatePathClip(selectedLayerId ?? '', pathClip.id, { duration: dur })
-                  }}
-                  className="flex-1 accent-emerald-500"
-                />
-              </div>
-            </div>
-          )}
-          {selectedLayerId && (
-            <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3 shadow-inner">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] font-semibold text-neutral-200">Size</span>
-                <span className="text-[10px] text-neutral-400">Scale: {(selectedSample?.scale ?? 1).toFixed(2)}</span>
-              </div>
-              <input
-                type="range"
-                min={0.2}
-                max={3}
-                step={0.01}
-                value={selectedSample?.scale ?? 1}
-                onChange={(e) => {
-                  const val = Number(e.target.value)
-                  timeline.ensureTrack(selectedLayerId)
-                  timeline.setScaleKeyframe(selectedLayerId, { time: currentTime, value: val })
-                }}
-                className="w-full accent-emerald-500"
-              />
-            </div>
-          )}
-          <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3 shadow-inner">
-            <button
-              className="flex w-full items-center justify-between text-[11px] font-semibold text-neutral-200"
-              onClick={() => setShowTemplateControls((v) => !v)}
+            <div
+              ref={timelineAreaRef}
+              className="flex-1 relative cursor-col-resize"
+              onPointerDown={handleScrubStart}
             >
-              <span className="inline-flex items-center gap-2">
-                <SlidersHorizontal className="h-3.5 w-3.5" />
-                Template Controls
-              </span>
-              <span className="text-[10px] text-neutral-400">{templateControlsVisible ? 'Hide' : 'Show'}</span>
-            </button>
-            {templateControlsVisible && (
-              <div className="mt-3 space-y-4">
-                {selectedTemplate === 'roll' && (
-                  <>
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-[11px] font-semibold text-neutral-200">Roll Speed</span>
-                        <span className="text-[10px] text-neutral-400">{(templateSpeed ?? 1).toFixed(2)}x</span>
+              <div className="absolute inset-0 pointer-events-none">
+                <div className="flex h-full w-full">
+                  {Array.from({ length: Math.max(2, Math.ceil(safeDuration / 1000) + 1) }).map((_, idx) => {
+                    const left = (idx * 1000) / safeDuration * 100
+                    return (
+                      <div key={idx} className="absolute top-0 bottom-0 border-l border-white/5 text-[10px] text-neutral-500" style={{ left: `${left}%` }}>
+                        <span className="absolute top-1 left-1">{idx}s</span>
                       </div>
-                      <input
-                        type="range"
-                        min={0.25}
-                        max={3}
-                        step={0.05}
-                        value={templateSpeed}
-                        onChange={(e) => {
-                          const val = Number(e.target.value)
-                          timeline.setTemplateSpeed(val)
-                        }}
-                        className="w-full accent-emerald-500"
-                      />
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-between mb-2 mt-1">
-                        <span className="text-[11px] font-semibold text-neutral-200">Roll Distance</span>
-                        <span className="text-[10px] text-neutral-400">{(rollDistance ?? 0.2).toFixed(2)}</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={0.05}
-                        max={1}
-                        step={0.01}
-                        value={rollDistance ?? 0.2}
-                        onChange={(e) => {
-                          const val = Number(e.target.value)
-                          timeline.setRollDistance(val)
-                        }}
-                        className="w-full accent-emerald-500"
-                      />
-                    </div>
-                  </>
-                )}
-                {selectedTemplate === 'jump' && (
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[11px] font-semibold text-neutral-200">Jump Height</span>
-                      <span className="text-[10px] text-neutral-400">{(jumpHeight ?? 0.25).toFixed(2)}</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0.05}
-                      max={0.8}
-                      step={0.01}
-                      value={jumpHeight ?? 0.25}
-                      onChange={(e) => {
-                        const val = Number(e.target.value)
-                        timeline.setJumpHeight(val)
-                      }}
-                      className="w-full accent-emerald-500"
-                    />
-                    <div className="flex items-center justify-between mb-2 mt-3">
-                      <span className="text-[11px] font-semibold text-neutral-200">Initial Velocity</span>
-                      <span className="text-[10px] text-neutral-400">{(jumpVelocity ?? 1.5).toFixed(2)} u/s</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0.2}
-                      max={6}
-                      step={0.05}
-                      value={jumpVelocity ?? 1.5}
-                      onChange={(e) => {
-                        const val = Number(e.target.value)
-                        timeline.setJumpVelocity(val)
-                      }}
-                      className="w-full accent-emerald-500"
-                    />
-                  </div>
-                )}
-                {selectedTemplate === 'pop' && (
-                  <>
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-[11px] font-semibold text-neutral-200">Scale</span>
-                        <span className="text-[10px] text-neutral-400">{(popScale ?? 1.6).toFixed(2)}x</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={1}
-                        max={3}
-                        step={0.05}
-                        value={popScale ?? 1.6}
-                        onChange={(e) => {
-                          const val = Number(e.target.value)
-                          timeline.setPopScale(val)
-                        }}
-                        className="w-full accent-emerald-500"
-                      />
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-between mb-2 mt-2">
-                        <span className="text-[11px] font-semibold text-neutral-200">Speed</span>
-                        <span className="text-[10px] text-neutral-400">{(popSpeed ?? 1).toFixed(2)}x</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={0.25}
-                        max={3}
-                        step={0.05}
-                        value={popSpeed ?? 1}
-                        onChange={(e) => {
-                          const val = Number(e.target.value)
-                          timeline.setPopSpeed?.(val)
-                        }}
-                        className="w-full accent-emerald-500"
-                      />
-                    </div>
-                    <div className="flex items-center justify-between pt-2">
-                      <span className="text-[11px] font-semibold text-neutral-200">Collapse</span>
-                      <label className="relative inline-flex cursor-pointer items-center">
-                        <input
-                          type="checkbox"
-                          className="peer sr-only"
-                          checked={popCollapse ?? true}
-                          onChange={(e) => timeline.setPopCollapse?.(e.target.checked)}
-                        />
-                        <div className="peer h-4 w-7 rounded-full bg-neutral-700 peer-checked:bg-emerald-500 transition-colors" />
-                        <div className="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-white transition-transform peer-checked:translate-x-3" />
-                      </label>
-                    </div>
-                    {!popCollapse && (
-                      <div className="flex items-center justify-between pt-2">
-                        <span className="text-[11px] font-semibold text-neutral-200">Wobble</span>
-                        <label className="relative inline-flex cursor-pointer items-center">
-                          <input
-                            type="checkbox"
-                            className="peer sr-only"
-                            checked={popWobble ?? false}
-                            onChange={(e) => timeline.setPopWobble?.(e.target.checked)}
-                          />
-                          <div className="peer h-4 w-7 rounded-full bg-neutral-700 peer-checked:bg-emerald-500 transition-colors" />
-                          <div className="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-white transition-transform peer-checked:translate-x-3" />
-                        </label>
-                      </div>
-                    )}
-                  </>
-                )}
-                {!selectedTemplate && (
-                  <p className="text-[11px] text-neutral-500">Select a template to adjust its controls.</p>
-                )}
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Timeline Tracks */}
+          <div className="flex-1 overflow-auto">
+            {layers.length === 0 && (
+              <div className="flex items-center justify-center h-full text-[12px] text-neutral-500">
+                Add a shape to populate the timeline.
               </div>
             )}
+            {layers.map((layer, idx) => {
+              const clips = templateClips.filter((c) => c.layerId === layer.id).sort((a, b) => a.start - b.start)
+              return (
+                <div key={layer.id} className="flex h-12 border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                  {/* Layer Name */}
+                  <div className="w-[200px] border-r border-white/5 flex items-center px-4">
+                    <span className="text-[11px] font-medium text-neutral-200 truncate">
+                      {layer.shapeKind === 'circle' ? 'Circle' : 'Layer'} {idx + 1}
+                    </span>
+                  </div>
+                  {/* Timeline Bar */}
+                  <div
+                    className="flex-1 relative cursor-col-resize"
+                    onPointerDown={handleScrubStart}
+                  >
+                    {clips.map((clip) => {
+                      const left = (clip.start / safeDuration) * 100
+                      const width = Math.max(2, (clip.duration / safeDuration) * 100)
+                      return (
+                        <div
+                          key={clip.id}
+                          className="absolute top-1/2 -translate-y-1/2 h-8 rounded-md bg-gradient-to-r from-purple-500/40 to-purple-600/40 border border-purple-500/50 px-2 text-[10px] text-white flex items-center gap-1 shadow-lg"
+                          style={{ left: `${left}%`, width: `${width}%` }}
+                        >
+                          <span className="font-semibold capitalize truncate">{clip.template}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
           </div>
-          {layers.map((layer, idx) => {
-            const track = tracks.find((t) => t.layerId === layer.id)
-            const hasPath = (track?.paths?.length ?? 0) > 0
-            const keyframeCount =
-              (track?.position?.length ?? 0) +
-              (track?.scale?.length ?? 0) +
-              (track?.rotation?.length ?? 0) +
-              (track?.opacity?.length ?? 0)
-            return (
-              <div key={layer.id} className="flex items-center gap-3 group">
-                <div className="w-28 text-[11px] font-medium text-neutral-400 group-hover:text-neutral-200 transition-colors truncate">
-                  {layer.shapeKind === 'circle' ? 'Circle' : 'Layer'} {idx + 1}
-                </div>
-                <div className="h-7 flex-1 rounded-md bg-white/[0.02] border border-white/5 relative overflow-hidden group-hover:bg-white/[0.04] transition-colors">
-                  {hasPath && (
-                    <div className="absolute left-1 top-1 right-1 h-2 rounded-sm bg-emerald-500/20 border border-emerald-500/30 shadow-[0_0_10px_rgba(52,211,153,0.15)]" />
-                  )}
-                  {keyframeCount > 1 && (
-                    <div className="absolute left-0 top-0 bottom-0 flex items-center gap-1 px-2 text-[10px] text-neutral-500">
-                      <span className="inline-block h-1 w-1 rounded-full bg-white/60" />
-                      <span>{keyframeCount} keys</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-          {layers.length === 0 && (
-            <div className="text-[12px] text-neutral-500">Add a shape to populate the timeline.</div>
-          )}
         </div>
       </div>
     </div>

@@ -115,9 +115,15 @@ function DashboardContent() {
     const isSameTemplate = previousTemplate?.template === selectedTemplate
 
     const trackEnd = getTrackEndTime(targetTrack)
-    const startAt = isSameTemplate && typeof previousTemplate?.startAt === 'number' ? previousTemplate.startAt : trackEnd
+    
+    // If it's the same template, reuse the previous startAt time to replay it
+    // If it's a different template, always append after the current track end
+    const startAt = isSameTemplate && typeof previousTemplate?.startAt === 'number' 
+      ? previousTemplate.startAt 
+      : trackEnd
+    
+    // Only append if we have existing animations AND it's a different template
     const shouldAppend = !isSameTemplate && hasExistingKeys
-    const targetDuration = shouldAppend && trackEnd > 0 ? trackEnd : undefined
 
     timeline.applyPresetToLayer(
       targetLayerId,
@@ -125,7 +131,11 @@ function DashboardContent() {
       {
         position: targetLayer ? { x: targetLayer.x, y: targetLayer.y } : undefined,
       },
-      { append: shouldAppend, startAt: isSameTemplate ? startAt : shouldAppend ? startAt : 0, targetDuration }
+      { 
+        append: shouldAppend, 
+        startAt: startAt,
+        // Don't set targetDuration - let the preset use its natural duration
+      }
     )
     lastTemplateMeta.current[targetLayerId] = { template: selectedTemplate as TemplateId, startAt }
     timeline.setCurrentTime(startAt)
@@ -287,6 +297,20 @@ function DashboardContent() {
       pathPointCount={pathPoints.length}
       background={background}
       onBackgroundChange={setBackground}
+      templateSpeed={templateSpeed}
+      rollDistance={rollDistance}
+      jumpHeight={jumpHeight}
+      jumpVelocity={jumpVelocity}
+      popScale={popScale}
+      popSpeed={popSpeed}
+      popCollapse={popCollapse}
+      onTemplateSpeedChange={timeline.setTemplateSpeed}
+      onRollDistanceChange={timeline.setRollDistance}
+      onJumpHeightChange={timeline.setJumpHeight}
+      onJumpVelocityChange={timeline.setJumpVelocity}
+      onPopScaleChange={timeline.setPopScale}
+      onPopSpeedChange={timeline.setPopSpeed}
+      onPopCollapseChange={timeline.setPopCollapse}
     >
       <MotionCanvas 
         template={selectedTemplate} 
