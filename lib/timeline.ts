@@ -132,7 +132,8 @@ export const sampleVec2Track = (
   return interpolateVec2(prev.value, next.value, eased)
 }
 
-const samplePathPoint = (points: Vec2[], t: number): Vec2 => {
+const samplePathPoint = (rawPoints: Vec2[], t: number): Vec2 => {
+  const points = rawPoints.filter((p) => p && typeof p.x === 'number' && typeof p.y === 'number')
   if (points.length === 0) return { x: 0, y: 0 }
   if (points.length === 1) return points[0]
   const distances: number[] = [0]

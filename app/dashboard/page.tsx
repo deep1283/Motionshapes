@@ -106,34 +106,30 @@ function DashboardContent() {
     if (!targetLayerId) return
     const targetLayer = layers.find((l) => l.id === targetLayerId)
     const targetTrack = tracks.find((t) => t.layerId === targetLayerId)
-    const hasExistingKeys =
-      !!targetTrack &&
-      [
-        targetTrack.position?.length ?? 0,
-        targetTrack.scale?.length ?? 0,
-        targetTrack.rotation?.length ?? 0,
-        targetTrack.opacity?.length ?? 0,
-      ].some((len) => len > 1)
+
 
     const previousTemplate = lastTemplateMeta.current[targetLayerId]
     const isSameTemplate = previousTemplate?.template === selectedTemplate
 
     const trackEnd = getTrackEndTime(targetTrack)
     
-    // If it's the same template, reuse the previous startAt time to replay it
-    // If it's a different template, always append after the current track end
-    const startAt = isSameTemplate && typeof previousTemplate?.startAt === 'number' 
-      ? previousTemplate.startAt 
+    let startAt = isSameTemplate && typeof previousTemplate?.startAt === 'number'
+      ? previousTemplate.startAt
       : trackEnd
     
-    // Only append if we have existing animations AND it's a different template
+    // Snap to 0 if very close to start, to avoid accidental micro-delays
+    if (startAt < 25) startAt = 0
+
+    const hasExistingKeys = trackEnd > 0
     const shouldAppend = !isSameTemplate && hasExistingKeys
 
     timeline.applyPresetToLayer(
       targetLayerId,
       selectedTemplate as TemplateId,
       {
-        position: targetLayer ? { x: targetLayer.x, y: targetLayer.y } : undefined,
+        // When appending, don't use the current layer position as base, 
+        // let the timeline sample the end of the previous animation instead.
+        position: shouldAppend ? undefined : (targetLayer ? { x: targetLayer.x, y: targetLayer.y } : undefined),
       },
       { 
         append: shouldAppend, 
@@ -141,14 +137,19 @@ function DashboardContent() {
         // Don't set targetDuration - let the preset use its natural duration
       }
     )
+    // Only jump to start if we are switching templates or applying for the first time
+    if (!isSameTemplate) {
+      timeline.setCurrentTime(startAt)
+    }
     lastTemplateMeta.current[targetLayerId] = { template: selectedTemplate as TemplateId, startAt }
-    timeline.setCurrentTime(startAt)
-    timeline.setPlaying(true)
+    // Don't auto-play so user can adjust controls first
+    // timeline.setPlaying(true)
   }, [
     selectedTemplate,
     selectedLayerId,
     layers,
     timeline,
+    // Add dependencies for live updates
     templateSpeed,
     rollDistance,
     jumpHeight,
