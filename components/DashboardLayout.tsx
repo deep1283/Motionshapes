@@ -80,6 +80,8 @@ export default function DashboardLayout({
   onPopScaleChange,
   onPopSpeedChange,
   onPopCollapseChange,
+  selectedLayerScale = 1,
+  onSelectedLayerScaleChange,
 }: DashboardLayoutProps) {
   const router = useRouter()
   const supabase = createClient()
@@ -432,14 +434,15 @@ export default function DashboardLayout({
             <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3 shadow-inner">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[11px] font-semibold text-neutral-200">Size</span>
-                <span className="text-[10px] text-neutral-400">Scale: 1.00</span>
+                <span className="text-[10px] text-neutral-400">Scale: {selectedLayerScale.toFixed(2)}</span>
               </div>
               <input
                 type="range"
                 min={0.2}
                 max={3}
                 step={0.01}
-                defaultValue={1}
+                value={selectedLayerScale}
+                onChange={(e) => onSelectedLayerScaleChange?.(Number(e.target.value))}
                 className="w-full accent-emerald-500"
               />
             </div>

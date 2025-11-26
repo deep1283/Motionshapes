@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase'
 import DashboardLayout, { BackgroundSettings } from '@/components/DashboardLayout'
 import dynamic from 'next/dynamic'
 import { TimelineProvider, useTimeline, useTimelineActions } from '@/lib/timeline-store'
+import { sampleTimeline } from '@/lib/timeline'
 import { TemplateId } from '@/lib/presets'
 
 // Dynamically import MotionCanvas to avoid SSR issues with Pixi.js
@@ -65,6 +66,9 @@ function DashboardContent() {
   const popWobble = useTimeline((s) => s.popWobble)
   const popCollapse = useTimeline((s) => s.popCollapse)
   const tracks = useTimeline((s) => s.tracks)
+  const selectedSample = useTimeline((s) => 
+    selectedLayerId ? sampleTimeline(s.tracks, s.currentTime)[selectedLayerId] : undefined
+  )
   const lastTemplateMeta = useRef<Record<string, { template: TemplateId; startAt: number }>>({})
 
   const getTrackEndTime = (track: (typeof tracks)[number] | undefined) => {
@@ -282,6 +286,12 @@ function DashboardContent() {
     setPathVersion((v) => v + 1)
   }
 
+  const handleScaleChange = (value: number) => {
+    if (!selectedLayerId) return
+    timeline.ensureTrack(selectedLayerId)
+    timeline.setScaleKeyframe(selectedLayerId, { time: playhead, value })
+  }
+
   return (
     <DashboardLayout
       selectedTemplate={selectedTemplate}
@@ -311,6 +321,8 @@ function DashboardContent() {
       onPopScaleChange={timeline.setPopScale}
       onPopSpeedChange={timeline.setPopSpeed}
       onPopCollapseChange={timeline.setPopCollapse}
+      selectedLayerScale={selectedSample?.scale}
+      onSelectedLayerScaleChange={handleScaleChange}
     >
       <MotionCanvas 
         template={selectedTemplate} 
