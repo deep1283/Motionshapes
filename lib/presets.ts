@@ -10,16 +10,33 @@ export interface PresetResult {
   duration: number
   meta?: {
     rollDistance?: number // normalized/pixel offset for roll
+    jumpHeight?: number
+    popScale?: number
+    wobble?: boolean
+    collapse?: boolean
   }
 }
 
-const BASE_ROLL_DISTANCE = 0.2
-const BASE_ROLL_DURATION = 1200
+export const ROLL_BASE_DISTANCE = 0.2
+export const ROLL_BASE_DURATION = 1200
+export const ROLL_BASE_SPEED = 1.0
+// Fix: define BASE_ROLL_DISTANCE as alias or use ROLL_BASE_DISTANCE directly
+const BASE_ROLL_DISTANCE = ROLL_BASE_DISTANCE
 
-const rollPreset = (distance: number = BASE_ROLL_DISTANCE): PresetResult => {
+// duration = distance / speed (conceptually)
+// We scale based on the ratio: (distance / baseDistance) / speed
+export const rollDurationForDistance = (distance: number = ROLL_BASE_DISTANCE, speed: number = ROLL_BASE_SPEED) =>
+  Math.max(300, ((Math.max(0.05, distance) / ROLL_BASE_DISTANCE) / Math.max(0.1, speed)) * ROLL_BASE_DURATION)
+
+// Inverse: distance = (duration * speed) / baseDuration * baseDistance
+export const rollDistanceForDuration = (duration: number = ROLL_BASE_DURATION, speed: number = ROLL_BASE_SPEED) =>
+  Math.max(0.05, ((Math.max(300, duration) / ROLL_BASE_DURATION) * Math.max(0.1, speed)) * ROLL_BASE_DISTANCE)
+
+const rollPreset = (distance: number = BASE_ROLL_DISTANCE, speed: number = ROLL_BASE_SPEED): PresetResult => {
   const clampedDistance = Math.max(0.05, distance)
-  // distance = speed * time with speed set by baseDistance/baseDuration; duration scales with distance
-  const duration = Math.max(300, (clampedDistance / BASE_ROLL_DISTANCE) * BASE_ROLL_DURATION)
+  const clampedSpeed = Math.max(0.1, speed)
+  // duration = distance / speed (scaled by base values)
+  const duration = rollDurationForDistance(clampedDistance, clampedSpeed)
   return {
     duration,
     position: [
@@ -36,7 +53,20 @@ const rollPreset = (distance: number = BASE_ROLL_DISTANCE): PresetResult => {
   }
 }
 
-const GRAVITY = 9.8 // normalized units per second^2
+export const GRAVITY = 9.8 // normalized units per second^2
+
+// Inverse of jumpPreset duration calculation
+// Given duration and velocity, calculate height
+// duration = timeUp * 2 * 1000, so timeUp = duration / 2000
+// From physics: h = v0*t - 0.5*g*t^2 where t = timeUp
+// We use the provided velocity to calculate the height that would produce this duration
+export const jumpHeightForDuration = (duration: number, velocity: number = 1.5) => {
+  const timeUpSec = Math.max(0.15, duration / 2000) // Ensure min duration
+  const clampedVelocity = Math.max(0.2, velocity)
+  // h = v0*t - 0.5*g*t^2
+  const height = clampedVelocity * timeUpSec - 0.5 * GRAVITY * timeUpSec * timeUpSec
+  return Math.max(0.05, height)
+}
 
 const jumpPreset = (height: number = 0.25, initialVelocity: number = 1.5): PresetResult => {
   const clampedHeight = Math.max(0.05, height)
@@ -68,6 +98,11 @@ const jumpPreset = (height: number = 0.25, initialVelocity: number = 1.5): Prese
   }
 }
 
+// For Pop: duration = 1000 / speed, so speed = 1000 / duration
+export const popSpeedForDuration = (duration: number) => {
+  return Math.max(0.2, 1000 / Math.max(100, duration))
+}
+
 const popPreset = (peakScale: number = 1.6, wobble: boolean = false, speed: number = 1, collapse: boolean = true): PresetResult => {
   const duration = 1000 / Math.max(0.2, speed) // higher speed -> shorter time to peak/burst
   const burstStart = duration * 0.52
@@ -77,16 +112,16 @@ const popPreset = (peakScale: number = 1.6, wobble: boolean = false, speed: numb
     duration,
     scale: [
       { time: 0, value: 1 },
-      { time: duration * 0.5, value: peakScale, easing: 'easeOutQuad' },
+      { time: duration * 0.5, value: peakScale, easing: 'easeOutQuad' as any },
       ...(collapse
         ? [
-            { time: burstStart, value: wobble ? wobbleScale : peakScale, easing: wobble ? 'easeOutBack' : 'easeOutQuad' },
-            { time: burstEnd, value: 0, easing: 'easeInQuad' },
+            { time: burstStart, value: wobble ? wobbleScale : peakScale, easing: (wobble ? 'easeOutBack' : 'easeOutQuad') as any },
+            { time: burstEnd, value: 0, easing: 'easeInQuad' as any },
           ]
         : [
-            { time: burstStart, value: wobble ? wobbleScale : peakScale, easing: wobble ? 'easeOutBack' : 'easeOutQuad' },
+            { time: burstStart, value: wobble ? wobbleScale : peakScale, easing: (wobble ? 'easeOutBack' : 'easeOutQuad') as any },
             // hold scale at peak; only opacity will drop
-            { time: burstEnd, value: peakScale, easing: 'linear' },
+            { time: burstEnd, value: peakScale, easing: 'linear' as any },
           ]),
     ],
     opacity: [
@@ -94,11 +129,11 @@ const popPreset = (peakScale: number = 1.6, wobble: boolean = false, speed: numb
       ...(collapse
         ? [
             { time: burstStart, value: 1 },
-            { time: burstEnd, value: 0, easing: 'easeInQuad' },
+            { time: burstEnd, value: 0, easing: 'easeInQuad' as any },
           ]
         : [
             { time: burstStart, value: 1 },
-            { time: burstEnd, value: 0, easing: 'easeInQuad' },
+            { time: burstEnd, value: 0, easing: 'easeInQuad' as any },
           ]),
     ],
     meta: { popScale: peakScale, wobble, collapse },

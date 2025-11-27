@@ -7,7 +7,7 @@ import DashboardLayout, { BackgroundSettings } from '@/components/DashboardLayou
 import dynamic from 'next/dynamic'
 import { TimelineProvider, useTimeline, useTimelineActions } from '@/lib/timeline-store'
 import { sampleTimeline } from '@/lib/timeline'
-import { TemplateId } from '@/lib/presets'
+import { TemplateId, rollDurationForDistance, jumpHeightForDuration } from '@/lib/presets'
 
 // Dynamically import MotionCanvas to avoid SSR issues with Pixi.js
 const MotionCanvas = dynamic(() => import('@/components/MotionCanvas'), { 
@@ -174,6 +174,35 @@ function DashboardContent() {
         startPosition = targetLayer.x
       }
       
+      // Check if we can skip applying the preset (if the clip is already in sync).
+      // This prevents conflict when resizing via TimelinePanel, which updates both duration and rollDistance/jumpHeight.
+      if (lastClipForTemplate && typeof lastClipForTemplate.duration === 'number') {
+         if (lastClipForTemplate.template === 'roll') {
+            const expectedDuration = rollDurationForDistance(rollDistance, templateSpeed)
+            // Allow small epsilon (10ms) for floating point differences
+            if (Math.abs(lastClipForTemplate.duration - expectedDuration) < 10) {
+              return
+            }
+         } else if (lastClipForTemplate.template === 'jump') {
+            // We need to check if the current duration matches the jumpHeight
+            // Since jumpHeightForDuration is approximate, we check if the calculated height from duration
+            // matches the current jumpHeight state.
+            const calculatedHeight = jumpHeightForDuration(lastClipForTemplate.duration, jumpVelocity)
+            // Allow small epsilon (0.01) for height differences
+            if (Math.abs(calculatedHeight - jumpHeight) < 0.01) {
+              return
+            }
+         } else if (lastClipForTemplate.template === 'pop') {
+            // Check if the current duration matches the popSpeed
+            // duration = 1000 / speed, so we calculate expected duration
+            const expectedDuration = 1000 / Math.max(0.2, popSpeed)
+            // Allow small epsilon (10ms) for floating point differences
+            if (Math.abs(lastClipForTemplate.duration - expectedDuration) < 10) {
+              return
+            }
+         }
+       }
+      
       const maxDistanceRight = 1.0 - startPosition // Distance to right edge from actual start position
       const currentRollDistance = rollDistance
       
@@ -214,6 +243,7 @@ function DashboardContent() {
     // Include template-specific controls only when that template is selected
     // This allows updating the animation when controls change
     selectedTemplate === 'roll' ? rollDistance : null,
+    selectedTemplate === 'roll' ? templateSpeed : null,
     selectedTemplate === 'jump' ? jumpHeight : null,
     selectedTemplate === 'jump' ? jumpVelocity : null,
     selectedTemplate === 'pop' ? popScale : null,

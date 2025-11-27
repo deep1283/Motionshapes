@@ -61,6 +61,24 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
   const timelineAreaRef = useRef<HTMLDivElement>(null)
   const [isScrubbing, setIsScrubbing] = useState(false)
   const [scrubTarget, setScrubTarget] = useState<boolean>(false)
+  const [isResizingClip, setIsResizingClip] = useState(false)
+  const [isMovingClip, setIsMovingClip] = useState(false)
+  const resizeStateRef = useRef<{
+    clipId: string
+    layerId: string
+    edge: 'left' | 'right'
+    startX: number
+    baseStart: number
+    baseDuration: number
+  } | null>(null)
+  const moveStateRef = useRef<{
+    clipId: string
+    layerId: string
+    startX: number
+    baseStart: number
+    duration: number
+  } | null>(null)
+  const MIN_CLIP_DURATION = 80 // ms
 
   const applyScrub = (clientX: number) => {
     const rect = timelineAreaRef.current?.getBoundingClientRect()
@@ -70,6 +88,7 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
   }
 
   const handleScrubStart = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isResizingClip || isMovingClip) return
     setIsScrubbing(true)
     setScrubTarget(true)
     applyScrub(e.clientX)
@@ -86,6 +105,106 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
       window.removeEventListener('pointerup', up)
     }
   }, [isScrubbing, scrubTarget])
+
+  const startResize = (e: React.PointerEvent, clip: { id: string; layerId: string; start: number; duration: number }, edge: 'left' | 'right') => {
+    e.stopPropagation()
+    const rect = timelineAreaRef.current?.getBoundingClientRect()
+    if (!rect) return
+    resizeStateRef.current = {
+      clipId: clip.id,
+      layerId: clip.layerId,
+      edge,
+      startX: e.clientX,
+      baseStart: clip.start,
+      baseDuration: clip.duration,
+    }
+    setIsResizingClip(true)
+    setScrubTarget(false)
+    setIsScrubbing(false)
+  }
+
+  const startMove = (e: React.PointerEvent, clip: { id: string; layerId: string; start: number; duration: number }) => {
+    e.stopPropagation()
+    const rect = timelineAreaRef.current?.getBoundingClientRect()
+    if (!rect) return
+    moveStateRef.current = {
+      clipId: clip.id,
+      layerId: clip.layerId,
+      startX: e.clientX,
+      baseStart: clip.start,
+      duration: clip.duration,
+    }
+    setIsMovingClip(true)
+    setScrubTarget(false)
+    setIsScrubbing(false)
+  }
+
+  useEffect(() => {
+    if (!isResizingClip) return
+    const handleMove = (ev: PointerEvent) => {
+      const state = resizeStateRef.current
+      const rect = timelineAreaRef.current?.getBoundingClientRect()
+      if (!state || !rect) return
+
+      const pxPerMs = rect.width / safeDuration
+      const deltaMs = (ev.clientX - state.startX) / pxPerMs
+
+      let nextStart = state.baseStart
+      let nextDuration = state.baseDuration
+
+      if (state.edge === 'left') {
+        nextStart = Math.max(0, state.baseStart + deltaMs)
+        const maxStart = state.baseStart + state.baseDuration - MIN_CLIP_DURATION
+        nextStart = Math.min(nextStart, maxStart)
+        nextDuration = Math.max(MIN_CLIP_DURATION, state.baseDuration - (nextStart - state.baseStart))
+      } else {
+        nextDuration = Math.max(MIN_CLIP_DURATION, state.baseDuration + deltaMs)
+      }
+
+      timeline.updateTemplateClip(state.layerId, state.clipId, {
+        start: Math.round(nextStart),
+        duration: Math.round(nextDuration),
+      })
+    }
+
+    const handleUp = () => {
+      setIsResizingClip(false)
+      resizeStateRef.current = null
+    }
+
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', handleUp)
+    return () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleUp)
+    }
+  }, [isResizingClip, safeDuration, timeline])
+
+  useEffect(() => {
+    if (!isMovingClip) return
+    const handleMove = (ev: PointerEvent) => {
+      const state = moveStateRef.current
+      const rect = timelineAreaRef.current?.getBoundingClientRect()
+      if (!state || !rect) return
+      const pxPerMs = rect.width / safeDuration
+      const deltaMs = (ev.clientX - state.startX) / pxPerMs
+      const nextStart = Math.max(0, Math.round(state.baseStart + deltaMs))
+      timeline.updateTemplateClip(state.layerId, state.clipId, {
+        start: nextStart,
+        duration: state.duration,
+      })
+    }
+    const handleUp = () => {
+      setIsMovingClip(false)
+      moveStateRef.current = null
+    }
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', handleUp)
+    return () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleUp)
+    }
+  }, [isMovingClip, safeDuration, timeline])
 
   return (
     <div className="h-64 border-t border-white/5 bg-[#0a0a0a] z-40 flex flex-col">
@@ -176,10 +295,15 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
                       return (
                         <div
                           key={clip.id}
-                          className="absolute top-1/2 -translate-y-1/2 h-8 rounded-md bg-gradient-to-r from-purple-500/40 to-purple-600/40 border border-purple-500/50 px-2 text-[10px] text-white flex items-center gap-1 shadow-lg"
+                          className="absolute top-1/2 -translate-y-1/2 h-8 rounded-md bg-gradient-to-r from-purple-500/40 to-purple-600/40 border border-purple-500/50 px-2 text-[10px] text-white flex items-center gap-1 shadow-lg overflow-hidden"
                           style={{ left: `${left}%`, width: `${width}%` }}
+                          onPointerDown={(e) => startMove(e, clip)}
                         >
                           <span className="font-semibold capitalize truncate">{clip.template}</span>
+                          <div
+                            className="absolute right-0 top-0 h-full w-3 cursor-col-resize bg-white/15 z-10"
+                            onPointerDown={(e) => startResize(e, clip, 'right')}
+                          />
                         </div>
                       )
                     })}

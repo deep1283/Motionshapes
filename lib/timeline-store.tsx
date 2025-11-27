@@ -13,7 +13,7 @@ import {
   sampleLayerTracks,
   upsertKeyframe,
 } from '@/lib/timeline'
-import { PRESET_BUILDERS, TemplateId } from '@/lib/presets'
+import { PRESET_BUILDERS, TemplateId, rollDistanceForDuration, jumpHeightForDuration, popSpeedForDuration } from '@/lib/presets'
 
 type TimelineState = {
   tracks: LayerTracks[]
@@ -226,6 +226,178 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     })
   }
 
+  const updateTemplateClip = (
+    layerId: string,
+    clipId: string,
+    updates: Partial<Pick<TimelineState['templateClips'][number], 'start' | 'duration'>>
+  ) => {
+    setState((prev) => {
+      const clips = prev.templateClips.map((clip) =>
+        clip.id === clipId && clip.layerId === layerId ? { ...clip, ...updates } : clip
+      )
+
+      // If this layer only has one template clip, trim its track to the new end
+      const layerClips = clips.filter((c) => c.layerId === layerId)
+      const singleClip = layerClips.length === 1 ? layerClips[0] : null
+      const rollClip = layerClips.find((c) => c.id === clipId && c.template === 'roll')
+      const jumpClip = layerClips.find((c) => c.id === clipId && c.template === 'jump')
+      const oldClip = prev.templateClips.find((c) => c.id === clipId)
+      
+      // Calculate new roll distance if this is a roll clip
+      const nextRollDistance =
+        rollClip && typeof rollClip.duration === 'number'
+          ? rollDistanceForDuration(rollClip.duration, prev.templateSpeed)
+          : prev.rollDistance
+
+      // Calculate new jump height if this is a jump clip
+      const nextJumpHeight =
+        jumpClip && typeof jumpClip.duration === 'number'
+          ? jumpHeightForDuration(jumpClip.duration, prev.jumpVelocity)
+          : prev.jumpHeight
+
+      // Find pop clip
+      const popClip = layerClips.find((c) => c.id === clipId && c.template === 'pop')
+      
+      // Calculate new pop speed if this is a pop clip
+      const nextPopSpeed =
+        popClip && typeof popClip.duration === 'number'
+          ? popSpeedForDuration(popClip.duration)
+          : prev.popSpeed
+
+      const adjustedTracks = prev.tracks.map((track) => {
+        if (track.layerId !== layerId) return track
+        
+        // If we're updating a Roll, Jump, or Pop clip, we need to regenerate its keyframes
+        // to match the new duration/distance/height/speed
+        if (oldClip && (rollClip || jumpClip || popClip) && (rollClip?.id === clipId || jumpClip?.id === clipId || popClip?.id === clipId)) {
+          const targetClip = rollClip || jumpClip || popClip
+          if (!targetClip) return track // Should not happen given check above
+
+          const newDuration = targetClip.duration ?? 0
+          const newStart = targetClip.start ?? 0
+          const oldStart = oldClip.start ?? 0
+          
+          // Generate new preset with updated parameters
+          let preset
+          if (rollClip) {
+             preset = PRESET_BUILDERS.roll(nextRollDistance, prev.templateSpeed)
+          } else if (jumpClip) {
+             // Use current velocity state or default, as we only sync height with duration
+             preset = PRESET_BUILDERS.jump(nextJumpHeight, prev.jumpVelocity)
+          } else if (popClip) {
+             // Use current scale, wobble, collapse settings with new speed from duration
+             preset = PRESET_BUILDERS.pop(prev.popScale, prev.popWobble, nextPopSpeed, prev.popCollapse)
+          }
+          
+          if (!preset) return track
+
+          // Sample the track at the start time to get the base state
+          // This ensures we preserve the shape's position/rotation when regenerating
+          const baseState = sampleLayerTracks(track, newStart, DEFAULT_LAYER_STATE)
+          
+          // Helper to shift and merge keyframes
+          const mergeKeyframes = <T,>(
+            existing: TimelineKeyframe<T>[] | undefined,
+            newFrames: TimelineKeyframe<T>[] | undefined,
+            defaultValue: T,
+            baseValue?: T,
+            mode: 'add' | 'multiply' | 'replace' = 'replace'
+          ) => {
+            if (!newFrames) return existing ?? []
+            
+            // For single clip, we want to replace the animation.
+            // We keep keyframes before the OLD start time (static history).
+            // If oldStart was 0, we keep nothing.
+            let kept = (existing ?? []).filter(f => f.time < oldStart)
+            
+            // If we have no frames left (e.g. oldStart was 0), we must ensure a static start frame
+            // so the shape doesn't disappear before the new start.
+            if (kept.length === 0 && newStart > 0) {
+              kept = [{ time: 0, value: defaultValue }]
+            }
+            
+            // Offset the new frames by the base value
+            const shiftedNew = newFrames.map(f => {
+              let value = f.value
+              if (baseValue !== undefined) {
+                if (mode === 'add') {
+                    if (typeof f.value === 'object' && f.value !== null && 'x' in f.value) {
+                        // Vec2 addition
+                        const v = f.value as unknown as Vec2
+                        const b = baseValue as unknown as Vec2
+                        value = { x: v.x + b.x, y: v.y + b.y } as unknown as T
+                    } else if (typeof f.value === 'number' && typeof baseValue === 'number') {
+                        // Scalar addition
+                        value = (f.value as number + baseValue) as unknown as T
+                    }
+                } else if (mode === 'multiply') {
+                    if (typeof f.value === 'number' && typeof baseValue === 'number') {
+                        // Scalar multiplication (for scale/opacity)
+                        value = (f.value as number * baseValue) as unknown as T
+                    }
+                }
+              }
+              return { ...f, time: f.time + newStart, value }
+            })
+            
+            return [...kept, ...shiftedNew].sort((a, b) => a.time - b.time)
+          }
+
+          return {
+            ...track,
+            position: mergeKeyframes(track.position, preset.position, DEFAULT_LAYER_STATE.position, baseState.position, 'add'),
+            scale: mergeKeyframes(track.scale, preset.scale, DEFAULT_LAYER_STATE.scale, baseState.scale, 'multiply'),
+            rotation: mergeKeyframes(track.rotation, preset.rotation, DEFAULT_LAYER_STATE.rotation, baseState.rotation, 'add'),
+            opacity: mergeKeyframes(track.opacity, preset.opacity, DEFAULT_LAYER_STATE.opacity, baseState.opacity, 'multiply'),
+          }
+        }
+
+        // Fallback for non-roll clips or if we couldn't regenerate:
+        // (Original trimming logic)
+        if (!singleClip) return track
+        const clipEnd = (singleClip.start ?? 0) + (singleClip.duration ?? 0)
+        const sampled = sampleLayerTracks(track, clipEnd, DEFAULT_LAYER_STATE)
+        const trimFrames = <T,>(frames: TimelineKeyframe<T>[] | undefined, hold: T) => {
+          const kept = (frames ?? []).filter((f) => f.time <= clipEnd)
+          const hasEnd = kept.some((f) => f.time === clipEnd)
+          return hasEnd ? kept : [...kept, { time: clipEnd, value: hold }]
+        }
+        return {
+          ...track,
+          position: trimFrames(track.position, sampled.position),
+          scale: trimFrames(track.scale, sampled.scale),
+          rotation: trimFrames(track.rotation, sampled.rotation),
+          opacity: trimFrames(track.opacity, sampled.opacity),
+        }
+      })
+
+      const getTrackEnd = (track: LayerTracks) => {
+        const times: number[] = []
+        if (track.position?.length) times.push(track.position[track.position.length - 1].time)
+        if (track.scale?.length) times.push(track.scale[track.scale.length - 1].time)
+        if (track.rotation?.length) times.push(track.rotation[track.rotation.length - 1].time)
+        if (track.opacity?.length) times.push(track.opacity[track.opacity.length - 1].time)
+        return times.length ? Math.max(...times) : 0
+      }
+
+      const tracksEnd = adjustedTracks.reduce((max, t) => Math.max(max, getTrackEnd(t)), 0)
+      const clipsEnd = clips.reduce((max, c) => Math.max(max, (c.start ?? 0) + (c.duration ?? 0)), 0)
+      const pathsEnd = getMaxPathEnd(adjustedTracks)
+      const newDuration = Math.max(tracksEnd, clipsEnd, pathsEnd, 4000)
+
+      return {
+        ...prev,
+        templateClips: clips,
+        tracks: adjustedTracks,
+        duration: newDuration,
+        currentTime: clampTime(prev.currentTime, newDuration),
+        rollDistance: nextRollDistance,
+        jumpHeight: nextJumpHeight,
+        popSpeed: nextPopSpeed,
+      }
+    })
+  }
+
   const replaceTracks = (tracks: LayerTracks[]) => {
     setState((prev) => ({
       ...prev,
@@ -254,7 +426,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
   ) => {
     const preset =
       template === 'roll'
-        ? PRESET_BUILDERS.roll(options?.parameters?.rollDistance ?? state.rollDistance)
+        ? PRESET_BUILDERS.roll(options?.parameters?.rollDistance ?? state.rollDistance, state.templateSpeed)
         : template === 'jump'
           ? PRESET_BUILDERS.jump(
               options?.parameters?.jumpHeight ?? state.jumpHeight, 
@@ -443,7 +615,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       ]
       const clipsEnd = nextClips.reduce((max, c) => Math.max(max, c.start + c.duration), 0)
 
-      const newDuration = Math.max(contentEnd, pathsEnd, appliedStartOffset + segmentDuration, clipsEnd, 1)
+      const newDuration = Math.max(contentEnd, pathsEnd, appliedStartOffset + segmentDuration, clipsEnd, 4000)
 
       return {
         ...prev,
@@ -563,11 +735,27 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       let nextTime = prev.currentTime + deltaMs
       let playing: boolean = prev.isPlaying
 
-      if (nextTime >= prev.duration) {
-        if (prev.loop && prev.duration > 0) {
-          nextTime = nextTime % prev.duration
+      // Calculate actual content duration to loop/stop correctly
+      // We want to loop at the end of the clips, not the full timeline view duration (which is min 4000ms)
+      const tracksEnd = prev.tracks.reduce((max, t) => {
+        const times: number[] = []
+        if (t.position?.length) times.push(t.position[t.position.length - 1].time)
+        if (t.scale?.length) times.push(t.scale[t.scale.length - 1].time)
+        if (t.rotation?.length) times.push(t.rotation[t.rotation.length - 1].time)
+        if (t.opacity?.length) times.push(t.opacity[t.opacity.length - 1].time)
+        return Math.max(max, times.length ? Math.max(...times) : 0)
+      }, 0)
+      const clipsEnd = prev.templateClips.reduce((max, c) => Math.max(max, (c.start ?? 0) + (c.duration ?? 0)), 0)
+      const pathsEnd = getMaxPathEnd(prev.tracks)
+      
+      // Use a minimum of 100ms to avoid instant looping on empty timeline
+      const contentDuration = Math.max(100, tracksEnd, clipsEnd, pathsEnd)
+
+      if (nextTime >= contentDuration) {
+        if (prev.loop && contentDuration > 0) {
+          nextTime = nextTime % contentDuration
         } else {
-          nextTime = prev.duration
+          nextTime = contentDuration
           playing = false
         }
       }
@@ -636,6 +824,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     setPlaying,
     togglePlay,
     templateClips: state.templateClips,
+    updateTemplateClip,
     setPositionKeyframe: (layerId: string, frame: TimelineKeyframe<Vec2>) =>
       setKeyframe(layerId, 'position', frame),
     setScaleKeyframe: (layerId: string, frame: TimelineKeyframe<number>) =>
