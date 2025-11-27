@@ -112,16 +112,19 @@ function DashboardContent() {
     const targetLayer = layers.find((l) => l.id === targetLayerId)
     const targetTrack = tracks.find((t) => t.layerId === targetLayerId)
 
+    const clipsForLayer = templateClips
+      .filter(c => c.layerId === targetLayerId)
+      .sort((a, b) => b.start - a.start)
     // Find the most recent clip for the selected template on this layer
-    const existingClipsForTemplate = templateClips
-      .filter(c => c.layerId === targetLayerId && c.template === selectedTemplate)
+    const existingClipsForTemplate = clipsForLayer
+      .filter(c => c.template === selectedTemplate)
       .sort((a, b) => b.start - a.start) // Sort by start time, most recent first
     
     const lastClipForTemplate = existingClipsForTemplate[0]
     const isSameTemplate = !!lastClipForTemplate // If this template already has a clip, we're updating it
 
     const trackEnd = getTrackEndTime(targetTrack)
-    const hasTemplateClipsForLayer = templateClips.some(c => c.layerId === targetLayerId)
+    const hasTemplateClipsForLayer = clipsForLayer.length > 0
     
     // If the layer has no existing template clips, force start at 0.
     // This handles the case where the user might have moved the shape (creating a keyframe at currentTime)
@@ -133,8 +136,13 @@ function DashboardContent() {
         ? trackEnd
         : 0
 
-    // Snap to 0 if very close to start, to avoid accidental micro-delays
-    if (startAt < 25) startAt = 0
+    // If this layer has no other template clips (or only one), force a true zero start for the first clip
+    if (clipsForLayer.length <= 1 && startAt < 500) {
+      startAt = 0
+    }
+
+    // Snap to 0 if very close to start, to avoid accidental micro-delays (UI shows ~0.03s)
+    if (startAt <= 50) startAt = 0
     
     // CRITICAL FIX: When re-applying the same template (isSameTemplate=true, append=false),
     // add a tiny epsilon to startAt to prevent trimFrames from deleting the previous 
