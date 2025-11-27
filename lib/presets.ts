@@ -57,15 +57,27 @@ export const GRAVITY = 9.8 // normalized units per second^2
 
 // Inverse of jumpPreset duration calculation
 // Given duration and velocity, calculate height
-// duration = timeUp * 2 * 1000, so timeUp = duration / 2000
-// From physics: h = v0*t - 0.5*g*t^2 where t = timeUp
-// We use the provided velocity to calculate the height that would produce this duration
 export const jumpHeightForDuration = (duration: number, velocity: number = 1.5) => {
-  const timeUpSec = Math.max(0.15, duration / 2000) // Ensure min duration
+  const timeUpSec = Math.max(0.15, duration / 2000) // t = T/2
   const clampedVelocity = Math.max(0.2, velocity)
-  // h = v0*t - 0.5*g*t^2
-  const height = clampedVelocity * timeUpSec - 0.5 * GRAVITY * timeUpSec * timeUpSec
-  return Math.max(0.05, height)
+  
+  // Check if the velocity is sufficient for this duration
+  // Max duration for velocity v0 is T = 2*v0/g
+  const maxDurationForVelocity = (2 * clampedVelocity / GRAVITY) * 1000
+  
+  if (duration <= maxDurationForVelocity) {
+    // Regime 1: Velocity is sufficient. Calculate height on the trajectory.
+    // h = v0*t - 0.5*g*t^2
+    const height = clampedVelocity * timeUpSec - 0.5 * GRAVITY * timeUpSec * timeUpSec
+    return Math.max(0.05, height)
+  } else {
+    // Regime 2: Velocity is insufficient. We must scale up.
+    // We assume the optimal trajectory where v0 scales to match duration.
+    // h = 1/8 * g * T^2 (where T is duration in seconds)
+    const durationSec = duration / 1000
+    const height = 0.125 * GRAVITY * durationSec * durationSec
+    return Math.max(0.05, height)
+  }
 }
 
 const jumpPreset = (height: number = 0.25, initialVelocity: number = 1.5): PresetResult => {
@@ -77,7 +89,8 @@ const jumpPreset = (height: number = 0.25, initialVelocity: number = 1.5): Prese
   // time to reach specified height on the way up: h = v0*t - 0.5*g*t^2 -> t = (v0 - sqrt(v0^2 - 2gh)) / g
   const underRoot = Math.max(0, v0 * v0 - 2 * GRAVITY * clampedHeight)
   const timeUpSec = (v0 - Math.sqrt(underRoot)) / GRAVITY
-  const duration = Math.max(300, Math.min(2400, timeUpSec * 2 * 1000))
+  // Remove 2400ms clamp to allow longer jumps
+  const duration = Math.max(300, timeUpSec * 2 * 1000)
   return {
     duration,
     position: [
@@ -100,11 +113,13 @@ const jumpPreset = (height: number = 0.25, initialVelocity: number = 1.5): Prese
 
 // For Pop: duration = 1000 / speed, so speed = 1000 / duration
 export const popSpeedForDuration = (duration: number) => {
-  return Math.max(0.2, 1000 / Math.max(100, duration))
+  // Lower min speed to 0.05 to allow durations up to 20s
+  return Math.max(0.05, 1000 / Math.max(100, duration))
 }
 
 const popPreset = (peakScale: number = 1.6, wobble: boolean = false, speed: number = 1, collapse: boolean = true): PresetResult => {
-  const duration = 1000 / Math.max(0.2, speed) // higher speed -> shorter time to peak/burst
+  // Lower min speed to 0.05 to allow durations up to 20s
+  const duration = 1000 / Math.max(0.05, speed) // higher speed -> shorter time to peak/burst
   const burstStart = duration * 0.52
   const burstEnd = duration * 0.62
   const wobbleScale = wobble ? peakScale * 0.92 : peakScale * 0.9

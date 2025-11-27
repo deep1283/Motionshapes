@@ -249,6 +249,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           ? rollDistanceForDuration(rollClip.duration, prev.templateSpeed)
           : prev.rollDistance
 
+
+
       // Calculate new jump height if this is a jump clip
       const nextJumpHeight =
         jumpClip && typeof jumpClip.duration === 'number'
@@ -263,6 +265,15 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         popClip && typeof popClip.duration === 'number'
           ? popSpeedForDuration(popClip.duration)
           : prev.popSpeed
+
+      console.log('updateTemplateClip:', {
+        clipId,
+        duration: updates.duration,
+        isJump: !!jumpClip,
+        nextJumpHeight,
+        isPop: !!popClip,
+        nextPopSpeed
+      })
 
       const adjustedTracks = prev.tracks.map((track) => {
         if (track.layerId !== layerId) return track
@@ -598,13 +609,18 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       const contentEnd = tracks.reduce((max, t) => Math.max(max, getTrackEndTime(t)), 0)
       const pathsEnd = getMaxPathEnd(tracks)
       const segmentDuration = scaleTime(preset.duration ?? 0)
-      const clipId = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      // Check if we're replacing an existing clip (same layer, template, and start time)
+      // If so, preserve its ID to maintain references (e.g. for dragging)
+      const existingClip = prev.templateClips.find(
+        (c) => c.layerId === layerId && Math.abs(c.start - appliedStartOffset) < 1 && c.template === template
+      )
+
+      const clipId = existingClip ? existingClip.id : (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
         ? crypto.randomUUID()
         : `clip-${Date.now()}-${Math.random()}`)
+
       const nextClips = [
-        ...prev.templateClips.filter(
-          (c) => !(c.layerId === layerId && Math.abs(c.start - appliedStartOffset) < 1 && c.template === template)
-        ),
+        ...prev.templateClips.filter((c) => c.id !== clipId),
         {
           id: clipId,
           layerId,
