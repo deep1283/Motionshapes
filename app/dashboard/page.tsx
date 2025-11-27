@@ -66,10 +66,10 @@ function DashboardContent() {
   const popWobble = useTimeline((s) => s.popWobble)
   const popCollapse = useTimeline((s) => s.popCollapse)
   const tracks = useTimeline((s) => s.tracks)
+  const templateClips = useTimeline((s) => s.templateClips)
   const selectedSample = useTimeline((s) => 
     selectedLayerId ? sampleTimeline(s.tracks, s.currentTime)[selectedLayerId] : undefined
   )
-  const lastTemplateMeta = useRef<Record<string, { template: TemplateId; startAt: number }>>({})
 
   const getTrackEndTime = (track: (typeof tracks)[number] | undefined) => {
     if (!track) return 0
@@ -97,67 +97,119 @@ function DashboardContent() {
   }, [router])
 
   useEffect(() => {
+    
     if (!selectedTemplate) {
       timeline.setPlaying(false)
       return
     }
-    // ensure we have a target layer; fall back to the first layer if none selected
-    const targetLayerId = selectedLayerId || layers[0]?.id
-    if (!targetLayerId) return
+    // Don't apply template if no layer is selected
+    if (!selectedLayerId) {
+      timeline.setPlaying(false)
+      return
+    }
+    
+    const targetLayerId = selectedLayerId
     const targetLayer = layers.find((l) => l.id === targetLayerId)
     const targetTrack = tracks.find((t) => t.layerId === targetLayerId)
 
-
-    const previousTemplate = lastTemplateMeta.current[targetLayerId]
-    const isSameTemplate = previousTemplate?.template === selectedTemplate
+    // Find the most recent clip for the selected template on this layer
+    const existingClipsForTemplate = templateClips
+      .filter(c => c.layerId === targetLayerId && c.template === selectedTemplate)
+      .sort((a, b) => b.start - a.start) // Sort by start time, most recent first
+    
+    const lastClipForTemplate = existingClipsForTemplate[0]
+    const isSameTemplate = !!lastClipForTemplate // If this template already has a clip, we're updating it
 
     const trackEnd = getTrackEndTime(targetTrack)
+    const hasClips = templateClips.some(c => c.layerId === targetLayerId)
     
-    let startAt = isSameTemplate && typeof previousTemplate?.startAt === 'number'
-      ? previousTemplate.startAt
-      : trackEnd
-    
+    // If the layer has no existing template clips, force start at 0.
+    // This handles the case where the user might have moved the shape (creating a keyframe at currentTime)
+    // but wants the first animation to start from the beginning.
+    // If re-applying the same template, use its original start time
+    let startAt = isSameTemplate && lastClipForTemplate
+      ? lastClipForTemplate.start
+      : (hasClips ? trackEnd : 0)
+
     // Snap to 0 if very close to start, to avoid accidental micro-delays
     if (startAt < 25) startAt = 0
+    
+    // CRITICAL FIX: When re-applying the same template (isSameTemplate=true, append=false),
+    // add a tiny epsilon to startAt to prevent trimFrames from deleting the previous 
+    // animation's last keyframe. Without this, if Roll ends at 1200ms and Jump starts 
+    // at 1200ms, re-applying Jump would delete Roll's keyframe at 1200ms.
+    if (isSameTemplate && startAt > 0) {
+      startAt += 1 // Add 1ms epsilon
+    }
 
     const hasExistingKeys = trackEnd > 0
     const shouldAppend = !isSameTemplate && hasExistingKeys
+
+    // For Roll template, clamp the distance to prevent going off-screen
+    // This ensures the animation duration matches the visible motion
+    let clampedRollDistance: number | undefined = undefined
+    if (selectedTemplate === 'roll') {
+      // Determine the actual start position for the Roll animation
+      let startPosition = 0.5 // Default to middle if we can't determine
+      
+      // If there are existing clips OR we're appending, we MUST sample the track
+      // because targetLayer.x only reflects the initial layer position, not animated position
+      if (hasClips || (shouldAppend && targetTrack && startAt > 0)) {
+        const sampledState = timeline.getState().tracks.find(t => t.layerId === targetLayerId)
+        if (sampledState) {
+          const sampled = sampleTimeline([sampledState], startAt)[targetLayerId]
+          if (sampled) {
+            startPosition = sampled.position.x
+          }
+        }
+      } else if (targetLayer) {
+        // Only use targetLayer.x for the very first template (no existing clips)
+        startPosition = targetLayer.x
+      }
+      
+      const maxDistanceRight = 1.0 - startPosition // Distance to right edge from actual start position
+      const currentRollDistance = rollDistance
+      
+      // Only clamp if the animation would go off-screen to the right
+      if (currentRollDistance > maxDistanceRight) {
+        clampedRollDistance = Math.max(0.05, maxDistanceRight) // Ensure minimum distance
+      }
+    }
 
     timeline.applyPresetToLayer(
       targetLayerId,
       selectedTemplate as TemplateId,
       {
-        // When appending, don't use the current layer position as base, 
-        // let the timeline sample the end of the previous animation instead.
-        position: shouldAppend ? undefined : (targetLayer ? { x: targetLayer.x, y: targetLayer.y } : undefined),
+        // Only use static layer position as base if we are starting at 0.
+        // Otherwise (appending or updating mid-track), let it sample the track.
+        position: (startAt === 0 && targetLayer) ? { x: targetLayer.x, y: targetLayer.y } : undefined,
       },
       { 
         append: shouldAppend, 
         startAt: startAt,
         // Don't set targetDuration - let the preset use its natural duration
+        parameters: clampedRollDistance !== undefined ? { rollDistance: clampedRollDistance } : undefined
       }
     )
     // Only jump to start if we are switching templates or applying for the first time
     if (!isSameTemplate) {
       timeline.setCurrentTime(startAt)
     }
-    lastTemplateMeta.current[targetLayerId] = { template: selectedTemplate as TemplateId, startAt }
     // Don't auto-play so user can adjust controls first
     // timeline.setPlaying(true)
   }, [
     selectedTemplate,
     selectedLayerId,
-    layers,
     timeline,
-    // Add dependencies for live updates
-    templateSpeed,
-    rollDistance,
-    jumpHeight,
-    jumpVelocity,
-    popScale,
-    popSpeed,
-    popWobble,
-    popCollapse,
+    // Include template-specific controls only when that template is selected
+    // This allows updating the animation when controls change
+    selectedTemplate === 'roll' ? rollDistance : null,
+    selectedTemplate === 'jump' ? jumpHeight : null,
+    selectedTemplate === 'jump' ? jumpVelocity : null,
+    selectedTemplate === 'pop' ? popScale : null,
+    selectedTemplate === 'pop' ? popWobble : null,
+    selectedTemplate === 'pop' ? popSpeed : null,
+    selectedTemplate === 'pop' ? popCollapse : null,
   ])
 
   if (isLoading) {

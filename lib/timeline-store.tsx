@@ -237,15 +237,36 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     layerId: string,
     template: TemplateId,
     base?: { position?: Vec2; scale?: number; rotation?: number; opacity?: number },
-    options?: { append?: boolean; startAt?: number; targetDuration?: number }
+    options?: { 
+      append?: boolean; 
+      startAt?: number; 
+      targetDuration?: number;
+      parameters?: {
+        rollDistance?: number;
+        jumpHeight?: number;
+        jumpVelocity?: number;
+        popScale?: number;
+        popWobble?: boolean;
+        popSpeed?: number;
+        popCollapse?: boolean;
+      }
+    }
   ) => {
     const preset =
       template === 'roll'
-        ? PRESET_BUILDERS.roll(state.rollDistance)
+        ? PRESET_BUILDERS.roll(options?.parameters?.rollDistance ?? state.rollDistance)
         : template === 'jump'
-          ? PRESET_BUILDERS.jump(state.jumpHeight, state.jumpVelocity)
+          ? PRESET_BUILDERS.jump(
+              options?.parameters?.jumpHeight ?? state.jumpHeight, 
+              options?.parameters?.jumpVelocity ?? state.jumpVelocity
+            )
           : template === 'pop'
-            ? PRESET_BUILDERS.pop(state.popScale, state.popWobble, state.popSpeed, state.popCollapse)
+            ? PRESET_BUILDERS.pop(
+                options?.parameters?.popScale ?? state.popScale, 
+                options?.parameters?.popWobble ?? state.popWobble, 
+                options?.parameters?.popSpeed ?? state.popSpeed, 
+                options?.parameters?.popCollapse ?? state.popCollapse
+              )
             : undefined
     if (!preset) return
     ensureTrack(layerId)
