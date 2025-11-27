@@ -232,155 +232,136 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     updates: Partial<Pick<TimelineState['templateClips'][number], 'start' | 'duration'>>
   ) => {
     setState((prev) => {
-      const clips = prev.templateClips.map((clip) =>
+      const updatedClips = prev.templateClips.map((clip) =>
         clip.id === clipId && clip.layerId === layerId ? { ...clip, ...updates } : clip
       )
 
-      // If this layer only has one template clip, trim its track to the new end
-      const layerClips = clips.filter((c) => c.layerId === layerId)
-      const singleClip = layerClips.length === 1 ? layerClips[0] : null
+      // Calculate new parameters for the specific clip being updated
+      const layerClips = updatedClips.filter((c) => c.layerId === layerId)
       const rollClip = layerClips.find((c) => c.id === clipId && c.template === 'roll')
       const jumpClip = layerClips.find((c) => c.id === clipId && c.template === 'jump')
-      const oldClip = prev.templateClips.find((c) => c.id === clipId)
-      
-      // Calculate new roll distance if this is a roll clip
+      const popClip = layerClips.find((c) => c.id === clipId && c.template === 'pop')
+
       const nextRollDistance =
         rollClip && typeof rollClip.duration === 'number'
           ? rollDistanceForDuration(rollClip.duration, prev.templateSpeed)
           : prev.rollDistance
 
-
-
-      // Calculate new jump height if this is a jump clip
       const nextJumpHeight =
         jumpClip && typeof jumpClip.duration === 'number'
           ? jumpHeightForDuration(jumpClip.duration, prev.jumpVelocity)
           : prev.jumpHeight
 
-      // Find pop clip
-      const popClip = layerClips.find((c) => c.id === clipId && c.template === 'pop')
-      
-      // Calculate new pop speed if this is a pop clip
       const nextPopSpeed =
         popClip && typeof popClip.duration === 'number'
           ? popSpeedForDuration(popClip.duration)
           : prev.popSpeed
 
-      console.log('updateTemplateClip:', {
-        clipId,
-        duration: updates.duration,
-        isJump: !!jumpClip,
-        nextJumpHeight,
-        isPop: !!popClip,
-        nextPopSpeed
-      })
+      // Helper to rebuild track from clips
+      const rebuildTrackFromClips = (layerId: string, currentClips: typeof updatedClips, currentTracks: LayerTracks[]) => {
+        const layerClips = currentClips
+          .filter(c => c.layerId === layerId)
+          .sort((a, b) => (a.start ?? 0) - (b.start ?? 0))
 
-      const adjustedTracks = prev.tracks.map((track) => {
-        if (track.layerId !== layerId) return track
-        
-        // If we're updating a Roll, Jump, or Pop clip, we need to regenerate its keyframes
-        // to match the new duration/distance/height/speed
-        if (oldClip && (rollClip || jumpClip || popClip) && (rollClip?.id === clipId || jumpClip?.id === clipId || popClip?.id === clipId)) {
-          const targetClip = rollClip || jumpClip || popClip
-          if (!targetClip) return track // Should not happen given check above
+        const track = currentTracks.find(t => t.layerId === layerId)
+        if (!track) return currentTracks
 
-          const newDuration = targetClip.duration ?? 0
-          const newStart = targetClip.start ?? 0
-          const oldStart = oldClip.start ?? 0
-          
-          // Generate new preset with updated parameters
-          let preset
-          if (rollClip) {
-             preset = PRESET_BUILDERS.roll(nextRollDistance, prev.templateSpeed)
-          } else if (jumpClip) {
-             // Use current velocity state or default, as we only sync height with duration
-             preset = PRESET_BUILDERS.jump(nextJumpHeight, prev.jumpVelocity)
-          } else if (popClip) {
-             // Use current scale, wobble, collapse settings with new speed from duration
-             preset = PRESET_BUILDERS.pop(prev.popScale, prev.popWobble, nextPopSpeed, prev.popCollapse)
-          }
-          
-          if (!preset) return track
+        // CRITICAL: Sample the track at time 0 to capture manual position/scale changes
+        // This preserves user's manual adjustments when rebuilding from clips
+        const baseState = sampleLayerTracks(track, 0, DEFAULT_LAYER_STATE)
 
-          // Sample the track at the start time to get the base state
-          // This ensures we preserve the shape's position/rotation when regenerating
-          const baseState = sampleLayerTracks(track, newStart, DEFAULT_LAYER_STATE)
-          
-          // Helper to shift and merge keyframes
-          const mergeKeyframes = <T,>(
-            existing: TimelineKeyframe<T>[] | undefined,
-            newFrames: TimelineKeyframe<T>[] | undefined,
-            defaultValue: T,
-            baseValue?: T,
-            mode: 'add' | 'multiply' | 'replace' = 'replace'
-          ) => {
-            if (!newFrames) return existing ?? []
-            
-            // For single clip, we want to replace the animation.
-            // We keep keyframes before the OLD start time (static history).
-            // If oldStart was 0, we keep nothing.
-            let kept = (existing ?? []).filter(f => f.time < oldStart)
-            
-            // If we have no frames left (e.g. oldStart was 0), we must ensure a static start frame
-            // so the shape doesn't disappear before the new start.
-            if (kept.length === 0 && newStart > 0) {
-              kept = [{ time: 0, value: defaultValue }]
-            }
-            
-            // Offset the new frames by the base value
-            const shiftedNew = newFrames.map(f => {
-              let value = f.value
-              if (baseValue !== undefined) {
-                if (mode === 'add') {
-                    if (typeof f.value === 'object' && f.value !== null && 'x' in f.value) {
-                        // Vec2 addition
-                        const v = f.value as unknown as Vec2
-                        const b = baseValue as unknown as Vec2
-                        value = { x: v.x + b.x, y: v.y + b.y } as unknown as T
-                    } else if (typeof f.value === 'number' && typeof baseValue === 'number') {
-                        // Scalar addition
-                        value = (f.value as number + baseValue) as unknown as T
-                    }
-                } else if (mode === 'multiply') {
-                    if (typeof f.value === 'number' && typeof baseValue === 'number') {
-                        // Scalar multiplication (for scale/opacity)
-                        value = (f.value as number * baseValue) as unknown as T
-                    }
-                }
-              }
-              return { ...f, time: f.time + newStart, value }
-            })
-            
-            return [...kept, ...shiftedNew].sort((a, b) => a.time - b.time)
-          }
-
-          return {
-            ...track,
-            position: mergeKeyframes(track.position, preset.position, DEFAULT_LAYER_STATE.position, baseState.position, 'add'),
-            scale: mergeKeyframes(track.scale, preset.scale, DEFAULT_LAYER_STATE.scale, baseState.scale, 'multiply'),
-            rotation: mergeKeyframes(track.rotation, preset.rotation, DEFAULT_LAYER_STATE.rotation, baseState.rotation, 'add'),
-            opacity: mergeKeyframes(track.opacity, preset.opacity, DEFAULT_LAYER_STATE.opacity, baseState.opacity, 'multiply'),
-          }
-        }
-
-        // Fallback for non-roll clips or if we couldn't regenerate:
-        // (Original trimming logic)
-        if (!singleClip) return track
-        const clipEnd = (singleClip.start ?? 0) + (singleClip.duration ?? 0)
-        const sampled = sampleLayerTracks(track, clipEnd, DEFAULT_LAYER_STATE)
-        const trimFrames = <T,>(frames: TimelineKeyframe<T>[] | undefined, hold: T) => {
-          const kept = (frames ?? []).filter((f) => f.time <= clipEnd)
-          const hasEnd = kept.some((f) => f.time === clipEnd)
-          return hasEnd ? kept : [...kept, { time: clipEnd, value: hold }]
-        }
-        return {
+        // Reset track to empty/default state, but we'll use baseState for all clips
+        let newTrack: LayerTracks = {
           ...track,
-          position: trimFrames(track.position, sampled.position),
-          scale: trimFrames(track.scale, sampled.scale),
-          rotation: trimFrames(track.rotation, sampled.rotation),
-          opacity: trimFrames(track.opacity, sampled.opacity),
+          position: [],
+          scale: [],
+          rotation: [],
+          opacity: []
         }
-      })
+
+        // Apply clips sequentially
+        layerClips.forEach(clip => {
+           const start = clip.start ?? 0
+           const duration = clip.duration ?? 0
+           
+           let preset
+           if (clip.template === 'roll') {
+             preset = PRESET_BUILDERS.roll(nextRollDistance, prev.templateSpeed)
+           } else if (clip.template === 'jump') {
+             preset = PRESET_BUILDERS.jump(nextJumpHeight, prev.jumpVelocity)
+           } else if (clip.template === 'pop') {
+             preset = PRESET_BUILDERS.pop(prev.popScale, prev.popWobble, nextPopSpeed, prev.popCollapse)
+           }
+
+           if (!preset) return
+
+           // Sample base state at start time
+           // Note: For sequential clips, we should ideally sample the END of the previous clip
+           // But for now, sampling the current track state (which is empty/building) at start time is tricky.
+           // We'll use DEFAULT_LAYER_STATE as base for now, or we could try to sample the accumulated track.
+           // A better approach: maintain a "cursor" state.
+           
+           // For simplicity and robustness, we'll just generate the preset relative to default
+           // and merge it. This assumes clips don't overlap in complex ways that require state continuity
+           // beyond what the preset provides.
+           
+           // Actually, applyPresetToLayer logic handles "base" state.
+           // We can reuse the merge logic.
+           
+           const mergeKeyframes = <T,>(
+             existing: TimelineKeyframe<T>[],
+             newFrames: TimelineKeyframe<T>[] | undefined,
+             baseValue?: T,
+             mode: 'add' | 'multiply' | 'replace' = 'replace'
+           ) => {
+             if (!newFrames) return existing
+             
+             const shiftedNew = newFrames.map(f => {
+               let value = f.value
+               if (baseValue !== undefined) {
+                 if (mode === 'add') {
+                     if (typeof f.value === 'object' && f.value !== null && 'x' in f.value) {
+                         const v = f.value as unknown as Vec2
+                         const b = baseValue as unknown as Vec2
+                         value = { x: v.x + b.x, y: v.y + b.y } as unknown as T
+                     } else if (typeof f.value === 'number' && typeof baseValue === 'number') {
+                         value = (f.value as number + baseValue) as unknown as T
+                     }
+                 } else if (mode === 'multiply') {
+                     if (typeof f.value === 'number' && typeof baseValue === 'number') {
+                         value = (f.value as number * baseValue) as unknown as T
+                     }
+                 }
+               }
+               return { ...f, time: f.time + start, value }
+             })
+             
+             // Simple merge: just append and sort. 
+             // Ideally we should handle overlaps, but for now we assume distinct clips or simple overwrites.
+             // To avoid "ghosts" from previous iterations, we already cleared the track.
+             // To avoid "ghosts" from overlapping clips in this iteration, we could filter.
+             return [...existing, ...shiftedNew].sort((a, b) => a.time - b.time)
+           }
+
+           newTrack = {
+             ...newTrack,
+             position: mergeKeyframes(newTrack.position ?? [], preset.position, baseState.position, 'add'),
+             scale: mergeKeyframes(newTrack.scale ?? [], preset.scale, baseState.scale, 'multiply'),
+             rotation: mergeKeyframes(newTrack.rotation ?? [], preset.rotation, baseState.rotation, 'add'),
+             opacity: mergeKeyframes(newTrack.opacity ?? [], preset.opacity, baseState.opacity, 'multiply'),
+           }
+        })
+        
+        // Ensure static start if needed - use baseState to preserve manual changes
+        if ((newTrack.position?.length ?? 0) === 0) newTrack.position = [{ time: 0, value: baseState.position }]
+        if ((newTrack.scale?.length ?? 0) === 0) newTrack.scale = [{ time: 0, value: baseState.scale }]
+        if ((newTrack.rotation?.length ?? 0) === 0) newTrack.rotation = [{ time: 0, value: baseState.rotation }]
+        if ((newTrack.opacity?.length ?? 0) === 0) newTrack.opacity = [{ time: 0, value: baseState.opacity }]
+
+        return currentTracks.map(t => t.layerId === layerId ? newTrack : t)
+      }
+
+      const adjustedTracks = rebuildTrackFromClips(layerId, updatedClips, prev.tracks)
 
       const getTrackEnd = (track: LayerTracks) => {
         const times: number[] = []
@@ -392,13 +373,13 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       }
 
       const tracksEnd = adjustedTracks.reduce((max, t) => Math.max(max, getTrackEnd(t)), 0)
-      const clipsEnd = clips.reduce((max, c) => Math.max(max, (c.start ?? 0) + (c.duration ?? 0)), 0)
+      const clipsEnd = updatedClips.reduce((max, c) => Math.max(max, (c.start ?? 0) + (c.duration ?? 0)), 0)
       const pathsEnd = getMaxPathEnd(adjustedTracks)
       const newDuration = Math.max(tracksEnd, clipsEnd, pathsEnd, 4000)
 
       return {
         ...prev,
-        templateClips: clips,
+        templateClips: updatedClips,
         tracks: adjustedTracks,
         duration: newDuration,
         currentTime: clampTime(prev.currentTime, newDuration),
