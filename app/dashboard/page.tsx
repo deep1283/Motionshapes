@@ -188,10 +188,19 @@ function DashboardContent() {
             // Since jumpHeightForDuration is approximate, we check if the calculated height from duration
             // matches the current jumpHeight state.
             const calculatedHeight = jumpHeightForDuration(lastClipForTemplate.duration, jumpVelocity)
-            // Allow small epsilon (0.01) for height differences
-            if (Math.abs(calculatedHeight - jumpHeight) < 0.01) {
+            console.log('Jump check:', { 
+              clipDuration: lastClipForTemplate.duration, 
+              calculatedHeight, 
+              currentHeight: jumpHeight, 
+              diff: Math.abs(calculatedHeight - jumpHeight),
+              jumpVelocity 
+            })
+            // Allow larger epsilon (0.05) for height differences due to complex physics formula
+            if (Math.abs(calculatedHeight - jumpHeight) < 0.05) {
+              console.log('Skipping Jump re-apply (already in sync)')
               return
             }
+            console.log('Applying Jump preset')
          } else if (lastClipForTemplate.template === 'pop') {
             // Check if the current duration matches the popSpeed
             // duration = 1000 / speed, so we calculate expected duration
