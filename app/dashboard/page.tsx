@@ -121,7 +121,7 @@ function DashboardContent() {
     const isSameTemplate = !!lastClipForTemplate // If this template already has a clip, we're updating it
 
     const trackEnd = getTrackEndTime(targetTrack)
-    const hasClips = templateClips.some(c => c.layerId === targetLayerId)
+    const hasTemplateClipsForLayer = templateClips.some(c => c.layerId === targetLayerId)
     
     // If the layer has no existing template clips, force start at 0.
     // This handles the case where the user might have moved the shape (creating a keyframe at currentTime)
@@ -129,7 +129,9 @@ function DashboardContent() {
     // If re-applying the same template, use its original start time
     let startAt = isSameTemplate && lastClipForTemplate
       ? lastClipForTemplate.start
-      : (hasClips ? trackEnd : 0)
+      : hasTemplateClipsForLayer
+        ? trackEnd
+        : 0
 
     // Snap to 0 if very close to start, to avoid accidental micro-delays
     if (startAt < 25) startAt = 0
@@ -142,8 +144,11 @@ function DashboardContent() {
       startAt += 1 // Add 1ms epsilon
     }
 
-    const hasExistingKeys = trackEnd > 0
-    const shouldAppend = !isSameTemplate && hasExistingKeys
+    const shouldAppend = !isSameTemplate && hasTemplateClipsForLayer
+
+    // Sample the latest state of this layer so templates respect current pose even without clips.
+    const baseSampleTime = hasTemplateClipsForLayer ? startAt : trackEnd
+    const sampledState = baseSampleTime > 0 ? sampleTimeline(tracks, baseSampleTime)[targetLayerId] : undefined
 
     // For Roll template, clamp the distance to prevent going off-screen
     // This ensures the animation duration matches the visible motion
@@ -154,14 +159,8 @@ function DashboardContent() {
       
       // If there are existing clips OR we're appending, we MUST sample the track
       // because targetLayer.x only reflects the initial layer position, not animated position
-      if (hasClips || (shouldAppend && targetTrack && startAt > 0)) {
-        const sampledState = timeline.getState().tracks.find(t => t.layerId === targetLayerId)
-        if (sampledState) {
-          const sampled = sampleTimeline([sampledState], startAt)[targetLayerId]
-          if (sampled) {
-            startPosition = sampled.position.x
-          }
-        }
+      if (sampledState?.position) {
+        startPosition = sampledState.position.x
       } else if (targetLayer) {
         // Only use targetLayer.x for the very first template (no existing clips)
         startPosition = targetLayer.x
@@ -182,7 +181,10 @@ function DashboardContent() {
       {
         // Only use static layer position as base if we are starting at 0.
         // Otherwise (appending or updating mid-track), let it sample the track.
-        position: (startAt === 0 && targetLayer) ? { x: targetLayer.x, y: targetLayer.y } : undefined,
+        position: sampledState?.position ?? ((startAt === 0 && targetLayer) ? { x: targetLayer.x, y: targetLayer.y } : undefined),
+        scale: sampledState?.scale,
+        rotation: sampledState?.rotation,
+        opacity: sampledState?.opacity,
       },
       { 
         append: shouldAppend, 
@@ -244,6 +246,7 @@ function DashboardContent() {
       rotation: 0,
       opacity: 1,
     })
+    setSelectedTemplate('') // prevent auto-applying the last template to the new shape
     setTemplateVersion((v) => v + 1)
   }
 
