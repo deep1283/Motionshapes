@@ -285,10 +285,7 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
                     </span>
                   </div>
                   {/* Timeline Bar */}
-                  <div
-                    className="flex-1 relative cursor-col-resize"
-                    onPointerDown={handleScrubStart}
-                  >
+                  <div className="flex-1 relative cursor-default">
                     {clips.map((clip) => {
                       const left = (clip.start / safeDuration) * 100
                       const width = Math.max(2, (clip.duration / safeDuration) * 100)
