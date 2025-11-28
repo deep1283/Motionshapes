@@ -71,6 +71,19 @@ function DashboardContent() {
     selectedLayerId ? sampleTimeline(s.tracks, s.currentTime)[selectedLayerId] : undefined
   )
 
+  // Track previous values to detect when controls change vs when clips are just being moved
+  const prevControlsRef = useRef({
+    selectedTemplate,
+    rollDistance,
+    templateSpeed,
+    jumpHeight,
+    jumpVelocity,
+    popScale,
+    popSpeed,
+    popWobble,
+    popCollapse
+  })
+
   const getTrackEndTime = (track: (typeof tracks)[number] | undefined) => {
     if (!track) return 0
     const times: number[] = []
@@ -98,6 +111,65 @@ function DashboardContent() {
 
   useEffect(() => {
     
+    // CRITICAL: Detect if controls actually changed vs just clips being moved
+    const prevControls = prevControlsRef.current
+    
+    // Helper to compare floating-point numbers with tolerance
+    const floatChanged = (a: number, b: number, epsilon = 0.0001) => Math.abs(a - b) > epsilon
+    
+    const controlsChanged = 
+      prevControls.selectedTemplate !== selectedTemplate ||
+      (selectedTemplate === 'roll' && (
+        floatChanged(prevControls.rollDistance, rollDistance) ||
+        floatChanged(prevControls.templateSpeed, templateSpeed)
+      )) ||
+      (selectedTemplate === 'jump' && (
+        floatChanged(prevControls.jumpHeight, jumpHeight) ||
+        floatChanged(prevControls.jumpVelocity, jumpVelocity)
+      )) ||
+      (selectedTemplate === 'pop' && (
+        floatChanged(prevControls.popScale, popScale) ||
+        floatChanged(prevControls.popSpeed, popSpeed) ||
+        prevControls.popWobble !== popWobble ||
+        prevControls.popCollapse !== popCollapse
+      ))
+    
+    console.log('[DRAG DEBUG] Control change detection:', {
+      controlsChanged,
+      prevTemplate: prevControls.selectedTemplate,
+      currentTemplate: selectedTemplate,
+      templateChanged: prevControls.selectedTemplate !== selectedTemplate,
+      rollChanged: selectedTemplate === 'roll' && (prevControls.rollDistance !== rollDistance || prevControls.templateSpeed !== templateSpeed),
+      jumpChanged: selectedTemplate === 'jump' && (prevControls.jumpHeight !== jumpHeight || prevControls.jumpVelocity !== jumpVelocity),
+      popChanged: selectedTemplate === 'pop' && (prevControls.popScale !== popScale || prevControls.popSpeed !== popSpeed || prevControls.popWobble !== popWobble || prevControls.popCollapse !== popCollapse),
+      jumpDetails: selectedTemplate === 'jump' ? {
+        prevHeight: prevControls.jumpHeight,
+        currentHeight: jumpHeight,
+        heightChanged: prevControls.jumpHeight !== jumpHeight,
+        prevVelocity: prevControls.jumpVelocity,
+        currentVelocity: jumpVelocity,
+        velocityChanged: prevControls.jumpVelocity !== jumpVelocity
+      } : null
+    })
+    
+    // Update ref for next render
+    prevControlsRef.current = {
+      selectedTemplate,
+      rollDistance,
+      templateSpeed,
+      jumpHeight,
+      jumpVelocity,
+      popScale,
+      popSpeed,
+      popWobble,
+      popCollapse
+    }
+    
+    if (!controlsChanged) {
+      console.log('[DRAG DEBUG] SKIPPING - controls did not change, this is likely a drag operation')
+      return
+    }
+    
     if (!selectedTemplate) {
       timeline.setPlaying(false)
       return
@@ -123,6 +195,11 @@ function DashboardContent() {
     const lastClipForTemplate = existingClipsForTemplate[0]
     const isSameTemplate = !!lastClipForTemplate // If this template already has a clip, we're updating it
 
+    // Calculate the end of the last clip to ensure we append correctly
+    const lastClipEnd = clipsForLayer.length > 0 
+      ? Math.max(...clipsForLayer.map(c => (c.start ?? 0) + (c.duration ?? 0)))
+      : 0
+
     const trackEnd = getTrackEndTime(targetTrack)
     const hasTemplateClipsForLayer = clipsForLayer.length > 0
     
@@ -133,11 +210,27 @@ function DashboardContent() {
     let startAt = isSameTemplate && lastClipForTemplate
       ? lastClipForTemplate.start
       : hasTemplateClipsForLayer
-        ? trackEnd
+        ? Math.max(trackEnd, lastClipEnd)
         : 0
+        
+    console.log('[START_AT DEBUG]', {
+      selectedTemplate,
+      isSameTemplate,
+      hasTemplateClipsForLayer,
+      trackEnd,
+      lastClipEnd,
+      startAt,
+      clipsForLayer: clipsForLayer.map(c => ({ t: c.template, s: c.start, d: c.duration }))
+    })
 
-    // If this layer has no other template clips (or only one), force a true zero start for the first clip
-    if (clipsForLayer.length <= 1 && startAt < 500) {
+    // If this layer has no other template clips, force a true zero start for the first clip
+    // But if we are appending (adding a second clip), do NOT force to 0 even if startAt is small
+    const shouldAppend = !isSameTemplate && hasTemplateClipsForLayer
+    
+    if (clipsForLayer.length === 0 && startAt < 500) {
+      startAt = 0
+    } else if (!shouldAppend && clipsForLayer.length <= 1 && startAt < 500) {
+      // Only snap if we're not appending (e.g. replacing or updating the only clip)
       startAt = 0
     }
 
@@ -152,7 +245,7 @@ function DashboardContent() {
       startAt += 1 // Add 1ms epsilon
     }
 
-    const shouldAppend = !isSameTemplate && hasTemplateClipsForLayer
+    // const shouldAppend = !isSameTemplate && hasTemplateClipsForLayer
 
     // Sample the latest state of this layer so templates respect current pose even without clips.
     const baseSampleTime = hasTemplateClipsForLayer ? startAt : trackEnd
@@ -174,27 +267,78 @@ function DashboardContent() {
         startPosition = targetLayer.x
       }
       
-      // Check if we can skip applying the preset (if the clip is already in sync).
-      // This prevents conflict when resizing via TimelinePanel, which updates both duration and rollDistance/jumpHeight.
-      if (lastClipForTemplate && typeof lastClipForTemplate.duration === 'number') {
-         if (lastClipForTemplate.template === 'roll') {
+      // CRITICAL: Skip if we're just moving clips around (drag operation)
+      // Only apply preset if:
+      // 1. No clips exist for this template (first time applying)
+      // 2. Clips exist but parameters have changed (user adjusted controls)
+      
+      const clipsExistForSelectedTemplate = existingClipsForTemplate.length > 0
+      
+      console.log('[DRAG DEBUG] useEffect fired:', {
+        selectedTemplate,
+        clipsExistForSelectedTemplate,
+        existingClipsCount: existingClipsForTemplate.length,
+        existingClips: existingClipsForTemplate.map(c => ({
+          template: c.template,
+          start: c.start,
+          duration: c.duration
+        }))
+      })
+      
+      if (clipsExistForSelectedTemplate) {
+        // Clips already exist for this template
+        // Check if parameters match - if they do, this is just a drag/move operation
+        const parametersMatch = existingClipsForTemplate.every(c => {
+          if (c.template === 'roll') {
             const expectedDuration = rollDurationForDistance(rollDistance, templateSpeed)
-            // Allow small epsilon (10ms) for floating point differences
-            if (Math.abs(lastClipForTemplate.duration - expectedDuration) < 10) {
-              return
-            }
-         } else if (lastClipForTemplate.template === 'jump') {
-            const calculatedHeight = jumpHeightForDuration(lastClipForTemplate.duration, jumpVelocity)
-            if (Math.abs(calculatedHeight - jumpHeight) < 0.05) {
-              return
-            }
-         } else if (lastClipForTemplate.template === 'pop') {
+            const matches = Math.abs(c.duration - expectedDuration) < 10
+            console.log('[DRAG DEBUG] Roll parameter check:', {
+              clipDuration: c.duration,
+              expectedDuration,
+              diff: Math.abs(c.duration - expectedDuration),
+              matches
+            })
+            return matches
+          } else if (c.template === 'jump') {
+            const calculatedHeight = jumpHeightForDuration(c.duration, jumpVelocity)
+            const matches = Math.abs(calculatedHeight - jumpHeight) < 0.05
+            console.log('[DRAG DEBUG] Jump parameter check:', {
+              clipDuration: c.duration,
+              calculatedHeight,
+              currentHeight: jumpHeight,
+              diff: Math.abs(calculatedHeight - jumpHeight),
+              matches
+            })
+            return matches
+          } else if (c.template === 'pop') {
             const expectedDuration = 1000 / Math.max(0.05, popSpeed)
-            if (Math.abs(lastClipForTemplate.duration - expectedDuration) < 20) {
-              return
-            }
-         }
-       }
+            const matches = Math.abs(c.duration - expectedDuration) < 20
+            console.log('[DRAG DEBUG] Pop parameter check:', {
+              clipDuration: c.duration,
+              expectedDuration,
+              diff: Math.abs(c.duration - expectedDuration),
+              matches
+            })
+            return matches
+          }
+          return false
+        })
+        
+        console.log('[DRAG DEBUG] Parameters match result:', parametersMatch)
+        
+        if (parametersMatch) {
+          // Parameters match, so this is just a drag/position change
+          // Skip applying preset to avoid duplicates
+          console.log('[DRAG DEBUG] SKIPPING - parameters match, this is a drag operation')
+          return
+        }
+        
+        console.log('[DRAG DEBUG] PROCEEDING - parameters changed, updating clip')
+        // Parameters don't match, so user changed controls
+        // Proceed with applying preset to update the clip
+      } else {
+        console.log('[DRAG DEBUG] PROCEEDING - no clips exist for this template yet')
+      }
       
       const maxDistanceRight = 1.0 - startPosition // Distance to right edge from actual start position
       const currentRollDistance = rollDistance

@@ -266,11 +266,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         const track = currentTracks.find(t => t.layerId === layerId)
         if (!track) return currentTracks
 
-        // CRITICAL: Sample the track at time 0 to capture manual position/scale changes
-        // This preserves user's manual adjustments when rebuilding from clips
-        const baseState = sampleLayerTracks(track, 0, DEFAULT_LAYER_STATE)
-
-        // Reset track to empty/default state, but we'll use baseState for all clips
+        // Reset track to empty/default state
         let newTrack: LayerTracks = {
           ...track,
           position: [],
@@ -280,9 +276,11 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         }
 
         // Apply clips sequentially
-        layerClips.forEach(clip => {
+        let prevClipEnd = 0
+        layerClips.forEach((clip, index) => {
            const start = clip.start ?? 0
            const duration = clip.duration ?? 0
+           const end = start + duration
            
            let preset
            if (clip.template === 'roll') {
@@ -295,18 +293,31 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
 
            if (!preset) return
 
-           // Sample base state at start time
-           // Note: For sequential clips, we should ideally sample the END of the previous clip
-           // But for now, sampling the current track state (which is empty/building) at start time is tricky.
-           // We'll use DEFAULT_LAYER_STATE as base for now, or we could try to sample the accumulated track.
-           // A better approach: maintain a "cursor" state.
+           // CRITICAL: Sample the base state correctly for sequential clips
+           // For the FIRST clip: sample at time 0 to capture manual position/scale changes
+           // For SUBSEQUENT clips: sample at the END of the PREVIOUS clip to maintain continuity
+           const sampleTime = index === 0 ? 0 : prevClipEnd
+           const clipBaseState = sampleLayerTracks(track, sampleTime, DEFAULT_LAYER_STATE)
            
-           // For simplicity and robustness, we'll just generate the preset relative to default
-           // and merge it. This assumes clips don't overlap in complex ways that require state continuity
-           // beyond what the preset provides.
+           console.log('[CLIP DEBUG] Processing clip:', {
+             index,
+             template: clip.template,
+             start,
+             end,
+             prevClipEnd,
+             sampleTime,
+             clipBaseState: clipBaseState.position
+           })
            
-           // Actually, applyPresetToLayer logic handles "base" state.
-           // We can reuse the merge logic.
+           // If there's a gap between this clip and the previous one, add static keyframes
+           if (index > 0 && start > prevClipEnd) {
+             console.log('[CLIP DEBUG] Gap detected, adding static keyframes from', prevClipEnd, 'to', start - 1)
+             // Add keyframe at end of previous clip to hold the state
+             newTrack.position?.push({ time: start - 1, value: clipBaseState.position })
+             newTrack.scale?.push({ time: start - 1, value: clipBaseState.scale })
+             newTrack.rotation?.push({ time: start - 1, value: clipBaseState.rotation })
+             newTrack.opacity?.push({ time: start - 1, value: clipBaseState.opacity })
+           }
            
            const mergeKeyframes = <T,>(
              existing: TimelineKeyframe<T>[],
@@ -336,27 +347,70 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
                return { ...f, time: f.time + start, value }
              })
              
-             // Simple merge: just append and sort. 
-             // Ideally we should handle overlaps, but for now we assume distinct clips or simple overwrites.
-             // To avoid "ghosts" from previous iterations, we already cleared the track.
-             // To avoid "ghosts" from overlapping clips in this iteration, we could filter.
              return [...existing, ...shiftedNew].sort((a, b) => a.time - b.time)
            }
 
            newTrack = {
              ...newTrack,
-             position: mergeKeyframes(newTrack.position ?? [], preset.position, baseState.position, 'add'),
-             scale: mergeKeyframes(newTrack.scale ?? [], preset.scale, baseState.scale, 'multiply'),
-             rotation: mergeKeyframes(newTrack.rotation ?? [], preset.rotation, baseState.rotation, 'add'),
-             opacity: mergeKeyframes(newTrack.opacity ?? [], preset.opacity, baseState.opacity, 'multiply'),
+             position: mergeKeyframes(newTrack.position ?? [], preset.position, clipBaseState.position, 'add'),
+             scale: mergeKeyframes(newTrack.scale ?? [], preset.scale, clipBaseState.scale, 'multiply'),
+             rotation: mergeKeyframes(newTrack.rotation ?? [], preset.rotation, clipBaseState.rotation, 'add'),
+             opacity: mergeKeyframes(newTrack.opacity ?? [], preset.opacity, clipBaseState.opacity, 'multiply'),
            }
+           
+           // Update prevClipEnd for next iteration
+           prevClipEnd = end
+         })
+         
+        // CRITICAL: Ensure static start keyframes
+        // If the first clip doesn't start at time 0, we need a static keyframe at 0
+        // to keep the shape in its initial position until the clip starts
+        const initialState = sampleLayerTracks(track, 0, DEFAULT_LAYER_STATE)
+        const firstClipStart = layerClips.length > 0 ? (layerClips[0].start ?? 0) : 0
+        
+        console.log('[KEYFRAME DEBUG] Rebuild track:', {
+          layerId,
+          firstClipStart,
+          initialState: initialState.position,
+          currentPositionKeyframes: newTrack.position?.map(kf => ({ time: kf.time, value: kf.value }))
         })
         
-        // Ensure static start if needed - use baseState to preserve manual changes
-        if ((newTrack.position?.length ?? 0) === 0) newTrack.position = [{ time: 0, value: baseState.position }]
-        if ((newTrack.scale?.length ?? 0) === 0) newTrack.scale = [{ time: 0, value: baseState.scale }]
-        if ((newTrack.rotation?.length ?? 0) === 0) newTrack.rotation = [{ time: 0, value: baseState.rotation }]
-        if ((newTrack.opacity?.length ?? 0) === 0) newTrack.opacity = [{ time: 0, value: baseState.opacity }]
+        // Always add a keyframe at time 0 if it doesn't exist or if first clip starts later
+        if (firstClipStart > 0 || (newTrack.position?.length ?? 0) === 0) {
+          // Ensure we have a keyframe at time 0
+          const hasKeyframeAtZero = newTrack.position?.some(kf => kf.time === 0)
+          if (!hasKeyframeAtZero) {
+            console.log('[KEYFRAME DEBUG] Adding static keyframe at time 0')
+            newTrack.position = [{ time: 0, value: initialState.position }, ...(newTrack.position ?? [])]
+            newTrack.scale = [{ time: 0, value: initialState.scale }, ...(newTrack.scale ?? [])]
+            newTrack.rotation = [{ time: 0, value: initialState.rotation }, ...(newTrack.rotation ?? [])]
+            newTrack.opacity = [{ time: 0, value: initialState.opacity }, ...(newTrack.opacity ?? [])]
+          } else {
+            console.log('[KEYFRAME DEBUG] Keyframe at time 0 already exists')
+          }
+          
+          // CRITICAL: Add duplicate keyframe at clip start time to prevent interpolation
+          // If first clip starts at time T > 0, we need keyframes at both 0 and T-1 with the same value
+          // This prevents the shape from interpolating between 0 and T
+          if (firstClipStart > 0) {
+            console.log('[KEYFRAME DEBUG] Adding duplicate keyframe at time:', firstClipStart - 1)
+            // Insert keyframe just before the clip starts (at firstClipStart - 1ms)
+            // This ensures no interpolation happens before the clip
+            const insertIndex = newTrack.position?.findIndex(kf => kf.time >= firstClipStart) ?? 0
+            newTrack.position?.splice(insertIndex, 0, { time: firstClipStart - 1, value: initialState.position })
+            newTrack.scale?.splice(insertIndex, 0, { time: firstClipStart - 1, value: initialState.scale })
+            newTrack.rotation?.splice(insertIndex, 0, { time: firstClipStart - 1, value: initialState.rotation })
+            newTrack.opacity?.splice(insertIndex, 0, { time: firstClipStart - 1, value: initialState.opacity })
+          }
+        }
+        
+        console.log('[KEYFRAME DEBUG] Final position keyframes:', newTrack.position?.map(kf => ({ time: kf.time, value: kf.value })))
+        
+        // Fallback: if track is still empty, add defaults
+        if ((newTrack.position?.length ?? 0) === 0) newTrack.position = [{ time: 0, value: initialState.position }]
+        if ((newTrack.scale?.length ?? 0) === 0) newTrack.scale = [{ time: 0, value: initialState.scale }]
+        if ((newTrack.rotation?.length ?? 0) === 0) newTrack.rotation = [{ time: 0, value: initialState.rotation }]
+        if ((newTrack.opacity?.length ?? 0) === 0) newTrack.opacity = [{ time: 0, value: initialState.opacity }]
 
         return currentTracks.map(t => t.layerId === layerId ? newTrack : t)
       }
@@ -474,6 +528,15 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         const append = options?.append ?? false
         const startOffset = typeof options?.startAt === 'number' ? options.startAt : append ? getTrackEndTime(track) : 0
         appliedStartOffset = startOffset
+        
+        console.log('[APPLY_PRESET DEBUG]', {
+          layerId,
+          template,
+          append,
+          optionsStartAt: options?.startAt,
+          startOffset,
+          appliedStartOffset
+        })
 
         const trimFrames = <T,>(frames: TimelineKeyframe<T>[] | undefined) =>
           (frames ?? []).filter((f) => f.time < startOffset)
@@ -590,11 +653,29 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       const contentEnd = tracks.reduce((max, t) => Math.max(max, getTrackEndTime(t)), 0)
       const pathsEnd = getMaxPathEnd(tracks)
       const segmentDuration = scaleTime(preset.duration ?? 0)
-      // Check if we're replacing an existing clip (same layer, template, and start time)
-      // If so, preserve its ID to maintain references (e.g. for dragging)
-      const existingClip = prev.templateClips.find(
+      
+      // Check if we're replacing an existing clip
+      // Priority 1: Find clip at the exact target position (for re-applying at same position)
+      // Priority 2: Find the most recent clip for this template (for parameter updates)
+      let existingClip = prev.templateClips.find(
         (c) => c.layerId === layerId && Math.abs(c.start - appliedStartOffset) < 1 && c.template === template
       )
+      
+      // If no clip found at target position, check if we're updating an existing clip's parameters
+      // This handles the case where user changes template controls (e.g., Jump Height)
+      // IMPORTANT: Only do this for the SAME template to avoid replacing different templates
+      if (!existingClip && !options?.append) {
+        const clipsForTemplate = prev.templateClips
+          .filter((c) => c.layerId === layerId && c.template === template)
+          .sort((a, b) => b.start - a.start) // Sort by start time, descending
+        
+        // Only use the most recent clip if it's at a similar position (within 100ms)
+        // This prevents replacing clips when switching templates
+        if (clipsForTemplate.length > 0 && Math.abs(clipsForTemplate[0].start - appliedStartOffset) < 100) {
+          existingClip = clipsForTemplate[0]
+          console.log('[CLIP UPDATE] Found existing clip to update:', existingClip.id, 'at', existingClip.start)
+        }
+      }
 
       const clipId = existingClip ? existingClip.id : (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
         ? crypto.randomUUID()
