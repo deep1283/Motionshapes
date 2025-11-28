@@ -125,7 +125,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
 
     return () => {
       if (appRef.current) {
-        appRef.current.destroy(true, { children: true, texture: true })
+        appRef.current.destroy({ removeView: true })
         appRef.current = null
       }
     }
@@ -143,12 +143,13 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
       const shapeSize = (g as PIXI.Graphics & { __shapeSize?: { width?: number; height?: number } })?.__shapeSize
       const halfW = shapeSize?.width ? (shapeSize.width * state.scale) / 2 : 0
       const halfH = shapeSize?.height ? (shapeSize.height * state.scale) / 2 : 0
-      const posX = state.position.x <= 1 ? state.position.x * screenWidth : state.position.x
-      const posY = state.position.y <= 1 ? state.position.y * screenHeight : state.position.y
-      const clampedX = Math.min(Math.max(posX, halfW), screenWidth - halfW)
-      const clampedY = Math.min(Math.max(posY, halfH), screenHeight - halfH)
-      if (g && Number.isFinite(clampedX)) g.x = clampedX
-      if (g && Number.isFinite(clampedY)) g.y = clampedY
+      // Allow values up to 4 (400% screen size) to be treated as normalized coordinates
+      // This supports off-screen positioning while still distinguishing from pixel coordinates
+      const posX = state.position.x <= 4 ? state.position.x * screenWidth : state.position.x
+      const posY = state.position.y <= 4 ? state.position.y * screenHeight : state.position.y
+      
+      if (g && Number.isFinite(posX)) g.x = posX
+      if (g && Number.isFinite(posY)) g.y = posY
       if (g && g.scale) g.scale.set(state.scale)
       if (g) g.rotation = state.rotation
       if (g) g.alpha = state.opacity
@@ -426,14 +427,14 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
           height: layer.height,
         }
         // add a small notch so roll rotation is visible
-        if (templateEnabled && template === 'roll') {
+        if (template === 'roll') {
           g.moveTo(0, -layer.width / 2)
           g.lineTo(0, -layer.width / 3)
           g.stroke({ color: 0x000000, width: 6, alpha: 0.8 })
         }
-        g.pivot.set(layer.width / 2, layer.height / 2)
-        const posX = layer.x <= 1 ? layer.x * screenWidth : layer.x
-        const posY = layer.y <= 1 ? layer.y * screenHeight : layer.y
+        const halfH = layer.height ? layer.height / 2 : 0
+        const posX = layer.x <= 4 ? layer.x * screenWidth : layer.x
+        const posY = layer.y <= 4 ? layer.y * screenHeight : layer.y
         g.x = posX
         g.y = posY
         g.interactive = true
@@ -870,8 +871,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
             const sampled = sampledTimeline[layer.id]
             const baseX = sampled ? sampled.position.x : layer.x
             const baseY = sampled ? sampled.position.y : layer.y
-            const posX = baseX <= 1 ? baseX * screenWidth : baseX
-            const posY = baseY <= 1 ? baseY * screenHeight : baseY
+            const posX = baseX <= 4 ? baseX * screenWidth : baseX
+            const posY = baseY <= 4 ? baseY * screenHeight : baseY
             const scale = sampled?.scale ?? 1
             const halfW = (layer.width * scale) / 2
             const halfH = (layer.height * scale) / 2
