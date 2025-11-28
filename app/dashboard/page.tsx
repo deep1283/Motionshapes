@@ -71,29 +71,6 @@ function DashboardContent() {
     selectedLayerId ? sampleTimeline(s.tracks, s.currentTime)[selectedLayerId] : undefined
   )
 
-  // Track previous values to detect when controls change vs when clips are just being moved
-  const prevControlsRef = useRef({
-    selectedTemplate,
-    rollDistance,
-    templateSpeed,
-    jumpHeight,
-    jumpVelocity,
-    popScale,
-    popSpeed,
-    popWobble,
-    popCollapse
-  })
-
-  const getTrackEndTime = (track: (typeof tracks)[number] | undefined) => {
-    if (!track) return 0
-    const times: number[] = []
-    if (track.position?.length) times.push(track.position[track.position.length - 1].time)
-    if (track.scale?.length) times.push(track.scale[track.scale.length - 1].time)
-    if (track.rotation?.length) times.push(track.rotation[track.rotation.length - 1].time)
-    if (track.opacity?.length) times.push(track.opacity[track.opacity.length - 1].time)
-    return times.length ? Math.max(...times) : 0
-  }
-
   useEffect(() => {
     const checkUser = async () => {
       const supabase = createClient()
@@ -111,65 +88,6 @@ function DashboardContent() {
 
   useEffect(() => {
     
-    // CRITICAL: Detect if controls actually changed vs just clips being moved
-    const prevControls = prevControlsRef.current
-    
-    // Helper to compare floating-point numbers with tolerance
-    const floatChanged = (a: number, b: number, epsilon = 0.0001) => Math.abs(a - b) > epsilon
-    
-    const controlsChanged = 
-      prevControls.selectedTemplate !== selectedTemplate ||
-      (selectedTemplate === 'roll' && (
-        floatChanged(prevControls.rollDistance, rollDistance) ||
-        floatChanged(prevControls.templateSpeed, templateSpeed)
-      )) ||
-      (selectedTemplate === 'jump' && (
-        floatChanged(prevControls.jumpHeight, jumpHeight) ||
-        floatChanged(prevControls.jumpVelocity, jumpVelocity)
-      )) ||
-      (selectedTemplate === 'pop' && (
-        floatChanged(prevControls.popScale, popScale) ||
-        floatChanged(prevControls.popSpeed, popSpeed) ||
-        prevControls.popWobble !== popWobble ||
-        prevControls.popCollapse !== popCollapse
-      ))
-    
-    console.log('[DRAG DEBUG] Control change detection:', {
-      controlsChanged,
-      prevTemplate: prevControls.selectedTemplate,
-      currentTemplate: selectedTemplate,
-      templateChanged: prevControls.selectedTemplate !== selectedTemplate,
-      rollChanged: selectedTemplate === 'roll' && (prevControls.rollDistance !== rollDistance || prevControls.templateSpeed !== templateSpeed),
-      jumpChanged: selectedTemplate === 'jump' && (prevControls.jumpHeight !== jumpHeight || prevControls.jumpVelocity !== jumpVelocity),
-      popChanged: selectedTemplate === 'pop' && (prevControls.popScale !== popScale || prevControls.popSpeed !== popSpeed || prevControls.popWobble !== popWobble || prevControls.popCollapse !== popCollapse),
-      jumpDetails: selectedTemplate === 'jump' ? {
-        prevHeight: prevControls.jumpHeight,
-        currentHeight: jumpHeight,
-        heightChanged: prevControls.jumpHeight !== jumpHeight,
-        prevVelocity: prevControls.jumpVelocity,
-        currentVelocity: jumpVelocity,
-        velocityChanged: prevControls.jumpVelocity !== jumpVelocity
-      } : null
-    })
-    
-    // Update ref for next render
-    prevControlsRef.current = {
-      selectedTemplate,
-      rollDistance,
-      templateSpeed,
-      jumpHeight,
-      jumpVelocity,
-      popScale,
-      popSpeed,
-      popWobble,
-      popCollapse
-    }
-    
-    if (!controlsChanged) {
-      console.log('[DRAG DEBUG] SKIPPING - controls did not change, this is likely a drag operation')
-      return
-    }
-    
     if (!selectedTemplate) {
       timeline.setPlaying(false)
       return
@@ -182,7 +100,6 @@ function DashboardContent() {
     
     const targetLayerId = selectedLayerId
     const targetLayer = layers.find((l) => l.id === targetLayerId)
-    const targetTrack = tracks.find((t) => t.layerId === targetLayerId)
 
     const clipsForLayer = templateClips
       .filter(c => c.layerId === targetLayerId)
@@ -200,13 +117,22 @@ function DashboardContent() {
       ? Math.max(...clipsForLayer.map(c => (c.start ?? 0) + (c.duration ?? 0)))
       : 0
 
-    const trackEnd = getTrackEndTime(targetTrack)
     const hasTemplateClipsForLayer = clipsForLayer.length > 0
-    
-    // If the layer has no existing template clips, force start at 0.
-    // This handles the case where the user might have moved the shape (creating a keyframe at currentTime)
-    // but wants the first animation to start from the beginning.
-    // If re-applying the same template, use its original start time
+
+    const getTrackEndTime = (track: (typeof tracks)[number] | undefined) => {
+      if (!track) return 0
+      const times: number[] = []
+      if (track.position?.length) times.push(track.position[track.position.length - 1].time)
+      if (track.scale?.length) times.push(track.scale[track.scale.length - 1].time)
+      if (track.rotation?.length) times.push(track.rotation[track.rotation.length - 1].time)
+      if (track.opacity?.length) times.push(track.opacity[track.opacity.length - 1].time)
+      return times.length ? Math.max(...times) : 0
+    }
+
+    const targetTrack = tracks.find((t) => t.layerId === targetLayerId)
+    const trackEnd = getTrackEndTime(targetTrack)
+
+    // Start logic: if same template, reuse its start; else append after last template clip or track end; if none, force 0
     let startAt = isSameTemplate && lastClipForTemplate
       ? lastClipForTemplate.start
       : hasTemplateClipsForLayer
@@ -224,32 +150,30 @@ function DashboardContent() {
     })
 
     // If this layer has no other template clips, force a true zero start for the first clip
-    // But if we are appending (adding a second clip), do NOT force to 0 even if startAt is small
-    const shouldAppend = !isSameTemplate && hasTemplateClipsForLayer
-    
-    if (clipsForLayer.length === 0 && startAt < 500) {
-      startAt = 0
-    } else if (!shouldAppend && clipsForLayer.length <= 1 && startAt < 500) {
-      // Only snap if we're not appending (e.g. replacing or updating the only clip)
+    if (clipsForLayer.length === 0) {
       startAt = 0
     }
 
     // Snap to 0 if very close to start, to avoid accidental micro-delays (UI shows ~0.03s)
     if (startAt <= 50) startAt = 0
-    
-    // CRITICAL FIX: When re-applying the same template (isSameTemplate=true, append=false),
-    // add a tiny epsilon to startAt to prevent trimFrames from deleting the previous 
-    // animation's last keyframe. Without this, if Roll ends at 1200ms and Jump starts 
-    // at 1200ms, re-applying Jump would delete Roll's keyframe at 1200ms.
-    if (isSameTemplate && startAt > 0) {
-      startAt += 1 // Add 1ms epsilon
-    }
 
-    // const shouldAppend = !isSameTemplate && hasTemplateClipsForLayer
+    const shouldAppend = !isSameTemplate && hasTemplateClipsForLayer
 
     // Sample the latest state of this layer so templates respect current pose even without clips.
-    const baseSampleTime = hasTemplateClipsForLayer ? startAt : trackEnd
+    const baseSampleTime = startAt
     const sampledState = baseSampleTime > 0 ? sampleTimeline(tracks, baseSampleTime)[targetLayerId] : undefined
+
+    console.log('[TEMPLATE APPLY]', {
+      template: selectedTemplate,
+      startAt,
+      shouldAppend,
+      baseSampleTime,
+      sampledPosition: sampledState?.position,
+      layerStart: targetLayer ? { x: targetLayer.x, y: targetLayer.y } : null,
+      hasTemplateClipsForLayer,
+      lastClipEnd,
+      clips: clipsForLayer.map(c => ({ id: c.id, t: c.template, s: c.start, d: c.duration })),
+    })
 
     // For Roll template, clamp the distance to prevent going off-screen
     // This ensures the animation duration matches the visible motion
@@ -367,10 +291,8 @@ function DashboardContent() {
         parameters: clampedRollDistance !== undefined ? { rollDistance: clampedRollDistance } : undefined
       }
     )
-    // Only jump to start if we are switching templates or applying for the first time
-    if (!isSameTemplate) {
-      timeline.setCurrentTime(startAt)
-    }
+    // Always align playhead to the start of this clip to avoid tiny offsets
+    timeline.setCurrentTime(startAt)
     // Don't auto-play so user can adjust controls first
     // timeline.setPlaying(true)
   }, [
@@ -395,6 +317,8 @@ function DashboardContent() {
 
   const handleTemplateSelect = (templateId: string) => {
     setSelectedTemplate((prev) => (prev === templateId ? '' : templateId))
+    timeline.setPlaying(false)
+    timeline.setCurrentTime(0)
     // bump so MotionCanvas fully resets and replays animation even on same template click
     setTemplateVersion((v) => v + 1)
   }
