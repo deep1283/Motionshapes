@@ -37,6 +37,16 @@ type TimelineState = {
     template: TemplateId
     start: number
     duration: number
+    parameters?: {
+      templateSpeed?: number
+      rollDistance?: number
+      jumpHeight?: number
+      jumpVelocity?: number
+      popScale?: number
+      popWobble?: boolean
+      popSpeed?: number
+      popCollapse?: boolean
+    }
   }>
 }
 
@@ -689,6 +699,16 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           template,
           start: appliedStartOffset,
           duration: segmentDuration,
+          parameters: {
+            templateSpeed: prev.templateSpeed,
+            rollDistance: options?.parameters?.rollDistance ?? prev.rollDistance,
+            jumpHeight: prev.jumpHeight,
+            jumpVelocity: prev.jumpVelocity,
+            popScale: prev.popScale,
+            popWobble: prev.popWobble,
+            popSpeed: prev.popSpeed,
+            popCollapse: prev.popCollapse,
+          },
         },
       ]
       const clipsEnd = nextClips.reduce((max, c) => Math.max(max, c.start + c.duration), 0)
@@ -883,6 +903,23 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     return sampleTimeline(state.tracks, target)
   }
 
+  const selectClip = (clipId: string) => {
+    const clip = state.templateClips.find((c) => c.id === clipId)
+    if (!clip || !clip.parameters) return
+
+    setState((prev) => ({
+      ...prev,
+      templateSpeed: clip.parameters?.templateSpeed ?? prev.templateSpeed,
+      rollDistance: clip.parameters?.rollDistance ?? prev.rollDistance,
+      jumpHeight: clip.parameters?.jumpHeight ?? prev.jumpHeight,
+      jumpVelocity: clip.parameters?.jumpVelocity ?? prev.jumpVelocity,
+      popScale: clip.parameters?.popScale ?? prev.popScale,
+      popWobble: clip.parameters?.popWobble ?? prev.popWobble,
+      popSpeed: clip.parameters?.popSpeed ?? prev.popSpeed,
+      popCollapse: clip.parameters?.popCollapse ?? prev.popCollapse,
+    }))
+  }
+
   return {
     subscribe,
     getState: () => state,
@@ -918,6 +955,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     applyPresetToLayer,
     clear,
     sampleAt,
+    selectClip,
   }
 }
 

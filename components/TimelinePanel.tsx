@@ -13,6 +13,7 @@ interface TimelinePanelProps {
   onFinishPath?: () => void
   onCancelPath?: () => void
   pathPointCount?: number
+  onClipClick?: (clip: { id: string; template: string }) => void
 }
 
 const formatTime = (ms: number) => {
@@ -24,7 +25,7 @@ const formatTime = (ms: number) => {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}:${String(centiseconds).padStart(2, '0')}`
 }
 
-export default function TimelinePanel({ layers, selectedLayerId, selectedTemplate, isDrawingPath, onFinishPath, onCancelPath, pathPointCount = 0 }: TimelinePanelProps) {
+export default function TimelinePanel({ layers, selectedLayerId, selectedTemplate, isDrawingPath, onFinishPath, onCancelPath, pathPointCount = 0, onClipClick }: TimelinePanelProps) {
   const { currentTime, duration, isPlaying, loop, tracks, templateSpeed, rollDistance, jumpHeight, jumpVelocity, popScale, popWobble, popSpeed, popCollapse, templateClips } = useTimeline((s) => ({
     currentTime: s.currentTime,
     duration: s.duration,
@@ -63,6 +64,7 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
   const [scrubTarget, setScrubTarget] = useState<boolean>(false)
   const [isResizingClip, setIsResizingClip] = useState(false)
   const [isMovingClip, setIsMovingClip] = useState(false)
+  const [optimisticClip, setOptimisticClip] = useState<{ id: string; start: number; duration: number } | null>(null)
   const resizeStateRef = useRef<{
     clipId: string
     layerId: string
@@ -70,6 +72,8 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
     startX: number
     baseStart: number
     baseDuration: number
+    currentStart?: number
+    currentDuration?: number
   } | null>(null)
   const moveStateRef = useRef<{
     clipId: string
@@ -77,6 +81,7 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
     startX: number
     baseStart: number
     duration: number
+    currentStart?: number
   } | null>(null)
   const MIN_CLIP_DURATION = 80 // ms
 
@@ -123,8 +128,9 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
     setIsScrubbing(false)
   }
 
-  const startMove = (e: React.PointerEvent, clip: { id: string; layerId: string; start: number; duration: number }) => {
+  const startMove = (e: React.PointerEvent, clip: { id: string; layerId: string; start: number; duration: number; template: any }) => {
     e.stopPropagation()
+    onClipClick?.({ id: clip.id, template: clip.template as string })
     const rect = timelineAreaRef.current?.getBoundingClientRect()
     if (!rect) return
     moveStateRef.current = {
@@ -161,14 +167,26 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
         nextDuration = Math.max(MIN_CLIP_DURATION, state.baseDuration + deltaMs)
       }
 
-      timeline.updateTemplateClip(state.layerId, state.clipId, {
-        start: Math.round(nextStart),
-        duration: Math.round(nextDuration),
+      state.currentStart = Math.round(nextStart)
+      state.currentDuration = Math.round(nextDuration)
+
+      setOptimisticClip({
+        id: state.clipId,
+        start: state.currentStart,
+        duration: state.currentDuration,
       })
     }
 
     const handleUp = () => {
+      const state = resizeStateRef.current
+      if (state && state.currentStart !== undefined && state.currentDuration !== undefined) {
+        timeline.updateTemplateClip(state.layerId, state.clipId, {
+          start: state.currentStart,
+          duration: state.currentDuration,
+        })
+      }
       setIsResizingClip(false)
+      setOptimisticClip(null)
       resizeStateRef.current = null
     }
 
@@ -189,13 +207,24 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
       const pxPerMs = rect.width / safeDuration
       const deltaMs = (ev.clientX - state.startX) / pxPerMs
       const nextStart = Math.max(0, Math.round(state.baseStart + deltaMs))
-      timeline.updateTemplateClip(state.layerId, state.clipId, {
+      state.currentStart = nextStart
+      
+      setOptimisticClip({
+        id: state.clipId,
         start: nextStart,
         duration: state.duration,
       })
     }
     const handleUp = () => {
+      const state = moveStateRef.current
+      if (state && state.currentStart !== undefined) {
+        timeline.updateTemplateClip(state.layerId, state.clipId, {
+          start: state.currentStart,
+          duration: state.duration,
+        })
+      }
       setIsMovingClip(false)
+      setOptimisticClip(null)
       moveStateRef.current = null
     }
     window.addEventListener('pointermove', handleMove)
@@ -287,8 +316,11 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
                   {/* Timeline Bar */}
                   <div className="flex-1 relative cursor-default">
                     {clips.map((clip) => {
-                      const left = (clip.start / safeDuration) * 100
-                      const width = Math.max(2, (clip.duration / safeDuration) * 100)
+                      const isOptimistic = optimisticClip?.id === clip.id
+                      const start = isOptimistic ? optimisticClip!.start : clip.start
+                      const duration = isOptimistic ? optimisticClip!.duration : clip.duration
+                      const left = (start / safeDuration) * 100
+                      const width = Math.max(2, (duration / safeDuration) * 100)
                       return (
                         <div
                           key={clip.id}

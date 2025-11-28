@@ -447,6 +447,11 @@ function DashboardContent() {
     timeline.setScaleKeyframe(selectedLayerId, { time: playhead, value })
   }
 
+  const handleClipClick = (clip: { id: string; template: string }) => {
+    setSelectedTemplate(clip.template)
+    timeline.selectClip(clip.id)
+  }
+
   return (
     <DashboardLayout
       selectedTemplate={selectedTemplate}
@@ -478,6 +483,7 @@ function DashboardContent() {
       onPopCollapseChange={timeline.setPopCollapse}
       selectedLayerScale={selectedSample?.scale}
       onSelectedLayerScaleChange={handleScaleChange}
+      onClipClick={handleClipClick}
     >
       <MotionCanvas 
         template={selectedTemplate} 

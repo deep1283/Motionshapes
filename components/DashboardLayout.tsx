@@ -49,6 +49,7 @@ interface DashboardLayoutProps {
   onPopCollapseChange?: (value: boolean) => void
   selectedLayerScale?: number
   onSelectedLayerScaleChange?: (value: number) => void
+  onClipClick?: (clip: { id: string; template: string }) => void
 }
 
 export default function DashboardLayout({ 
@@ -82,6 +83,7 @@ export default function DashboardLayout({
   onPopCollapseChange,
   selectedLayerScale = 1,
   onSelectedLayerScaleChange,
+  onClipClick,
 }: DashboardLayoutProps) {
   const router = useRouter()
   const supabase = createClient()
@@ -582,6 +584,7 @@ export default function DashboardLayout({
         onFinishPath={onFinishPath}
         onCancelPath={onCancelPath}
         pathPointCount={pathPointCount}
+        onClipClick={onClipClick}
       />
     </div>
   )
