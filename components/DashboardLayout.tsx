@@ -365,6 +365,7 @@ export default function DashboardLayout({
                         onChange={(e) => updateBackground({ to: normalizeHex(e.target.value) })}
                         className="h-10 rounded-md border border-white/10 bg-white/5 px-3 text-sm text-white outline-none transition-colors placeholder:text-neutral-500 focus:border-white/30"
                         placeholder="#0b1223"
+                        
                       />
                     </div>
                   </div>

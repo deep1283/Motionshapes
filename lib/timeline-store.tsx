@@ -306,6 +306,47 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         }
       }
 
+      // Explicitly update parameters for Roll, Jump, and Pop clips if duration changed
+      // This ensures rebuildTrackFromClips uses the correct values instead of stale global defaults
+      if (rollClip && typeof rollClip.duration === 'number') {
+        const clipIndex = updatedClips.findIndex(c => c.id === rollClip.id)
+        if (clipIndex !== -1) {
+          updatedClips[clipIndex] = {
+            ...updatedClips[clipIndex],
+            parameters: {
+              ...updatedClips[clipIndex].parameters,
+              rollDistance: nextRollDistance
+            }
+          }
+        }
+      }
+
+      if (jumpClip && typeof jumpClip.duration === 'number') {
+        const clipIndex = updatedClips.findIndex(c => c.id === jumpClip.id)
+        if (clipIndex !== -1) {
+          updatedClips[clipIndex] = {
+            ...updatedClips[clipIndex],
+            parameters: {
+              ...updatedClips[clipIndex].parameters,
+              jumpHeight: nextJumpHeight
+            }
+          }
+        }
+      }
+
+      if (popClip && typeof popClip.duration === 'number') {
+        const clipIndex = updatedClips.findIndex(c => c.id === popClip.id)
+        if (clipIndex !== -1) {
+          updatedClips[clipIndex] = {
+            ...updatedClips[clipIndex],
+            parameters: {
+              ...updatedClips[clipIndex].parameters,
+              popSpeed: nextPopSpeed
+            }
+          }
+        }
+      }
+
 
       // Helper to rebuild track from clips
       const rebuildTrackFromClips = (layerId: string, currentClips: typeof updatedClips, currentTracks: LayerTracks[]) => {
@@ -334,11 +375,43 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
            const end = start + duration
            
            const sampleTime = index === 0 ? 0 : prevClipEnd
-           const clipBaseState = sampleLayerTracks(track, sampleTime, DEFAULT_LAYER_STATE)
+           
+           let clipBaseState
+           if (index === 0) {
+             // First clip: sample from original track
+             clipBaseState = sampleLayerTracks(track, sampleTime, DEFAULT_LAYER_STATE)
+           } else {
+             // Subsequent clips: hybrid approach to preserve position but avoid scale issues
+             const positionFromNew = sampleLayerTracks(newTrack, sampleTime, DEFAULT_LAYER_STATE).position
+             const baseFromOriginal = sampleLayerTracks(track, sampleTime, DEFAULT_LAYER_STATE)
+             clipBaseState = {
+               position: positionFromNew,
+               scale: baseFromOriginal.scale,
+               rotation: baseFromOriginal.rotation,
+               opacity: baseFromOriginal.opacity
+             }
+           }
 
            let preset
            if (clip.template === 'roll') {
              preset = PRESET_BUILDERS.roll(clip.parameters?.rollDistance ?? prev.rollDistance, clip.parameters?.templateSpeed ?? prev.templateSpeed)
+             // Add explicit scale/opacity/position to prevent multiply mode issues and ensure final state
+             const rollDistance = clip.parameters?.rollDistance ?? prev.rollDistance
+             preset = {
+               ...preset,
+               position: preset.position?.length ? preset.position : [
+                 { time: 0, value: { x: 0, y: 0 }, easing: 'linear' as const },
+                 { time: preset.duration, value: { x: rollDistance, y: 0 }, easing: 'linear' as const }
+               ],
+               scale: preset.scale?.length ? preset.scale : [
+                 { time: 0, value: 1 },
+                 { time: preset.duration, value: 1 }
+               ],
+               opacity: preset.opacity?.length ? preset.opacity : [
+                 { time: 0, value: 1 },
+                 { time: preset.duration, value: 1 }
+               ]
+             }
            } else if (clip.template === 'jump') {
              preset = PRESET_BUILDERS.jump(clip.parameters?.jumpHeight ?? prev.jumpHeight, clip.parameters?.jumpVelocity ?? prev.jumpVelocity)
            } else if (clip.template === 'pop') {
@@ -389,15 +462,15 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
              clipBaseState: clipBaseState.position
            })
            
-           // If there's a gap between this clip and the previous one, add static keyframes
-           if (index > 0 && start > prevClipEnd) {
-             console.log('[CLIP DEBUG] Gap detected, adding static keyframes from', prevClipEnd, 'to', start - 1)
-             // Add keyframe at end of previous clip to hold the state
-             newTrack.position?.push({ time: start - 1, value: clipBaseState.position })
-             newTrack.scale?.push({ time: start - 1, value: clipBaseState.scale })
-             newTrack.rotation?.push({ time: start - 1, value: clipBaseState.rotation })
-             newTrack.opacity?.push({ time: start - 1, value: clipBaseState.opacity })
-           }
+            // If there's a gap between this clip and the previous one, add static keyframes
+            if (index > 0 && start > prevClipEnd) {
+              console.log('[CLIP DEBUG] Gap detected, adding static keyframes from', prevClipEnd, 'to', start - 1)
+              // Add keyframe at end of previous clip to hold the state
+              newTrack.position?.push({ time: start - 1, value: clipBaseState.position })
+              newTrack.scale?.push({ time: start - 1, value: clipBaseState.scale })
+              newTrack.rotation?.push({ time: start - 1, value: clipBaseState.rotation })
+              newTrack.opacity?.push({ time: start - 1, value: clipBaseState.opacity })
+            }
            
            const mergeKeyframes = <T,>(
              existing: TimelineKeyframe<T>[],
