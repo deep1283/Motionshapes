@@ -52,7 +52,31 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
     return track?.paths?.[0] ?? null
   }, [tracks, selectedLayerId])
   const handlePlayClick = () => {
-    if (!isPlaying && currentTime >= duration) {
+    // Calculate actual content duration (ignoring the 4s minimum padding)
+    const clipsEnd = templateClips.reduce((max, c) => Math.max(max, (c.start ?? 0) + (c.duration ?? 0)), 0)
+    
+    const getTrackEnd = (track: any) => {
+      const times: number[] = []
+      if (track.position?.length) times.push(track.position[track.position.length - 1].time)
+      if (track.scale?.length) times.push(track.scale[track.scale.length - 1].time)
+      if (track.rotation?.length) times.push(track.rotation[track.rotation.length - 1].time)
+      if (track.opacity?.length) times.push(track.opacity[track.opacity.length - 1].time)
+      return times.length ? Math.max(...times) : 0
+    }
+    const tracksEnd = tracks.reduce((max, t) => Math.max(max, getTrackEnd(t)), 0)
+    
+    // Also check paths
+    let pathsEnd = 0
+    tracks.forEach((t) => {
+      (t.paths ?? []).forEach((p) => {
+        pathsEnd = Math.max(pathsEnd, p.startTime + p.duration)
+      })
+    })
+
+    const contentDuration = Math.max(100, tracksEnd, clipsEnd, pathsEnd)
+
+    // If at or near the end of CONTENT, reset to beginning before playing
+    if (currentTime >= contentDuration - 50) {
       timeline.setCurrentTime(0)
     }
     timeline.togglePlay()
