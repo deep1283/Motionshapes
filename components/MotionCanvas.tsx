@@ -168,8 +168,9 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
   }, [])
 
   // Apply timeline-sampled transforms onto Pixi graphics so playhead/scrub reflects on-canvas
-  useEffect(() => {
-    if (!isReady || !containerRef.current) return
+  // Helper to update graphics from timeline state
+  const updateGraphicsFromTimeline = () => {
+    if (!containerRef.current) return
     const bounds = containerRef.current.getBoundingClientRect()
     const screenWidth = bounds.width || 1
     const screenHeight = bounds.height || 1
@@ -212,6 +213,11 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
       }
     })
     appRef.current?.render()
+  }
+
+  // Apply timeline-sampled transforms onto Pixi graphics so playhead/scrub reflects on-canvas
+  useEffect(() => {
+    updateGraphicsFromTimeline()
   }, [sampledTimeline, isReady])
 
   useEffect(() => {
@@ -570,6 +576,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
       }
 
       // render once to show the shapes even if no animation selected
+      updateGraphicsFromTimeline()
       app.render()
 
       return () => {
