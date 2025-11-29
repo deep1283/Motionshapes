@@ -93,9 +93,38 @@ function DashboardContent() {
       timeline.setPlaying(false)
       return
     }
+    
     // Don't apply template if no layer is selected
     if (!selectedLayerId) {
       timeline.setPlaying(false)
+      return
+    }
+    
+    // If we have a selected clip, update its parameters instead of re-applying the template
+    if (selectedClipId) {
+      console.log('[TEMPLATE APPLY] Updating existing clip parameters:', selectedClipId)
+      const clip = templateClips.find(c => c.id === selectedClipId)
+      if (clip) {
+        // Update the clip's parameters based on the current control values
+        const parameters: any = {}
+        
+        if (selectedTemplate === 'roll') {
+          parameters.rollDistance = rollDistance
+          parameters.templateSpeed = templateSpeed
+        } else if (selectedTemplate === 'jump') {
+          parameters.jumpHeight = jumpHeight
+          parameters.jumpVelocity = jumpVelocity
+        } else if (selectedTemplate === 'pop') {
+          parameters.popScale = popScale
+          parameters.popWobble = popWobble
+          parameters.popSpeed = popSpeed
+          parameters.popCollapse = popCollapse
+        }
+        
+        timeline.updateTemplateClip(selectedLayerId, selectedClipId, {
+          parameters
+        })
+      }
       return
     }
     
@@ -299,17 +328,11 @@ function DashboardContent() {
   }, [
     selectedTemplate,
     selectedLayerId,
+    selectedClipId,
     timeline,
-    // Include template-specific controls only when that template is selected
-    // This allows updating the animation when controls change
-    selectedTemplate === 'roll' ? rollDistance : null,
-    selectedTemplate === 'roll' ? templateSpeed : null,
-    selectedTemplate === 'jump' ? jumpHeight : null,
-    selectedTemplate === 'jump' ? jumpVelocity : null,
-    selectedTemplate === 'pop' ? popScale : null,
-    selectedTemplate === 'pop' ? popWobble : null,
-    selectedTemplate === 'pop' ? popSpeed : null,
-    selectedTemplate === 'pop' ? popCollapse : null,
+    // Template-specific parameters removed from dependencies
+    // They should only update existing clips via dedicated handlers (handleTemplateSpeedChange, etc.)
+    // not by re-triggering this effect
   ])
 
   if (isLoading) {

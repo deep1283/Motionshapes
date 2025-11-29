@@ -1,6 +1,4 @@
-'use client'
-
-import { Pause, Play, Repeat, SlidersHorizontal } from 'lucide-react'
+import { Pause, Play, Repeat, SlidersHorizontal, ChevronRight, ChevronDown } from 'lucide-react'
 import { useMemo, useState, useRef, useEffect } from 'react'
 import { useTimeline, useTimelineActions } from '@/lib/timeline-store'
 import { sampleTimeline } from '@/lib/timeline'
@@ -259,6 +257,15 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
     }
   }, [isMovingClip, safeDuration, timeline])
 
+  const [collapsedLayers, setCollapsedLayers] = useState<Record<string, boolean>>({})
+
+  const toggleLayer = (layerId: string) => {
+    setCollapsedLayers(prev => ({
+      ...prev,
+      [layerId]: !prev[layerId]
+    }))
+  }
+
   return (
     <div className="h-64 border-t border-white/5 bg-[#0a0a0a] z-40 flex flex-col">
       <div className="flex h-10 items-center justify-between border-b border-white/5 px-4 bg-white/[0.02]">
@@ -286,9 +293,9 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
         </div>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden min-h-0">
         {/* Full Width Timeline */}
-        <div className="flex-1 flex flex-col overflow-hidden relative">
+        <div className="flex-1 flex flex-col overflow-hidden relative min-h-0">
           {/* Playhead */}
           <div
             className="absolute top-0 bottom-0 w-[2px] bg-rose-500 z-10 pointer-events-none"
@@ -296,7 +303,7 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
           />
 
           {/* Time Ruler */}
-          <div className="flex h-8 border-b border-white/5 bg-white/[0.01]">
+          <div className="flex h-8 border-b border-white/5 bg-white/[0.01] shrink-0">
             <div className="w-[200px] border-r border-white/5 flex items-center px-4">
               <span className="text-[10px] font-semibold text-neutral-500">LAYER</span>
             </div>
@@ -321,7 +328,7 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
           </div>
 
           {/* Timeline Tracks */}
-          <div className="flex-1 overflow-auto">
+          <div className="flex-1 overflow-y-auto min-h-0">
             {layers.length === 0 && (
               <div className="flex items-center justify-center h-full text-[12px] text-neutral-500">
                 Add a shape to populate the timeline.
@@ -329,38 +336,99 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
             )}
             {layers.map((layer, idx) => {
               const clips = templateClips.filter((c) => c.layerId === layer.id).sort((a, b) => a.start - b.start)
+              const isCollapsed = collapsedLayers[layer.id]
+              
+              // Calculate summary bar dimensions
+              const minStart = clips.length > 0 ? clips[0].start : 0
+              const maxEnd = clips.length > 0 ? clips[clips.length - 1].start + clips[clips.length - 1].duration : 0
+              const summaryDuration = maxEnd - minStart
+              const summaryLeft = (minStart / safeDuration) * 100
+              const summaryWidth = Math.max(0, (summaryDuration / safeDuration) * 100)
+
               return (
-                <div key={layer.id} className="flex h-12 border-b border-white/5 hover:bg-white/[0.02] transition-colors">
-                  {/* Layer Name */}
-                  <div className="w-[200px] border-r border-white/5 flex items-center px-4">
-                    <span className="text-[11px] font-medium text-neutral-200 truncate">
-                      {layer.shapeKind === 'circle' ? 'Circle' : 'Layer'} {idx + 1}
-                    </span>
-                  </div>
-                  {/* Timeline Bar */}
-                  <div className="flex-1 relative cursor-default">
-                    {clips.map((clip) => {
-                      const isOptimistic = optimisticClip?.id === clip.id
-                      const start = isOptimistic ? optimisticClip!.start : clip.start
-                      const duration = isOptimistic ? optimisticClip!.duration : clip.duration
-                      const left = (start / safeDuration) * 100
-                      const width = Math.max(2, (duration / safeDuration) * 100)
-                      return (
-                        <div
-                          key={clip.id}
-                          className="absolute top-1/2 -translate-y-1/2 h-8 rounded-md bg-gradient-to-r from-purple-500/40 to-purple-600/40 border border-purple-500/50 px-2 text-[10px] text-white flex items-center gap-1 shadow-lg overflow-hidden"
-                          style={{ left: `${left}%`, width: `${width}%` }}
-                          onPointerDown={(e) => startMove(e, clip)}
-                        >
-                          <span className="font-semibold capitalize truncate">{clip.template}</span>
-                          <div
-                            className="absolute right-0 top-0 h-full w-3 cursor-col-resize bg-white/15 z-10"
-                            onPointerDown={(e) => startResize(e, clip, 'right')}
-                          />
+                <div key={layer.id} className="flex flex-col border-b border-white/5">
+                  {/* Layer Header */}
+                  <div 
+                    className="flex h-8 bg-white/[0.02] hover:bg-white/[0.04] transition-colors cursor-pointer group"
+                    onClick={() => toggleLayer(layer.id)}
+                  >
+                    <div className="w-[200px] border-r border-white/5 flex items-center px-4 gap-2">
+                      <div className="text-neutral-500 group-hover:text-neutral-300 transition-colors">
+                        {isCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                      </div>
+                      <span className="text-[11px] font-medium text-neutral-200 truncate select-none">
+                        {layer.shapeKind === 'circle' ? 'Circle' : 'Layer'} {idx + 1}
+                      </span>
+                    </div>
+                    <div className="flex-1 relative border-l border-white/5">
+                      {/* Grid lines for header */}
+                      <div className="absolute inset-0 pointer-events-none opacity-20">
+                        <div className="flex h-full w-full">
+                          {Array.from({ length: Math.max(2, Math.ceil(safeDuration / 1000) + 1) }).map((_, i) => {
+                            const left = (i * 1000) / safeDuration * 100
+                            return (
+                              <div key={i} className="absolute top-0 bottom-0 border-l border-white/10" style={{ left: `${left}%` }} />
+                            )
+                          })}
                         </div>
-                      )
-                    })}
+                      </div>
+                      
+                      {/* Summary Bar */}
+                      {clips.length > 0 && (
+                        <div
+                          className="absolute top-1/2 -translate-y-1/2 h-4 rounded-sm bg-purple-500/30 border border-purple-500/30"
+                          style={{ left: `${summaryLeft}%`, width: `${summaryWidth}%` }}
+                        />
+                      )}
+                    </div>
                   </div>
+
+                  {/* Clip Rows - Conditionally Rendered */}
+                  {!isCollapsed && clips.map((clip) => {
+                    const isOptimistic = optimisticClip?.id === clip.id
+                    const start = isOptimistic ? optimisticClip!.start : clip.start
+                    const duration = isOptimistic ? optimisticClip!.duration : clip.duration
+                    const left = (start / safeDuration) * 100
+                    const width = Math.max(2, (duration / safeDuration) * 100)
+
+                    return (
+                      <div key={clip.id} className="flex h-8 border-t border-white/5 hover:bg-white/[0.02] transition-colors">
+                        {/* Clip Label Column */}
+                        <div className="w-[200px] border-r border-white/5 flex items-center px-8">
+                          <span className="text-[10px] text-neutral-400 truncate capitalize select-none">
+                            {clip.template}
+                          </span>
+                        </div>
+                        
+                        {/* Clip Track Area */}
+                        <div className="flex-1 relative cursor-default border-l border-white/5">
+                           {/* Grid lines for clip row */}
+                           <div className="absolute inset-0 pointer-events-none opacity-20">
+                            <div className="flex h-full w-full">
+                              {Array.from({ length: Math.max(2, Math.ceil(safeDuration / 1000) + 1) }).map((_, i) => {
+                                const left = (i * 1000) / safeDuration * 100
+                                return (
+                                  <div key={i} className="absolute top-0 bottom-0 border-l border-white/10" style={{ left: `${left}%` }} />
+                                )
+                              })}
+                            </div>
+                          </div>
+
+                          <div
+                            className="absolute top-1/2 -translate-y-1/2 h-6 rounded-md bg-gradient-to-r from-purple-500/40 to-purple-600/40 border border-purple-500/50 px-2 text-[10px] text-white flex items-center gap-1 shadow-lg overflow-hidden hover:brightness-110 transition-all"
+                            style={{ left: `${left}%`, width: `${width}%` }}
+                            onPointerDown={(e) => startMove(e, clip)}
+                          >
+                            <span className="font-semibold capitalize truncate select-none">{clip.template}</span>
+                            <div
+                              className="absolute right-0 top-0 h-full w-3 cursor-col-resize bg-white/15 z-10 hover:bg-white/30 transition-colors"
+                              onPointerDown={(e) => startResize(e, clip, 'right')}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               )
             })}

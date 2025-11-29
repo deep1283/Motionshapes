@@ -376,14 +376,31 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
            
            const sampleTime = index === 0 ? 0 : prevClipEnd
            
+           console.log(`[REBUILD] Clip ${index} (${clip.template}):`, {
+             start,
+             duration,
+             prevClipEnd,
+             sampleTime,
+             isFirstClip: index === 0
+           })
+           
            let clipBaseState
            if (index === 0) {
              // First clip: sample from original track
              clipBaseState = sampleLayerTracks(track, sampleTime, DEFAULT_LAYER_STATE)
+             console.log(`[REBUILD] First clip - sampled from original track:`, clipBaseState.position)
            } else {
              // Subsequent clips: hybrid approach to preserve position but avoid scale issues
              const positionFromNew = sampleLayerTracks(newTrack, sampleTime, DEFAULT_LAYER_STATE).position
              const baseFromOriginal = sampleLayerTracks(track, sampleTime, DEFAULT_LAYER_STATE)
+             
+             console.log(`[REBUILD] Subsequent clip - hybrid sampling:`, {
+               positionFromNew,
+               positionFromOriginal: baseFromOriginal.position,
+               newTrackKeyframes: newTrack.position?.map(kf => ({ time: kf.time, value: kf.value })),
+               originalTrackKeyframes: track.position?.map(kf => ({ time: kf.time, value: kf.value }))
+             })
+             
              clipBaseState = {
                position: positionFromNew,
                scale: baseFromOriginal.scale,
@@ -450,6 +467,12 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
 
            if (!preset) return
 
+           console.log(`[REBUILD] Preset for clip ${index} (${clip.template}):`, {
+             duration: preset.duration,
+             positionKeyframes: preset.position?.map(kf => ({ time: kf.time, value: kf.value })),
+             willBeShiftedBy: start
+           })
+
            // clipBaseState was calculated above
            
            console.log('[CLIP DEBUG] Processing clip:', {
@@ -480,7 +503,20 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
            ) => {
              if (!newFrames) return existing
              
-             const shiftedNew = newFrames.map(f => {
+             // For adjacent clips (no gap), skip the first keyframe of the new clip
+             // because the previous clip already has a keyframe at that time
+             const isAdjacentClip = index > 0 && start === prevClipEnd
+             const framesToProcess = isAdjacentClip ? newFrames.slice(1) : newFrames
+             
+             console.log(`[MERGE] Merging keyframes for clip ${index}:`, {
+               isAdjacentClip,
+               originalFrameCount: newFrames.length,
+               framesToProcessCount: framesToProcess.length,
+               start,
+               prevClipEnd
+             })
+             
+             const shiftedNew = framesToProcess.map(f => {
                let value = f.value
                if (baseValue !== undefined) {
                  if (mode === 'add') {
@@ -500,7 +536,21 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
                return { ...f, time: f.time + start, value }
              })
              
-             return [...existing, ...shiftedNew].sort((a, b) => a.time - b.time)
+             // Merge and deduplicate: if multiple keyframes exist at the same time, keep the last one
+             const merged = [...existing, ...shiftedNew].sort((a, b) => a.time - b.time)
+             const deduplicated: TimelineKeyframe<T>[] = []
+             
+             for (let i = 0; i < merged.length; i++) {
+               const current = merged[i]
+               const next = merged[i + 1]
+               
+               // Only add this keyframe if it's the last one at this timestamp
+               if (!next || next.time !== current.time) {
+                 deduplicated.push(current)
+               }
+             }
+             
+             return deduplicated
            }
 
            newTrack = {
@@ -510,6 +560,11 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
              rotation: mergeKeyframes(newTrack.rotation ?? [], preset.rotation, clipBaseState.rotation, 'add'),
              opacity: mergeKeyframes(newTrack.opacity ?? [], preset.opacity, clipBaseState.opacity, 'multiply'),
            }
+           
+           console.log(`[REBUILD] After merging clip ${index} (${clip.template}):`, {
+             positionKeyframes: newTrack.position?.map(kf => ({ time: kf.time, value: kf.value })),
+             clipBaseStateUsed: clipBaseState.position
+           })
            
            // Update prevClipEnd for next iteration
            prevClipEnd = end
