@@ -49,7 +49,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
   const [isReady, setIsReady] = useState(false)
   const dragRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null)
   const graphicsByIdRef = useRef<Record<string, PIXI.Graphics>>({})
-  const domDragRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null)
+  const outlinesByIdRef = useRef<Record<string, PIXI.Graphics>>({})
+  const layersRef = useRef(layers)
   const pathDragIndexRef = useRef<number | null>(null)
   const pathDragClipRef = useRef<{ layerId: string; clipId: string } | null>(null)
   const pathTranslateRef = useRef<{ startX: number; startY: number; origPoints: Array<{ x: number; y: number }> } | null>(null)
@@ -87,34 +88,72 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
     return Number.isNaN(parsed) ? 0x0f0f0f : parsed
   }
 
+  // Keep layers ref updated
+  useEffect(() => {
+    layersRef.current = layers
+  }, [layers])
+
   // 1. Initialize Pixi App ONCE
   useEffect(() => {
     if (!containerRef.current || appRef.current) return
 
+    let aborted = false
     const initPixi = async () => {
       const app = new PIXI.Application()
+      const bounds = containerRef.current?.getBoundingClientRect()
+      const baseWidth = bounds?.width || 800
+      const baseHeight = bounds?.height || 450
+      
+      // Create a canvas the same size as the container
+      const canvasWidth = baseWidth
+      const canvasHeight = baseHeight
+      
       await app.init({ 
         background: '#000000',
-        backgroundAlpha: 0, // make the canvas transparent so CSS background shows through
-        resizeTo: containerRef.current!,
+        backgroundAlpha: 0,
+        width: canvasWidth,
+        height: canvasHeight,
         antialias: true,
         resolution: window.devicePixelRatio || 1,
       })
-      // ensure the ticker/render loop runs even if autoStart defaults ever change
-      app.start()
-      app.ticker?.start()
-      // enforce canvas sizing inside the container
-      app.renderer.canvas.style.width = '100%'
-      app.renderer.canvas.style.height = '100%'
-      // force an initial resize to the container dimensions in case ResizeObserver hasn't fired yet
-      const bounds = containerRef.current?.getBoundingClientRect()
-      if (bounds) {
-        app.renderer.resize(bounds.width, bounds.height)
+      
+      if (aborted) {
+        app.destroy({ removeView: true })
+        return
       }
       
+      // Disable view culling to allow rendering outside visible bounds
+      if (app.stage) {
+        app.stage.cullable = false
+      }
+      
+      app.start()
+      app.ticker?.start()
+      
+      // Position canvas so overflow works correctly:
+      // The visible container should map to the center of the 2x canvas
+      // This means the canvas extends 50% beyond each edge
+      app.renderer.canvas.style.position = 'absolute'
+      app.renderer.canvas.style.left = '0'
+      app.renderer.canvas.style.top = '0'
+      // IMPORTANT: Set CSS size to logical size, not physical pixel size
+      app.renderer.canvas.style.width = `${canvasWidth}px`
+      app.renderer.canvas.style.height = `${canvasHeight}px`
+      app.renderer.canvas.style.pointerEvents = 'auto'
+      // No transform needed - canvas is same size as container
+      
       if (containerRef.current) {
+        // Clear any existing children to prevent duplicates
+        while (containerRef.current.firstChild) {
+          containerRef.current.removeChild(containerRef.current.firstChild)
+        }
+        
         containerRef.current.appendChild(app.canvas)
         appRef.current = app
+        
+        // Ensure container doesn't clip
+        containerRef.current.style.overflow = 'visible'
+        
         // keep rendering even if no template animation is running
         app.ticker.add(() => app.render())
         setIsReady(true)
@@ -124,6 +163,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
     initPixi()
 
     return () => {
+      aborted = true
       if (appRef.current) {
         appRef.current.destroy({ removeView: true })
         appRef.current = null
@@ -137,22 +177,43 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
     const bounds = containerRef.current.getBoundingClientRect()
     const screenWidth = bounds.width || 1
     const screenHeight = bounds.height || 1
+    
     Object.entries(sampledTimeline).forEach(([id, state]) => {
       const g = graphicsByIdRef.current[id]
       if (!g) return
       const shapeSize = (g as PIXI.Graphics & { __shapeSize?: { width?: number; height?: number } })?.__shapeSize
       const halfW = shapeSize?.width ? (shapeSize.width * state.scale) / 2 : 0
       const halfH = shapeSize?.height ? (shapeSize.height * state.scale) / 2 : 0
+      
       // Allow values up to 4 (400% screen size) to be treated as normalized coordinates
-      // This supports off-screen positioning while still distinguishing from pixel coordinates
       const posX = state.position.x <= 4 ? state.position.x * screenWidth : state.position.x
       const posY = state.position.y <= 4 ? state.position.y * screenHeight : state.position.y
       
-      if (g && Number.isFinite(posX)) g.x = posX
-      if (g && Number.isFinite(posY)) g.y = posY
+      // No canvas offset needed - using 1x canvas
+      const canvasPosX = posX
+      const canvasPosY = posY
+      
+      // Check if shape is outside the visible canvas bounds
+      const isOffCanvas = posX < 0 || posX > screenWidth || posY < 0 || posY > screenHeight
+      
+      if (g && Number.isFinite(canvasPosX)) g.x = canvasPosX
+      if (g && Number.isFinite(canvasPosY)) g.y = canvasPosY
       if (g && g.scale) g.scale.set(state.scale)
       if (g) g.rotation = state.rotation
       if (g) g.alpha = state.opacity
+      
+      // Apply blur filter for off-canvas shapes
+      if (g) {
+        if (isOffCanvas) {
+          if (!g.filters || !g.filters.some(f => f instanceof PIXI.BlurFilter)) {
+            const blurFilter = new PIXI.BlurFilter()
+            blurFilter.blur = 4
+            g.filters = [blurFilter]
+          }
+        } else {
+          g.filters = null
+        }
+      }
     })
     appRef.current?.render()
   }, [sampledTimeline, isReady])
@@ -209,8 +270,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
     const target = e.target as HTMLElement | null
     if (!target) return
     const isPath = target.closest('[data-path-element="true"]')
-    const isShape = target.closest('[data-shape-element="true"]')
-    if (isPath || isShape) return
+    if (isPath) return
     // keep overlay visible; no action on background click
   }
 
@@ -325,25 +385,11 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
               timelineActions.updatePathClip(layerId, clipId, { points: pts })
             }
           }
-          if (!domDragRef.current || !containerRef.current) return
-          const bounds = containerRef.current.getBoundingClientRect()
-          const newX = e.clientX - bounds.left - domDragRef.current.offsetX
-          const newY = e.clientY - bounds.top - domDragRef.current.offsetY
-          const id = domDragRef.current.id
-          const nx = bounds.width > 0 ? newX / bounds.width : 0
-          const ny = bounds.height > 0 ? newY / bounds.height : 0
-          onUpdateLayerPosition?.(id, nx, ny)
-          const g = graphicsByIdRef.current[id]
-          if (g) {
-            g.x = newX
-            g.y = newY
-          }
         }
         const handleUp = () => {
           pathDragIndexRef.current = null
           pathDragClipRef.current = null
           pathTranslateRef.current = null
-          domDragRef.current = null
         }
         window.addEventListener('pointermove', handleMove)
         window.addEventListener('pointerup', handleUp)
@@ -351,7 +397,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
           window.removeEventListener('pointermove', handleMove)
           window.removeEventListener('pointerup', handleUp)
         }
-      }, [onUpdateLayerPosition, timelineTracks, timelineActions])
+      }, [timelineTracks, timelineActions])
 
   // 2. Handle Template Changes (Draw & Animate)
   useEffect(() => {
@@ -393,10 +439,26 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
       const newX = pos.x - offsetX
       const newY = pos.y - offsetY
       const g = graphicsByIdRef.current[id]
+      
+      // Check if shape is outside the visible canvas bounds
+      const isOffCanvas = newX < 0 || newX > screenWidth || newY < 0 || newY > screenHeight
+      
       if (g) {
         g.x = newX
         g.y = newY
+        
+        // Apply blur filter dynamically during drag
+        if (isOffCanvas) {
+          if (!g.filters || !g.filters.some(f => f instanceof PIXI.BlurFilter)) {
+            const blurFilter = new PIXI.BlurFilter()
+            blurFilter.blur = 4
+            g.filters = [blurFilter]
+          }
+        } else {
+          g.filters = null
+        }
       }
+      // Convert from canvas coordinates back to normalized
       const nx = screenWidth > 0 ? newX / screenWidth : 0
       const ny = screenHeight > 0 ? newY / screenHeight : 0
       onUpdateLayerPosition?.(id, nx, ny)
@@ -422,25 +484,35 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
         const g = new PIXI.Graphics()
         g.circle(0, 0, layer.width / 2)
         g.fill(layer.fillColor)
+        
+        // Selection outline will be added by a separate effect
+        
         ;(g as PIXI.Graphics & { __shapeSize?: { width: number; height: number } }).__shapeSize = {
           width: layer.width,
           height: layer.height,
         }
-        // add a small notch so roll rotation is visible
-        if (template === 'roll') {
-          g.moveTo(0, -layer.width / 2)
-          g.lineTo(0, -layer.width / 3)
-          g.stroke({ color: 0x000000, width: 6, alpha: 0.8 })
-        }
         const halfH = layer.height ? layer.height / 2 : 0
         const posX = layer.x <= 4 ? layer.x * screenWidth : layer.x
         const posY = layer.y <= 4 ? layer.y * screenHeight : layer.y
+        // No canvas offset needed
         g.x = posX
         g.y = posY
+        
         g.interactive = true
         g.eventMode = 'dynamic'
         g.cursor = 'pointer'
         g.hitArea = new PIXI.Circle(0, 0, layer.width / 2)
+        
+        console.log('[SHAPE SETUP]', {
+          id: layer.id,
+          position: { x: g.x, y: g.y },
+          layerPos: { x: layer.x, y: layer.y },
+          screenPos: { x: posX, y: posY },
+          hitArea: { radius: layer.width / 2 },
+          interactive: g.interactive,
+          eventMode: g.eventMode
+        })
+        
         g.on('pointerdown', (e) => {
           e.stopPropagation()
           const pos = e.global
@@ -452,6 +524,16 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
           }
           stage.cursor = 'grabbing'
         })
+        
+        // Create a separate graphics object for the selection outline
+        const outline = new PIXI.Graphics()
+        outline.circle(0, 0, layer.width / 2)
+        outline.stroke({ color: 0x9333ea, width: 2, alpha: 1 })
+        outline.visible = false // Hidden by default
+        outline.eventMode = 'none' // CRITICAL: Don't intercept pointer events
+        g.addChild(outline)
+        outlinesByIdRef.current[layer.id] = outline
+        
         graphicsByIdRef.current[layer.id] = g
         stage.addChild(g)
 
@@ -727,8 +809,18 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
 
   }, [template, templateVersion, pathVersion, pathLayerId, activePathPoints, isReady]) // Re-run on template/path switches; layer moves are handled directly
 
+  // 3. Handle Selection Outline Updates
+  useEffect(() => {
+    if (!isReady || !appRef.current) return
+    
+    // Simply show/hide the outline graphics
+    Object.entries(outlinesByIdRef.current).forEach(([id, outline]) => {
+      outline.visible = (selectedLayerId === id)
+    })
+  }, [selectedLayerId, isReady])
+
   return (
-    <div className="relative h-full w-full overflow-hidden rounded-lg" onPointerDown={handleCanvasPointerDown}>
+    <div className="relative h-full w-full overflow-visible rounded-lg" onPointerDown={handleCanvasPointerDown}>
       <div
         className="absolute inset-0"
         aria-hidden="true"
@@ -859,63 +951,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
           </svg>
         </div>
       )}
-      {/* DOM overlay for layers so a shape is always visible; mimic template motion with CSS AND enable dragging */}
-      {layers.length > 0 && (
-        <div
-          className="absolute inset-0"
-          style={{ pointerEvents: isDrawingPath ? 'none' : undefined, zIndex: 15 }}
-        >
-          {layers.map((layer) => {
-            const screenWidth = canvasBounds.width || 1
-            const screenHeight = canvasBounds.height || 1
-            const sampled = sampledTimeline[layer.id]
-            const baseX = sampled ? sampled.position.x : layer.x
-            const baseY = sampled ? sampled.position.y : layer.y
-            const posX = baseX <= 4 ? baseX * screenWidth : baseX
-            const posY = baseY <= 4 ? baseY * screenHeight : baseY
-            const scale = sampled?.scale ?? 1
-            const halfW = (layer.width * scale) / 2
-            const halfH = (layer.height * scale) / 2
-            const clampedX = Math.min(Math.max(posX, halfW), screenWidth - halfW)
-            const clampedY = Math.min(Math.max(posY, halfH), screenHeight - halfH)
-            return (
-              <div
-                key={layer.id}
-                style={{
-                  position: 'absolute',
-                  left: clampedX,
-              top: clampedY,
-              width: layer.width,
-              height: layer.height,
-              transform: `translate(-50%, -50%) scale(${scale}) rotate(${sampled?.rotation ?? 0}rad)`,
-              background: '#fff',
-              borderRadius: '50%',
-              opacity: sampled?.opacity ?? 0.9,
-              outline: selectedLayerId === layer.id ? '1px solid #d1d5db' : undefined,
-              outlineOffset: '1px',
-              touchAction: 'none',
-              userSelect: 'none',
-                  cursor: 'grab',
-                  '--shape-id': layer.id,
-                } as React.CSSProperties}
-                data-shape-element="true"
-                draggable={false}
-                onDragStart={(e) => e.preventDefault()}
-                onPointerDown={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  const boundsNow = containerRef.current?.getBoundingClientRect()
-                  if (!boundsNow) return
-                  onSelectLayer?.(layer.id)
-                  const offsetX = e.clientX - boundsNow.left - posX
-                  const offsetY = e.clientY - boundsNow.top - posY
-                  domDragRef.current = { id: layer.id, offsetX, offsetY }
-                }}
-              />
-            )
-          })}
-        </div>
-      )}
+
 
       {/* Fallback DOM previews removed; timeline drives all motion */}
     </div>

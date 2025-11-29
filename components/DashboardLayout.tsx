@@ -168,7 +168,7 @@ export default function DashboardLayout({
         }
 
   return (
-    <div className="flex h-screen w-screen flex-col bg-[#0a0a0a] text-white overflow-hidden font-sans selection:bg-white/20">
+    <div className="flex h-screen w-screen flex-col bg-[#0a0a0a] text-white overflow-visible font-sans selection:bg-white/20">
       {/* Top Navbar */}
       <header className="flex h-14 items-center justify-between border-b border-white/5 bg-[#0a0a0a]/80 px-4 backdrop-blur-xl z-50 supports-[backdrop-filter]:bg-[#0a0a0a]/60">
         <div className="flex items-center gap-3">
@@ -196,7 +196,7 @@ export default function DashboardLayout({
         </div>
       </header>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-visible">
         {/* Left Sidebar */}
         <aside className="w-64 border-r border-white/5 bg-[#0a0a0a] p-4 flex flex-col gap-6 z-40">
           <div>
@@ -264,7 +264,7 @@ export default function DashboardLayout({
 
         {/* Center Canvas Area */}
         <main
-          className="relative flex flex-1 flex-col overflow-hidden bg-[#050505]"
+          className="relative flex flex-1 flex-col overflow-visible bg-[#050505]"
         >
             {/* Toolbar */}
             <div className="absolute top-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 rounded-full border border-white/10 bg-[#0a0a0a]/80 px-2 py-1.5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-xl">
@@ -389,13 +389,13 @@ export default function DashboardLayout({
               </div>
             )}
 
-          <div className="flex flex-1 items-center justify-center p-8 md:p-12 overflow-hidden relative">
+          <div className="flex flex-1 items-center justify-center p-8 md:p-12 overflow-visible relative">
              {/* Grid Background */}
              <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff03_1px,transparent_1px),linear-gradient(to_bottom,#ffffff03_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none" />
              
              {/* 16:9 Aspect Ratio Container */}
             <div
-              className="relative aspect-video w-full max-w-5xl overflow-hidden rounded-xl border border-white/5 shadow-[0_0_100px_-20px_rgba(0,0,0,0.7)] ring-1 ring-white/[0.02]"
+              className="relative aspect-video w-full max-w-5xl overflow-visible shadow-[0_0_100px_-20px_rgba(0,0,0,0.7),inset_0_0_0_1px_rgba(255,255,255,0.05)]"
               style={{
                 ...canvasBgStyle,
                 transition: 'background 150ms ease, opacity 150ms ease',
