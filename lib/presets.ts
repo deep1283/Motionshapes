@@ -1,6 +1,6 @@
 import { TimelineKeyframe, Vec2 } from '@/lib/timeline'
 
-export type TemplateId = 'roll' | 'jump' | 'pop'
+export type TemplateId = 'roll' | 'jump' | 'pop' | 'path'
 
 export interface PresetResult {
   position?: TimelineKeyframe<Vec2>[]

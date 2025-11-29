@@ -47,6 +47,7 @@ function DashboardContent() {
   const [activePathPoints, setActivePathPoints] = useState<Array<{ x: number; y: number }>>([])
   const [pathVersion, setPathVersion] = useState(0)
   const [selectedLayerId, setSelectedLayerId] = useState('')
+  const [selectedClipId, setSelectedClipId] = useState('')
   const [showSelectShapeHint, setShowSelectShapeHint] = useState(false)
   const [background, setBackground] = useState<BackgroundSettings>({
     mode: 'solid',
@@ -317,6 +318,7 @@ function DashboardContent() {
 
   const handleTemplateSelect = (templateId: string) => {
     setSelectedTemplate((prev) => (prev === templateId ? '' : templateId))
+    setSelectedClipId('')
     timeline.setPlaying(false)
     timeline.setCurrentTime(0)
     // bump so MotionCanvas fully resets and replays animation even on same template click
@@ -366,6 +368,7 @@ function DashboardContent() {
 
   const handleSelectLayer = (id: string) => {
     setSelectedLayerId(id)
+    setSelectedClipId('')
     setShowSelectShapeHint(false)
   }
 
@@ -398,14 +401,29 @@ function DashboardContent() {
     if (selectedLayerId && simplified.length >= 2) {
       const now = timeline.getState().currentTime
       const duration = 2000
-      timeline.addPathClip(selectedLayerId, {
-        id: crypto.randomUUID(),
-        startTime: now,
+      
+      // Calculate path length for speed calculations
+      let length = 0
+      for (let i = 1; i < simplified.length; i++) {
+        length += Math.hypot(simplified[i].x - simplified[i-1].x, simplified[i].y - simplified[i-1].y)
+      }
+      
+      const clipId = timeline.addTemplateClip(
+        selectedLayerId,
+        'path',
+        now,
         duration,
-        points: simplified,
-      })
-      const desiredDuration = Math.max(timeline.getState().duration, now + duration)
-      timeline.setDuration(desiredDuration)
+        {
+          pathPoints: simplified,
+          pathLength: length,
+          templateSpeed: 1 // Default speed
+        }
+      )
+      
+      // Set the template to 'path' so the speed control appears
+      setSelectedTemplate('path')
+      // Also set the clip ID so speed changes target this clip
+      setSelectedClipId(clipId)
     }
   }
 
@@ -449,7 +467,43 @@ function DashboardContent() {
 
   const handleClipClick = (clip: { id: string; template: string }) => {
     setSelectedTemplate(clip.template)
-    timeline.selectClip(clip.id)
+    setSelectedClipId(clip.id)
+    
+    // Load the clip's parameters into the global controls
+    const clipData = templateClips.find(c => c.id === clip.id)
+    if (clipData?.parameters?.templateSpeed) {
+      timeline.setTemplateSpeed(clipData.parameters.templateSpeed)
+    }
+  }
+
+  const handleTemplateSpeedChange = (value: number) => {
+    timeline.setTemplateSpeed(value)
+    
+    if (selectedClipId && selectedLayerId) {
+      const clip = templateClips.find(c => c.id === selectedClipId)
+      if (clip) {
+        // For path clips, update duration based on speed
+        if (clip.template === 'path') {
+          // Base duration is 2000ms at speed 1.0
+          // duration = baseDuration / speed
+          const newDuration = 2000 / value
+          
+          timeline.updateTemplateClip(selectedLayerId, selectedClipId, {
+            duration: newDuration,
+            parameters: {
+              templateSpeed: value
+            }
+          })
+        } else {
+          // For other templates, just update the speed parameter
+          timeline.updateTemplateClip(selectedLayerId, selectedClipId, {
+            parameters: {
+              templateSpeed: value
+            }
+          })
+        }
+      }
+    }
   }
 
   return (
@@ -474,7 +528,7 @@ function DashboardContent() {
       popScale={popScale}
       popSpeed={popSpeed}
       popCollapse={popCollapse}
-      onTemplateSpeedChange={timeline.setTemplateSpeed}
+      onTemplateSpeedChange={handleTemplateSpeedChange}
       onRollDistanceChange={timeline.setRollDistance}
       onJumpHeightChange={timeline.setJumpHeight}
       onJumpVelocityChange={timeline.setJumpVelocity}

@@ -570,6 +570,23 @@ export default function DashboardLayout({
                 </div>
               </>
             )}
+            {selectedTemplate === 'path' && (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] font-semibold text-neutral-200">Path Speed</span>
+                  <span className="text-[10px] text-neutral-400">{templateSpeed.toFixed(2)}x</span>
+                </div>
+                <input
+                  type="range"
+                  min={0.25}
+                  max={3}
+                  step={0.05}
+                  value={templateSpeed}
+                  onChange={(e) => onTemplateSpeedChange?.(Number(e.target.value))}
+                  className="w-full accent-emerald-500"
+                />
+              </div>
+            )}
             {!selectedTemplate && <p className="text-[11px] text-neutral-500">Select a template to adjust its controls.</p>}
           </div>
         </aside>

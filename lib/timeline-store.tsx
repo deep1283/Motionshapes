@@ -46,6 +46,8 @@ type TimelineState = {
       popWobble?: boolean
       popSpeed?: number
       popCollapse?: boolean
+      pathPoints?: Vec2[]
+      pathLength?: number
     }
   }>
 }
@@ -239,12 +241,22 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
   const updateTemplateClip = (
     layerId: string,
     clipId: string,
-    updates: Partial<Pick<TimelineState['templateClips'][number], 'start' | 'duration'>>
+    updates: Partial<Pick<TimelineState['templateClips'][number], 'start' | 'duration' | 'parameters'>>
   ) => {
     setState((prev) => {
-      const updatedClips = prev.templateClips.map((clip) =>
-        clip.id === clipId && clip.layerId === layerId ? { ...clip, ...updates } : clip
-      )
+      const updatedClips = prev.templateClips.map((clip) => {
+        if (clip.id === clipId && clip.layerId === layerId) {
+          return {
+            ...clip,
+            ...updates,
+            // Merge parameters instead of replacing them
+            parameters: updates.parameters 
+              ? { ...clip.parameters, ...updates.parameters }
+              : clip.parameters
+          }
+        }
+        return clip
+      })
 
       // Calculate new parameters for the specific clip being updated
       const layerClips = updatedClips.filter((c) => c.layerId === layerId)
@@ -267,6 +279,34 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           ? popSpeedForDuration(popClip.duration)
           : prev.popSpeed
 
+      
+      // For path clips: if duration changed (from dragging the bar), calculate the new speed
+      const pathClip = layerClips.find((c) => c.id === clipId && c.template === 'path')
+      let updatedPathClip = pathClip
+      
+      if (pathClip && updates.duration !== undefined && !updates.parameters?.templateSpeed) {
+        // Duration was changed (by dragging), so calculate the new speed
+        // speed = baseDuration / duration
+        const newSpeed = 2000 / updates.duration
+        
+        // Update the clip with the calculated speed
+        updatedPathClip = {
+          ...pathClip,
+          duration: updates.duration,
+          parameters: {
+            ...pathClip.parameters,
+            templateSpeed: newSpeed
+          }
+        }
+        
+        // Replace the clip in updatedClips
+        const clipIndex = updatedClips.findIndex(c => c.id === clipId)
+        if (clipIndex !== -1) {
+          updatedClips[clipIndex] = updatedPathClip
+        }
+      }
+
+
       // Helper to rebuild track from clips
       const rebuildTrackFromClips = (layerId: string, currentClips: typeof updatedClips, currentTracks: LayerTracks[]) => {
         const layerClips = currentClips
@@ -282,7 +322,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           position: [],
           scale: [],
           rotation: [],
-          opacity: []
+          opacity: [],
+          paths: []
         }
 
         // Apply clips sequentially
@@ -292,22 +333,51 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
            const duration = clip.duration ?? 0
            const end = start + duration
            
+           const sampleTime = index === 0 ? 0 : prevClipEnd
+           const clipBaseState = sampleLayerTracks(track, sampleTime, DEFAULT_LAYER_STATE)
+
            let preset
            if (clip.template === 'roll') {
-             preset = PRESET_BUILDERS.roll(nextRollDistance, prev.templateSpeed)
+             preset = PRESET_BUILDERS.roll(clip.parameters?.rollDistance ?? prev.rollDistance, clip.parameters?.templateSpeed ?? prev.templateSpeed)
            } else if (clip.template === 'jump') {
-             preset = PRESET_BUILDERS.jump(nextJumpHeight, prev.jumpVelocity)
+             preset = PRESET_BUILDERS.jump(clip.parameters?.jumpHeight ?? prev.jumpHeight, clip.parameters?.jumpVelocity ?? prev.jumpVelocity)
            } else if (clip.template === 'pop') {
-             preset = PRESET_BUILDERS.pop(prev.popScale, prev.popWobble, nextPopSpeed, prev.popCollapse)
+             preset = PRESET_BUILDERS.pop(clip.parameters?.popScale ?? prev.popScale, clip.parameters?.popWobble ?? prev.popWobble, clip.parameters?.popSpeed ?? prev.popSpeed, clip.parameters?.popCollapse ?? prev.popCollapse)
+           } else if (clip.template === 'path' && clip.parameters?.pathPoints) {
+              newTrack.paths = [
+                ...(newTrack.paths ?? []),
+                {
+                  id: clip.id,
+                  startTime: start,
+                  duration: duration,
+                  points: clip.parameters.pathPoints,
+                  easing: 'linear'
+                }
+              ]
+              
+              // Add a keyframe at the end to hold the position
+              // We calculate the delta from the start position (clipBaseState) to the end of the path
+              const points = clip.parameters.pathPoints
+              const lastPoint = points[points.length - 1]
+              
+              if (lastPoint) {
+                  const delta = { 
+                      x: lastPoint.x - clipBaseState.position.x, 
+                      y: lastPoint.y - clipBaseState.position.y 
+                  }
+                  preset = { 
+                      duration, 
+                      position: [{ time: duration, value: delta }], 
+                      scale: [], rotation: [], opacity: [] 
+                  }
+              } else {
+                  preset = { duration, position: [], scale: [], rotation: [], opacity: [] }
+              }
            }
 
            if (!preset) return
 
-           // CRITICAL: Sample the base state correctly for sequential clips
-           // For the FIRST clip: sample at time 0 to capture manual position/scale changes
-           // For SUBSEQUENT clips: sample at the END of the PREVIOUS clip to maintain continuity
-           const sampleTime = index === 0 ? 0 : prevClipEnd
-           const clipBaseState = sampleLayerTracks(track, sampleTime, DEFAULT_LAYER_STATE)
+           // clipBaseState was calculated above
            
            console.log('[CLIP DEBUG] Processing clip:', {
              index,
@@ -440,6 +510,9 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       const clipsEnd = updatedClips.reduce((max, c) => Math.max(max, (c.start ?? 0) + (c.duration ?? 0)), 0)
       const pathsEnd = getMaxPathEnd(adjustedTracks)
       const newDuration = Math.max(tracksEnd, clipsEnd, pathsEnd, 4000)
+      
+      // If path clip speed was updated, also update global templateSpeed
+      const nextTemplateSpeed = updatedPathClip?.parameters?.templateSpeed ?? prev.templateSpeed
 
       return {
         ...prev,
@@ -450,6 +523,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         rollDistance: nextRollDistance,
         jumpHeight: nextJumpHeight,
         popSpeed: nextPopSpeed,
+        templateSpeed: nextTemplateSpeed,
       }
     })
   }
@@ -725,6 +799,230 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     })
   }
 
+  const addTemplateClip = (
+    layerId: string,
+    template: TemplateId,
+    start: number,
+    duration: number,
+    parameters?: TimelineState['templateClips'][number]['parameters']
+  ) => {
+    const clipId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `clip-${Date.now()}-${Math.random()}`
+      
+    setState((prev) => {
+      const newClip = {
+        id: clipId,
+        layerId,
+        template,
+        start,
+        duration,
+        parameters: {
+          templateSpeed: prev.templateSpeed,
+          rollDistance: prev.rollDistance,
+          jumpHeight: prev.jumpHeight,
+          jumpVelocity: prev.jumpVelocity,
+          popScale: prev.popScale,
+          popWobble: prev.popWobble,
+          popSpeed: prev.popSpeed,
+          popCollapse: prev.popCollapse,
+          ...parameters
+        }
+      }
+
+      const nextClips = [...prev.templateClips, newClip]
+      
+      // Rebuild tracks
+      // We can reuse the logic from updateTemplateClip by extracting it, 
+      // but for now let's just trigger a rebuild by calling a helper or duplicating minimal logic
+      // Actually, we can just call updateTemplateClip internally? No, that updates an existing clip.
+      
+      // Let's copy the rebuild logic or extract it.
+      // Since I can't easily extract in this tool call, I'll duplicate the rebuild call for this layer.
+      
+      // Helper to rebuild track from clips (duplicated from updateTemplateClip for now)
+      // Ideally this should be a shared function outside setState
+      const rebuildTrackFromClips = (layerId: string, currentClips: typeof nextClips, currentTracks: LayerTracks[]) => {
+        const layerClips = currentClips
+          .filter(c => c.layerId === layerId)
+          .sort((a, b) => (a.start ?? 0) - (b.start ?? 0))
+
+        const track = currentTracks.find(t => t.layerId === layerId)
+        if (!track) return currentTracks
+
+        let newTrack: LayerTracks = {
+          ...track,
+          position: [],
+          scale: [],
+          rotation: [],
+          opacity: [],
+          paths: []
+        }
+
+        let prevClipEnd = 0
+        layerClips.forEach((clip, index) => {
+           const start = clip.start ?? 0
+           const duration = clip.duration ?? 0
+           const end = start + duration
+           
+           const sampleTime = index === 0 ? 0 : prevClipEnd
+           const clipBaseState = sampleLayerTracks(track, sampleTime, DEFAULT_LAYER_STATE)
+
+           let preset
+           if (clip.template === 'roll') {
+             preset = PRESET_BUILDERS.roll(clip.parameters?.rollDistance ?? prev.rollDistance, clip.parameters?.templateSpeed ?? prev.templateSpeed)
+           } else if (clip.template === 'jump') {
+             preset = PRESET_BUILDERS.jump(clip.parameters?.jumpHeight ?? prev.jumpHeight, clip.parameters?.jumpVelocity ?? prev.jumpVelocity)
+           } else if (clip.template === 'pop') {
+             preset = PRESET_BUILDERS.pop(clip.parameters?.popScale ?? prev.popScale, clip.parameters?.popWobble ?? prev.popWobble, clip.parameters?.popSpeed ?? prev.popSpeed, clip.parameters?.popCollapse ?? prev.popCollapse)
+           } else if (clip.template === 'path' && clip.parameters?.pathPoints) {
+              newTrack.paths = [
+                ...(newTrack.paths ?? []),
+                {
+                  id: clip.id,
+                  startTime: start,
+                  duration: duration,
+                  points: clip.parameters.pathPoints,
+                  easing: 'linear'
+                }
+              ]
+              
+              const points = clip.parameters.pathPoints
+              const lastPoint = points[points.length - 1]
+              
+              if (lastPoint) {
+                  const delta = { 
+                      x: lastPoint.x - clipBaseState.position.x, 
+                      y: lastPoint.y - clipBaseState.position.y 
+                  }
+                  preset = { 
+                      duration, 
+                      position: [{ time: duration, value: delta }], 
+                      scale: [], rotation: [], opacity: [] 
+                  }
+              } else {
+                  preset = { duration, position: [], scale: [], rotation: [], opacity: [] }
+              }
+           }
+
+           if (!preset) return
+
+           // clipBaseState was calculated above
+           
+           if (index > 0 && start > prevClipEnd) {
+             newTrack.position?.push({ time: start - 1, value: clipBaseState.position })
+             newTrack.scale?.push({ time: start - 1, value: clipBaseState.scale })
+             newTrack.rotation?.push({ time: start - 1, value: clipBaseState.rotation })
+             newTrack.opacity?.push({ time: start - 1, value: clipBaseState.opacity })
+           }
+           
+           const mergeKeyframes = <T,>(
+             existing: TimelineKeyframe<T>[],
+             newFrames: TimelineKeyframe<T>[] | undefined,
+             baseValue?: T,
+             mode: 'add' | 'multiply' | 'replace' = 'replace'
+           ) => {
+             if (!newFrames) return existing
+             
+             const shiftedNew = newFrames.map(f => {
+               let value = f.value
+               if (baseValue !== undefined) {
+                 if (mode === 'add') {
+                     if (typeof f.value === 'object' && f.value !== null && 'x' in f.value) {
+                         const v = f.value as unknown as Vec2
+                         const b = baseValue as unknown as Vec2
+                         value = { x: v.x + b.x, y: v.y + b.y } as unknown as T
+                     } else if (typeof f.value === 'number' && typeof baseValue === 'number') {
+                         value = (f.value as number + baseValue) as unknown as T
+                     }
+                 } else if (mode === 'multiply') {
+                     if (typeof f.value === 'number' && typeof baseValue === 'number') {
+                         value = (f.value as number * baseValue) as unknown as T
+                     }
+                 }
+               }
+               return { ...f, time: f.time + start, value }
+             })
+             
+             return [...existing, ...shiftedNew].sort((a, b) => a.time - b.time)
+           }
+
+           newTrack = {
+             ...newTrack,
+             position: mergeKeyframes(newTrack.position ?? [], preset.position, clipBaseState.position, 'add'),
+             scale: mergeKeyframes(newTrack.scale ?? [], preset.scale, clipBaseState.scale, 'multiply'),
+             rotation: mergeKeyframes(newTrack.rotation ?? [], preset.rotation, clipBaseState.rotation, 'add'),
+             opacity: mergeKeyframes(newTrack.opacity ?? [], preset.opacity, clipBaseState.opacity, 'multiply'),
+           }
+           
+           prevClipEnd = end
+         })
+         
+        // Ensure static start keyframes
+        const initialState = sampleLayerTracks(track, 0, DEFAULT_LAYER_STATE)
+        const firstClipStart = layerClips.length > 0 ? (layerClips[0].start ?? 0) : 0
+        
+        if (firstClipStart > 0 || (newTrack.position?.length ?? 0) === 0) {
+          const hasKeyframeAtZero = newTrack.position?.some(kf => kf.time === 0)
+          if (!hasKeyframeAtZero) {
+            newTrack.position = [{ time: 0, value: initialState.position }, ...(newTrack.position ?? [])]
+            newTrack.scale = [{ time: 0, value: initialState.scale }, ...(newTrack.scale ?? [])]
+            newTrack.rotation = [{ time: 0, value: initialState.rotation }, ...(newTrack.rotation ?? [])]
+            newTrack.opacity = [{ time: 0, value: initialState.opacity }, ...(newTrack.opacity ?? [])]
+          }
+          
+          if (firstClipStart > 0) {
+            const insertIndex = newTrack.position?.findIndex(kf => kf.time >= firstClipStart) ?? 0
+            newTrack.position?.splice(insertIndex, 0, { time: firstClipStart - 1, value: initialState.position })
+            newTrack.scale?.splice(insertIndex, 0, { time: firstClipStart - 1, value: initialState.scale })
+            newTrack.rotation?.splice(insertIndex, 0, { time: firstClipStart - 1, value: initialState.rotation })
+            newTrack.opacity?.splice(insertIndex, 0, { time: firstClipStart - 1, value: initialState.opacity })
+          }
+        }
+        
+        if ((newTrack.position?.length ?? 0) === 0) newTrack.position = [{ time: 0, value: initialState.position }]
+        if ((newTrack.scale?.length ?? 0) === 0) newTrack.scale = [{ time: 0, value: initialState.scale }]
+        if ((newTrack.rotation?.length ?? 0) === 0) newTrack.rotation = [{ time: 0, value: initialState.rotation }]
+        if ((newTrack.opacity?.length ?? 0) === 0) newTrack.opacity = [{ time: 0, value: initialState.opacity }]
+
+        return currentTracks.map(t => t.layerId === layerId ? newTrack : t)
+      }
+
+      const adjustedTracks = rebuildTrackFromClips(layerId, nextClips, prev.tracks)
+      
+      // Recalculate duration
+      const getMaxPathEnd = (tracks: LayerTracks[]) => {
+        let maxEnd = 0
+        tracks.forEach((t) => {
+          (t.paths ?? []).forEach((p) => {
+            maxEnd = Math.max(maxEnd, p.startTime + p.duration)
+          })
+        })
+        return maxEnd
+      }
+      
+      const getTrackEndTime = (track: LayerTracks): number => {
+        const times: number[] = []
+        if (track.position && track.position.length) times.push(track.position[track.position.length - 1].time)
+        return times.length ? Math.max(...times) : 0
+      }
+
+      const tracksEnd = adjustedTracks.reduce((max, t) => Math.max(max, getTrackEndTime(t)), 0)
+      const clipsEnd = nextClips.reduce((max, c) => Math.max(max, (c.start ?? 0) + (c.duration ?? 0)), 0)
+      const pathsEnd = getMaxPathEnd(adjustedTracks)
+      const newDuration = Math.max(tracksEnd, clipsEnd, pathsEnd, 4000)
+
+      return {
+        ...prev,
+        templateClips: nextClips,
+        tracks: adjustedTracks,
+        duration: newDuration,
+        currentTime: clampTime(prev.currentTime, newDuration),
+      }
+    })
+    
+    return clipId
+  }
   const setCurrentTime = (time: number) => {
     setState((prev) => ({
       ...prev,
@@ -924,6 +1222,9 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     subscribe,
     getState: () => state,
     ensureTrack,
+    updateTemplateClip,
+    selectClip,
+    addTemplateClip,
     setCurrentTime,
     setDuration,
     setLoop,
@@ -939,7 +1240,6 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     setPlaying,
     togglePlay,
     templateClips: state.templateClips,
-    updateTemplateClip,
     setPositionKeyframe: (layerId: string, frame: TimelineKeyframe<Vec2>) =>
       setKeyframe(layerId, 'position', frame),
     setScaleKeyframe: (layerId: string, frame: TimelineKeyframe<number>) =>
@@ -955,7 +1255,6 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     applyPresetToLayer,
     clear,
     sampleAt,
-    selectClip,
   }
 }
 
