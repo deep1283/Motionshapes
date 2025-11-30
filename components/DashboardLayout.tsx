@@ -514,6 +514,92 @@ export default function DashboardLayout({
   }
 
   const [activeTab, setActiveTab] = useState<'templates' | 'shapes' | 'draw'>('templates')
+  
+  // Sidebar Resize Logic
+  const [sidebarWidth, setSidebarWidth] = useState(256)
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false)
+  const sidebarRef = useRef<HTMLElement>(null)
+
+  useEffect(() => {
+    const savedWidth = localStorage.getItem('motion-sidebar-width')
+    if (savedWidth) {
+      setSidebarWidth(parseInt(savedWidth))
+    }
+  }, [])
+
+  const startSidebarResize = (e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsResizingSidebar(true)
+    document.body.style.cursor = 'ew-resize'
+    document.body.style.userSelect = 'none'
+  }
+
+  useEffect(() => {
+    if (!isResizingSidebar) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const newWidth = Math.max(120, Math.min(480, e.clientX))
+      setSidebarWidth(newWidth)
+    }
+
+    const handleMouseUp = () => {
+      setIsResizingSidebar(false)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      localStorage.setItem('motion-sidebar-width', sidebarWidth.toString())
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isResizingSidebar, sidebarWidth])
+
+  // Right Sidebar Resize Logic
+  const [rightSidebarWidth, setRightSidebarWidth] = useState(320)
+  const [isResizingRightSidebar, setIsResizingRightSidebar] = useState(false)
+  const rightSidebarRef = useRef<HTMLElement>(null)
+
+  useEffect(() => {
+    const savedWidth = localStorage.getItem('motion-right-sidebar-width')
+    if (savedWidth) {
+      setRightSidebarWidth(parseInt(savedWidth))
+    }
+  }, [])
+
+  const startRightSidebarResize = (e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsResizingRightSidebar(true)
+    document.body.style.cursor = 'ew-resize'
+    document.body.style.userSelect = 'none'
+  }
+
+  useEffect(() => {
+    if (!isResizingRightSidebar) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const newWidth = Math.max(240, Math.min(600, window.innerWidth - e.clientX))
+      setRightSidebarWidth(newWidth)
+    }
+
+    const handleMouseUp = () => {
+      setIsResizingRightSidebar(false)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      localStorage.setItem('motion-right-sidebar-width', rightSidebarWidth.toString())
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isResizingRightSidebar, rightSidebarWidth])
 
   return (
     <div className="flex h-screen w-screen flex-col bg-[#0a0a0a] text-white overflow-hidden font-sans selection:bg-white/20">
@@ -574,8 +660,17 @@ export default function DashboardLayout({
 
       <div className="flex flex-1 overflow-hidden min-h-0">
         {/* Left Sidebar */}
-        <aside className="w-64 border-r border-white/5 bg-[#0a0a0a] p-4 flex flex-col gap-6 z-40">
-          
+        <aside 
+            ref={sidebarRef}
+            style={{ width: sidebarWidth }}
+            className="relative border-r border-white/5 bg-[#0a0a0a] p-4 flex flex-col gap-6 z-40 shrink-0 overflow-y-auto"
+        >
+          {/* Resize Handle */}
+          <div
+            className="absolute right-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-purple-500/50 active:bg-purple-500/50 transition-colors z-50"
+            onMouseDown={startSidebarResize}
+          />
+
           {/* Templates Tab Content */}
           {activeTab === 'templates' && (
             <div className="flex flex-col gap-4">
@@ -601,7 +696,10 @@ export default function DashboardLayout({
                     <h2 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-neutral-600 px-2">
                       Templates
                     </h2>
-                    <nav className="grid grid-cols-2 gap-2">
+                    <nav className={cn(
+                      "grid gap-2",
+                      sidebarWidth < 240 ? "grid-cols-1" : "grid-cols-2"
+                    )}>
                       {templates.map((template) => (
                         <TemplatePreview
                           key={template.id}
@@ -900,30 +998,18 @@ export default function DashboardLayout({
         </main>
 
         {/* Right Sidebar - Template Controls */}
-        <aside className="w-80 border-l border-white/5 bg-[#0a0a0a] p-4 space-y-4 overflow-y-auto">
-          {isDrawingPath && (
-            <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/5 p-3 shadow-inner">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[11px] font-semibold text-neutral-100">Path Recording</span>
-                <span className="text-[10px] text-emerald-400 font-mono">{pathPointCount} pts</span>
-              </div>
-              <p className="text-[11px] text-neutral-300 mb-2">Click on canvas to add points. Double-click or press Finish.</p>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => onFinishPath?.()}
-                  className="inline-flex items-center justify-center rounded-md bg-emerald-500/80 px-3 py-1 text-[11px] font-semibold text-black hover:bg-emerald-400"
-                >
-                  Finish Path
-                </button>
-                <button
-                  onClick={() => onCancelPath?.()}
-                  className="inline-flex items-center justify-center rounded-md border border-white/10 px-3 py-1 text-[11px] font-semibold text-neutral-200 hover:bg-white/5"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
+        <aside 
+            ref={rightSidebarRef}
+            style={{ width: rightSidebarWidth }}
+            className="relative border-l border-white/5 bg-[#0a0a0a] p-4 space-y-4 overflow-y-auto shrink-0"
+        >
+          {/* Resize Handle */}
+          <div
+            className="absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-purple-500/50 active:bg-purple-500/50 transition-colors z-50"
+            onMouseDown={startRightSidebarResize}
+          />
+
+
 
           {selectedLayerId && (
             <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3 shadow-inner">
@@ -943,10 +1029,10 @@ export default function DashboardLayout({
             </div>
           )}
 
-          <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3 shadow-inner space-y-4">
-            <div className="flex items-center gap-2 text-[11px] font-semibold text-neutral-200">
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 text-[11px] font-semibold text-neutral-200 px-2">
               <SlidersHorizontal className="h-3.5 w-3.5" />
-              Template Controls
+              Controls
             </div>
             {selectedTemplate === 'roll' && (
               <>
