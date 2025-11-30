@@ -42,6 +42,64 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
   }))
   const timeline = useTimelineActions()
   const safeDuration = Math.max(1, duration)
+  // Timeline resize state
+  const MIN_HEIGHT = 100
+  const MAX_HEIGHT = typeof window !== 'undefined' ? window.innerHeight * 0.8 : 600
+  const DEFAULT_HEIGHT = 256
+  
+  const [timelineHeight, setTimelineHeight] = useState(() => {
+    if (typeof window === 'undefined') return DEFAULT_HEIGHT
+    const saved = localStorage.getItem('timelineHeight')
+    return saved ? Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, parseInt(saved))) : DEFAULT_HEIGHT
+  })
+  
+  const [isResizing, setIsResizing] = useState(false)
+  const resizeStartRef = useRef<{ startY: number; startHeight: number } | null>(null)
+
+  // Handle timeline resize
+  const handleResizeStart = (e: React.PointerEvent) => {
+    e.preventDefault()
+    e.stopPropagation() // Stop event from bubbling
+    
+    // Capture pointer to ensure we get move events even if mouse leaves element
+    const target = e.target as HTMLElement
+    target.setPointerCapture(e.pointerId)
+    
+    setIsResizing(true)
+    resizeStartRef.current = {
+      startY: e.clientY,
+      startHeight: timelineHeight
+    }
+  }
+
+  useEffect(() => {
+    if (!isResizing) return
+
+    const handleResizeMove = (e: PointerEvent) => {
+      if (!resizeStartRef.current) return
+      
+      const deltaY = resizeStartRef.current.startY - e.clientY
+      const newHeight = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, resizeStartRef.current.startHeight + deltaY))
+      setTimelineHeight(newHeight)
+    }
+
+    const handleResizeEnd = (e: PointerEvent) => {
+      setIsResizing(false)
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('timelineHeight', timelineHeight.toString())
+      }
+      resizeStartRef.current = null
+    }
+
+    window.addEventListener('pointermove', handleResizeMove)
+    window.addEventListener('pointerup', handleResizeEnd)
+    
+    return () => {
+      window.removeEventListener('pointermove', handleResizeMove)
+      window.removeEventListener('pointerup', handleResizeEnd)
+    }
+  }, [isResizing, MIN_HEIGHT, MAX_HEIGHT])
+
   const sampled = useMemo(() => sampleTimeline(tracks, currentTime), [tracks, currentTime])
   const selectedSample = selectedLayerId ? sampled[selectedLayerId] : undefined
   const pathClip = useMemo(() => {
@@ -266,8 +324,30 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
     }))
   }
 
+  useEffect(() => {
+    if (isResizing) {
+      document.body.style.userSelect = 'none'
+      document.body.style.cursor = 'row-resize'
+    } else {
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
+    }
+    return () => {
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
+    }
+  }, [isResizing])
+
   return (
-    <div className="h-64 border-t border-white/5 bg-[#0a0a0a] z-40 flex flex-col">
+    <div 
+      className={`border-t border-white/5 bg-[#0a0a0a] z-40 flex flex-col relative ${isResizing ? '' : 'transition-[height] duration-75 ease-out'}`}
+      style={{ height: timelineHeight }}
+    >
+      {/* Resize Handle */}
+      <div
+        className="absolute -top-1 left-0 right-0 h-2 cursor-row-resize hover:bg-emerald-500/50 transition-colors z-50 active:bg-emerald-500"
+        onPointerDown={handleResizeStart}
+      />
       <div className="flex h-10 items-center justify-between border-b border-white/5 px-4 bg-white/[0.02]">
         <div className="flex items-center gap-4">
           <span className="text-[10px] font-bold tracking-widest text-neutral-600">TIMELINE</span>

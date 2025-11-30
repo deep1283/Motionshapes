@@ -168,9 +168,9 @@ export default function DashboardLayout({
         }
 
   return (
-    <div className="flex h-screen w-screen flex-col bg-[#0a0a0a] text-white overflow-visible font-sans selection:bg-white/20">
+    <div className="flex h-screen w-screen flex-col bg-[#0a0a0a] text-white overflow-hidden font-sans selection:bg-white/20">
       {/* Top Navbar */}
-      <header className="flex h-14 items-center justify-between border-b border-white/5 bg-[#0a0a0a]/80 px-4 backdrop-blur-xl z-50 supports-[backdrop-filter]:bg-[#0a0a0a]/60">
+      <header className="flex h-14 items-center justify-between border-b border-white/5 bg-[#0a0a0a]/80 px-4 backdrop-blur-xl z-50 supports-[backdrop-filter]:bg-[#0a0a0a]/60 shrink-0">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" className="h-8 w-8 text-neutral-400 hover:text-white hover:bg-white/5" onClick={() => router.push('/')}>
              <ChevronLeft className="h-4 w-4" />
@@ -196,7 +196,7 @@ export default function DashboardLayout({
         </div>
       </header>
 
-      <div className="flex flex-1 overflow-visible">
+      <div className="flex flex-1 overflow-hidden min-h-0">
         {/* Left Sidebar */}
         <aside className="w-64 border-r border-white/5 bg-[#0a0a0a] p-4 flex flex-col gap-6 z-40">
           <div>
@@ -593,17 +593,19 @@ export default function DashboardLayout({
         </aside>
       </div>
 
-      {/* Bottom Timeline - Full Width */}
-      <TimelinePanel
-        layers={layers}
-        selectedLayerId={selectedLayerId}
-        selectedTemplate={selectedTemplate}
-        isDrawingPath={isDrawingPath}
-        onFinishPath={onFinishPath}
-        onCancelPath={onCancelPath}
-        pathPointCount={pathPointCount}
-        onClipClick={onClipClick}
-      />
+      {/* Bottom Timeline - Absolute Overlay */}
+      <div className="absolute bottom-0 left-0 right-0 z-50">
+        <TimelinePanel
+          layers={layers}
+          selectedLayerId={selectedLayerId}
+          selectedTemplate={selectedTemplate}
+          isDrawingPath={isDrawingPath}
+          onFinishPath={onFinishPath}
+          onCancelPath={onCancelPath}
+          pathPointCount={pathPointCount}
+          onClipClick={onClipClick}
+        />
+      </div>
     </div>
   )
 }
