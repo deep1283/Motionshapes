@@ -437,7 +437,7 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
                         {isCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                       </div>
                       <span className="text-[11px] font-medium text-neutral-200 truncate select-none">
-                        {layer.shapeKind === 'circle' ? 'Circle' : 'Layer'} {idx + 1}
+                        {layer.shapeKind ? `${layer.shapeKind.charAt(0).toUpperCase()}${layer.shapeKind.slice(1)}` : 'Layer'} {idx + 1}
                       </span>
                     </div>
                     <div className="flex-1 relative border-l border-white/5">

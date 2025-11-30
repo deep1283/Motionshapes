@@ -15,7 +15,17 @@ const MotionCanvas = dynamic(() => import('@/components/MotionCanvas'), {
   loading: () => <div className="h-full w-full animate-pulse bg-neutral-800" />
 })
 
-type ShapeKind = 'circle'
+type ShapeKind =
+  | 'circle'
+  | 'square'
+  | 'heart'
+  | 'star'
+  | 'triangle'
+  | 'pill'
+  | 'like'
+  | 'comment'
+  | 'share'
+  | 'cursor'
 
 interface Layer {
   id: string
@@ -358,15 +368,29 @@ function DashboardContent() {
     timeline.setPlaying(false)
   }
 
-  const handleAddShape = () => {
+  const shapeDefaults: Record<ShapeKind, { width: number; height: number }> = {
+    circle: { width: 120, height: 120 },
+    square: { width: 120, height: 120 },
+    heart: { width: 120, height: 110 },
+    star: { width: 130, height: 130 },
+    triangle: { width: 140, height: 120 },
+    pill: { width: 160, height: 80 },
+    like: { width: 140, height: 130 },
+    comment: { width: 160, height: 110 },
+    share: { width: 150, height: 110 },
+    cursor: { width: 110, height: 140 },
+  }
+
+  const handleAddShape = (shapeKind: ShapeKind = 'circle') => {
+    const dimensions = shapeDefaults[shapeKind] ?? shapeDefaults.circle
     const newLayer: Layer = {
       id: crypto.randomUUID(),
       type: 'shape',
-      shapeKind: 'circle',
+      shapeKind,
       x: 0.5,
       y: 0.5,
-      width: 120,
-      height: 120,
+      width: dimensions.width,
+      height: dimensions.height,
       fillColor: 0xffffff,
     }
     setLayers((prev) => [...prev, newLayer])

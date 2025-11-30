@@ -50,7 +50,7 @@ interface DashboardLayoutProps {
   children: React.ReactNode
   selectedTemplate: string
   onSelectTemplate: (template: string) => void
-  onAddShape?: () => void
+  onAddShape?: (shapeKind?: string) => void
   onStartDrawPath?: () => void
   showSelectShapeHint?: boolean
   layers: Array<{ id: string; shapeKind: string }>
@@ -721,43 +721,43 @@ export default function DashboardLayout({
                   Shapes
                 </h2>
                 <div className="grid grid-cols-1 gap-1">
-                  <Button onClick={() => onAddShape?.()} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
+                  <Button onClick={() => onAddShape?.('circle')} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
                     <Circle className="mr-2 h-4 w-4 text-neutral-500" />
                     Circle
                   </Button>
-                  <Button onClick={() => onAddShape?.()} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
+                  <Button onClick={() => onAddShape?.('square')} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
                     <Square className="mr-2 h-4 w-4 text-neutral-500" />
                     Square
                   </Button>
-                  <Button onClick={() => onAddShape?.()} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
+                  <Button onClick={() => onAddShape?.('heart')} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
                     <Heart className="mr-2 h-4 w-4 text-neutral-500" />
                     Heart
                   </Button>
-                  <Button onClick={() => onAddShape?.()} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
+                  <Button onClick={() => onAddShape?.('star')} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
                     <Star className="mr-2 h-4 w-4 text-neutral-500" />
                     Star
                   </Button>
-                  <Button onClick={() => onAddShape?.()} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
+                  <Button onClick={() => onAddShape?.('triangle')} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
                     <Triangle className="mr-2 h-4 w-4 text-neutral-500" />
                     Triangle
                   </Button>
-                  <Button onClick={() => onAddShape?.()} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
+                  <Button onClick={() => onAddShape?.('pill')} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
                     <Pill className="mr-2 h-4 w-4 text-neutral-500" />
                     Pill
                   </Button>
-                  <Button onClick={() => onAddShape?.()} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
+                  <Button onClick={() => onAddShape?.('like')} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
                     <ThumbsUp className="mr-2 h-4 w-4 text-neutral-500" />
                     Like
                   </Button>
-                  <Button onClick={() => onAddShape?.()} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
+                  <Button onClick={() => onAddShape?.('comment')} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
                     <MessageCircle className="mr-2 h-4 w-4 text-neutral-500" />
                     Comment
                   </Button>
-                  <Button onClick={() => onAddShape?.()} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
+                  <Button onClick={() => onAddShape?.('share')} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
                     <Send className="mr-2 h-4 w-4 text-neutral-500" />
                     Share
                   </Button>
-                  <Button onClick={() => onAddShape?.()} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
+                  <Button onClick={() => onAddShape?.('cursor')} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
                     <MousePointer className="mr-2 h-4 w-4 text-neutral-500" />
                     Cursor
                   </Button>

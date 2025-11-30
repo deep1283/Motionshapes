@@ -12,7 +12,7 @@ interface MotionCanvasProps {
   templateVersion: number
   layers?: Array<{
     id: string
-    shapeKind: 'circle'
+    shapeKind: 'circle' | 'square' | 'heart' | 'star' | 'triangle' | 'pill' | 'like' | 'comment' | 'share' | 'cursor'
     x: number
     y: number
     width: number
@@ -379,10 +379,132 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
 
     // If there are layers, render/animate them and skip the built-in preview
     if (layers.length > 0) {
+      const drawHeart = (g: PIXI.Graphics, width: number, height: number) => {
+        const w = width
+        const h = height
+        const topCurveHeight = h * 0.3
+        g.moveTo(0, -h / 2 + h * 0.25)
+        g.bezierCurveTo(0, -h / 2, -w / 2, -h / 2, -w / 2, -h / 2 + topCurveHeight)
+        g.bezierCurveTo(-w / 2, h * 0.05, 0, h / 2, 0, h / 2)
+        g.bezierCurveTo(0, h / 2, w / 2, h * 0.05, w / 2, -h / 2 + topCurveHeight)
+        g.bezierCurveTo(w / 2, -h / 2, 0, -h / 2, 0, -h / 2 + h * 0.25)
+        g.closePath()
+      }
+
+      const drawStar = (g: PIXI.Graphics, width: number, height: number) => {
+        const spikes = 5
+        const outerRadius = Math.min(width, height) / 2
+        const innerRadius = outerRadius * 0.5
+        let rotation = Math.PI / 2 * 3
+        const cx = 0
+        const cy = 0
+        g.moveTo(cx, cy - outerRadius)
+        for (let i = 0; i < spikes; i++) {
+          const x = cx + Math.cos(rotation) * outerRadius
+          const y = cy + Math.sin(rotation) * outerRadius
+          g.lineTo(x, y)
+          rotation += Math.PI / spikes
+
+          const xInner = cx + Math.cos(rotation) * innerRadius
+          const yInner = cy + Math.sin(rotation) * innerRadius
+          g.lineTo(xInner, yInner)
+          rotation += Math.PI / spikes
+        }
+        g.closePath()
+      }
+
+      const drawTriangle = (g: PIXI.Graphics, width: number, height: number) => {
+        g.moveTo(-width / 2, height / 2)
+        g.lineTo(width / 2, height / 2)
+        g.lineTo(0, -height / 2)
+        g.closePath()
+      }
+
+      const drawPill = (g: PIXI.Graphics, width: number, height: number) => {
+        const radius = Math.min(width, height) / 2
+        g.roundRect(-width / 2, -height / 2, width, height, radius)
+      }
+
+      const drawLike = (g: PIXI.Graphics, width: number, height: number) => {
+        const palmW = width * 0.55
+        const palmH = height * 0.55
+        const thumbW = width * 0.25
+        const thumbH = height * 0.4
+        g.roundRect(-palmW / 2, -palmH / 2, palmW, palmH, Math.min(palmW, palmH) * 0.1)
+        g.roundRect(palmW / 2 - thumbW * 0.6, -palmH / 2 - thumbH * 0.6, thumbW, thumbH, Math.min(thumbW, thumbH) * 0.2)
+      }
+
+      const drawComment = (g: PIXI.Graphics, width: number, height: number) => {
+        const bodyW = width * 0.8
+        const bodyH = height * 0.7
+        const tailW = width * 0.18
+        const tailH = height * 0.2
+        g.roundRect(-bodyW / 2, -bodyH / 2, bodyW, bodyH, Math.min(bodyW, bodyH) * 0.1)
+        g.moveTo(-bodyW * 0.2, bodyH / 2)
+        g.lineTo(-bodyW * 0.05, bodyH / 2 + tailH)
+        g.lineTo(bodyW * 0.15, bodyH / 2)
+        g.closePath()
+      }
+
+      const drawShare = (g: PIXI.Graphics, width: number, height: number) => {
+        g.moveTo(-width / 2, height / 2)
+        g.lineTo(width / 2, 0)
+        g.lineTo(-width / 2, -height / 2)
+        g.lineTo(-width / 2 + width * 0.25, 0)
+        g.closePath()
+      }
+
+      const drawCursor = (g: PIXI.Graphics, width: number, height: number) => {
+        g.moveTo(-width / 2, -height / 2)
+        g.lineTo(width / 2, 0)
+        g.lineTo(-width / 6, height / 8)
+        g.lineTo(0, height / 2)
+        g.lineTo(-width / 4, height / 2.5)
+        g.lineTo(-width / 2, -height / 2)
+        g.closePath()
+      }
+
+      const drawShape = (graphics: PIXI.Graphics, kind: MotionCanvasProps['layers'][number]['shapeKind'], width: number, height: number, fillColor: number) => {
+        graphics.clear()
+        switch (kind) {
+          case 'square':
+            graphics.rect(-width / 2, -height / 2, width, height)
+            break
+          case 'heart':
+            drawHeart(graphics, width, height)
+            break
+          case 'star':
+            drawStar(graphics, width, height)
+            break
+          case 'triangle':
+            drawTriangle(graphics, width, height)
+            break
+          case 'pill':
+            drawPill(graphics, width, height)
+            break
+          case 'like':
+            drawLike(graphics, width, height)
+            break
+          case 'comment':
+            drawComment(graphics, width, height)
+            break
+          case 'share':
+            drawShare(graphics, width, height)
+            break
+          case 'cursor':
+            drawCursor(graphics, width, height)
+            break
+          case 'circle':
+          default:
+            graphics.circle(0, 0, width / 2)
+            break
+        }
+        graphics.fill(fillColor)
+      }
+
       layers.forEach((layer) => {
         const g = new PIXI.Graphics()
-        g.circle(0, 0, layer.width / 2)
-        g.fill(layer.fillColor)
+        drawShape(g, layer.shapeKind, layer.width, layer.height, layer.fillColor)
         
         // Selection outline will be added by a separate effect
         
@@ -400,7 +522,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
         g.interactive = true
         g.eventMode = 'dynamic'
         g.cursor = 'pointer'
-        g.hitArea = new PIXI.Circle(0, 0, layer.width / 2)
+        g.hitArea = new PIXI.Rectangle(-layer.width / 2, -layer.height / 2, layer.width, layer.height)
         
         console.log('[SHAPE SETUP]', {
           id: layer.id,
@@ -429,7 +551,39 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
         
         // Create a separate graphics object for the selection outline
         const outline = new PIXI.Graphics()
-        outline.circle(0, 0, layer.width / 2)
+        switch (layer.shapeKind) {
+          case 'square':
+            outline.rect(-layer.width / 2, -layer.height / 2, layer.width, layer.height)
+            break
+          case 'heart':
+            drawHeart(outline, layer.width, layer.height)
+            break
+          case 'star':
+            drawStar(outline, layer.width, layer.height)
+            break
+          case 'triangle':
+            drawTriangle(outline, layer.width, layer.height)
+            break
+          case 'pill':
+            drawPill(outline, layer.width, layer.height)
+            break
+          case 'like':
+            drawLike(outline, layer.width, layer.height)
+            break
+          case 'comment':
+            drawComment(outline, layer.width, layer.height)
+            break
+          case 'share':
+            drawShare(outline, layer.width, layer.height)
+            break
+          case 'cursor':
+            drawCursor(outline, layer.width, layer.height)
+            break
+          case 'circle':
+          default:
+            outline.circle(0, 0, layer.width / 2)
+            break
+        }
         outline.stroke({ color: 0x9333ea, width: 2, alpha: 1 })
         outline.visible = false // Hidden by default
         outline.eventMode = 'none' // CRITICAL: Don't intercept pointer events
