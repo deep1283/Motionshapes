@@ -41,12 +41,24 @@ interface MotionCanvasProps {
     to: string
     opacity: number
   }
+  offsetX?: number
+  offsetY?: number
 }
 
-export default function MotionCanvas({ template, templateVersion, layers = [], onUpdateLayerPosition, onTemplateComplete, isDrawingPath = false, pathPoints = [], onAddPathPoint, onFinishPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint, background }: MotionCanvasProps) {
+export default function MotionCanvas({ template, templateVersion, layers = [], onUpdateLayerPosition, onTemplateComplete, isDrawingPath = false, pathPoints = [], onAddPathPoint, onFinishPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint, background, offsetX = 0, offsetY = 0 }: MotionCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<PIXI.Application | null>(null)
   const [isReady, setIsReady] = useState(false)
+  // ... (refs)
+
+  // Update stage position when offsets change
+  useEffect(() => {
+    if (!appRef.current || !appRef.current.stage) return
+    appRef.current.stage.position.set(offsetX, offsetY)
+    appRef.current.render()
+  }, [offsetX, offsetY, isReady])
+
+  // ... (rest of component)
   const dragRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null)
   const graphicsByIdRef = useRef<Record<string, PIXI.Graphics>>({})
   const outlinesByIdRef = useRef<Record<string, PIXI.Graphics>>({})
@@ -401,6 +413,9 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
         
         g.on('pointerdown', (e) => {
           e.stopPropagation()
+          if (e.originalEvent) {
+            e.originalEvent.stopPropagation()
+          }
           const pos = e.global
           onSelectLayer?.(layer.id)
           dragRef.current = {

@@ -1,10 +1,26 @@
 'use client'
 
-import { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import type { SVGProps } from 'react'
-import { Layout, Play, Square, Circle, LogOut, Settings, ChevronLeft, Layers, Zap, MousePointer2, SlidersHorizontal } from 'lucide-react'
-import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import { 
+  Layout, 
+  Settings, 
+  LogOut, 
+  Plus, 
+  Minus, 
+  ChevronLeft,
+  Play,
+  Share2,
+  Download,
+  MousePointer2,
+  Layers,
+  Zap,
+  Activity,
+  Circle,
+  SlidersHorizontal
+} from 'lucide-react'
+import { createClient } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import TimelinePanel from '@/components/TimelinePanel'
@@ -89,6 +105,100 @@ export default function DashboardLayout({
   const supabase = createClient()
   const [showBackgroundPanel, setShowBackgroundPanel] = useState(false)
 
+  // Canvas resize and move state
+  const DEFAULT_CANVAS_WIDTH = 680
+  const DEFAULT_CANVAS_HEIGHT = 445
+  const MIN_CANVAS_WIDTH = 400
+  const MIN_CANVAS_HEIGHT = 225
+
+  const [canvasWidth, setCanvasWidth] = useState(() => {
+    if (typeof window === 'undefined') return DEFAULT_CANVAS_WIDTH
+    const saved = localStorage.getItem('canvasWidth')
+    return saved ? Math.max(MIN_CANVAS_WIDTH, parseInt(saved)) : DEFAULT_CANVAS_WIDTH
+  })
+
+  const [canvasHeight, setCanvasHeight] = useState(() => {
+    if (typeof window === 'undefined') return DEFAULT_CANVAS_HEIGHT
+    const saved = localStorage.getItem('canvasHeight')
+    return saved ? Math.max(MIN_CANVAS_HEIGHT, parseInt(saved)) : DEFAULT_CANVAS_HEIGHT
+  })
+
+  const [canvasX, setCanvasX] = useState(() => {
+    if (typeof window === 'undefined') return 0
+    const saved = localStorage.getItem('canvasX')
+    return saved ? parseInt(saved) : 0
+  })
+
+  const [canvasY, setCanvasY] = useState(() => {
+    if (typeof window === 'undefined') return 0
+    const saved = localStorage.getItem('canvasY')
+    return saved ? parseInt(saved) : 0
+  })
+
+  const [isResizingCanvas, setIsResizingCanvas] = useState(false)
+  const [isMovingCanvas, setIsMovingCanvas] = useState(false)
+  const [isCanvasSelected, setIsCanvasSelected] = useState(false)
+  const [resizeHandle, setResizeHandle] = useState<string | null>(null)
+  
+  const canvasResizeRef = useRef<{
+    startX: number
+    startY: number
+    startWidth: number
+    startHeight: number
+    startCanvasX: number
+    startCanvasY: number
+    handle: string
+  } | null>(null)
+
+  const canvasMoveRef = useRef<{
+    startX: number
+    startY: number
+    startCanvasX: number
+    startCanvasY: number
+  } | null>(null)
+
+  // Handle canvas click to select
+  const handleCanvasClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    console.log('[CANVAS] Click detected, selecting canvas')
+    setIsCanvasSelected(true)
+  }
+
+  // Handle label click specifically
+  const handleLabelClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    console.log('[CANVAS] Label clicked, selecting canvas')
+    setIsCanvasSelected(true)
+  }
+
+  // Deselect canvas when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest('[data-canvas-container]')) {
+        setIsCanvasSelected(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Handle mouse wheel for panning
+  const handleCanvasWheel = (e: React.WheelEvent) => {
+    e.preventDefault()
+    
+    // Pan the canvas based on wheel delta
+    setCanvasX(prev => prev - e.deltaX)
+    setCanvasY(prev => prev - e.deltaY)
+    
+    // Save to localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('canvasX', (canvasX - e.deltaX).toString())
+      localStorage.setItem('canvasY', (canvasY - e.deltaY).toString())
+    }
+  }
+
   const handleLogout = async () => {
     await supabase.auth.signOut()
     router.push('/')
@@ -158,6 +268,185 @@ export default function DashboardLayout({
     return `rgba(${r}, ${g}, ${b}, ${alpha})`
   }
 
+  // Canvas resize handlers
+  const startCanvasResize = (e: React.PointerEvent, handle: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    const target = e.target as HTMLElement
+    target.setPointerCapture(e.pointerId)
+    
+    setIsResizingCanvas(true)
+    setResizeHandle(handle)
+    canvasResizeRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startWidth: canvasWidth,
+      startHeight: canvasHeight,
+      startCanvasX: canvasX,
+      startCanvasY: canvasY,
+      handle
+    }
+  }
+
+  const startCanvasMove = (e: React.PointerEvent) => {
+    // Don't start move if clicking on a resize handle
+    if ((e.target as HTMLElement).hasAttribute('data-resize-handle')) {
+      return
+    }
+    
+    // Don't start move if clicking on a shape (SVG elements or canvas children)
+    const target = e.target as HTMLElement
+    if (target.tagName === 'svg' || target.tagName === 'circle' || target.tagName === 'path' || 
+        target.tagName === 'rect' || target.tagName === 'ellipse' || target.tagName === 'line' ||
+        target.tagName === 'polygon' || target.tagName === 'polyline' || target.tagName === 'text' ||
+        target.closest('svg')) {
+      return
+    }
+    
+    // Only start move if clicking directly on the canvas background
+    if (!target.hasAttribute('data-canvas-clickable')) {
+      return
+    }
+    
+    e.preventDefault()
+    e.stopPropagation()
+    
+    const targetEl = e.target as HTMLElement
+    targetEl.setPointerCapture(e.pointerId)
+    
+    setIsMovingCanvas(true)
+    canvasMoveRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startCanvasX: canvasX,
+      startCanvasY: canvasY
+    }
+  }
+
+  // Handle canvas resize
+  useEffect(() => {
+    if (!isResizingCanvas) return
+
+    const handleMove = (e: PointerEvent) => {
+      if (!canvasResizeRef.current) return
+      
+      const { startX, startY, startWidth, startHeight, startCanvasX, startCanvasY, handle } = canvasResizeRef.current
+      const deltaX = e.clientX - startX
+      const deltaY = e.clientY - startY
+
+      let newWidth = startWidth
+      let newHeight = startHeight
+      let newX = startCanvasX
+      let newY = startCanvasY
+
+      // Handle different resize directions
+      if (handle.includes('e')) { // East (right)
+        newWidth = Math.max(MIN_CANVAS_WIDTH, startWidth + deltaX)
+      }
+      if (handle.includes('w')) { // West (left)
+        const potentialWidth = startWidth - deltaX
+        if (potentialWidth >= MIN_CANVAS_WIDTH) {
+          newWidth = potentialWidth
+          newX = startCanvasX + deltaX
+        }
+      }
+      if (handle.includes('s')) { // South (bottom)
+        newHeight = Math.max(MIN_CANVAS_HEIGHT, startHeight + deltaY)
+      }
+      if (handle.includes('n')) { // North (top)
+        const potentialHeight = startHeight - deltaY
+        if (potentialHeight >= MIN_CANVAS_HEIGHT) {
+          newHeight = potentialHeight
+          newY = startCanvasY + deltaY
+        }
+      }
+
+      // For corner handles, maintain aspect ratio
+      if (handle.length === 2) { // Corner handle
+        const aspectRatio = startWidth / startHeight
+        if (handle.includes('e')) {
+          newHeight = newWidth / aspectRatio
+        } else if (handle.includes('w')) {
+          newHeight = newWidth / aspectRatio
+        }
+      }
+
+      setCanvasWidth(Math.round(newWidth))
+      setCanvasHeight(Math.round(newHeight))
+      setCanvasX(Math.round(newX))
+      setCanvasY(Math.round(newY))
+    }
+
+    const handleEnd = () => {
+      setIsResizingCanvas(false)
+      setResizeHandle(null)
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('canvasWidth', canvasWidth.toString())
+        localStorage.setItem('canvasHeight', canvasHeight.toString())
+        localStorage.setItem('canvasX', canvasX.toString())
+        localStorage.setItem('canvasY', canvasY.toString())
+      }
+      canvasResizeRef.current = null
+    }
+
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', handleEnd)
+    
+    return () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleEnd)
+    }
+  }, [isResizingCanvas, MIN_CANVAS_WIDTH, MIN_CANVAS_HEIGHT])
+
+  // Handle canvas move
+  useEffect(() => {
+    if (!isMovingCanvas) return
+
+    const handleMove = (e: PointerEvent) => {
+      if (!canvasMoveRef.current) return
+      
+      const { startX, startY, startCanvasX, startCanvasY } = canvasMoveRef.current
+      const deltaX = e.clientX - startX
+      const deltaY = e.clientY - startY
+
+      setCanvasX(Math.round(startCanvasX + deltaX))
+      setCanvasY(Math.round(startCanvasY + deltaY))
+    }
+
+    const handleEnd = () => {
+      setIsMovingCanvas(false)
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('canvasX', canvasX.toString())
+        localStorage.setItem('canvasY', canvasY.toString())
+      }
+      canvasMoveRef.current = null
+    }
+
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', handleEnd)
+    
+    return () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleEnd)
+    }
+  }, [isMovingCanvas])
+
+  // Prevent text selection during resize/move
+  useEffect(() => {
+    if (isResizingCanvas || isMovingCanvas) {
+      document.body.style.userSelect = 'none'
+      document.body.style.cursor = isResizingCanvas ? (resizeHandle?.includes('n') || resizeHandle?.includes('s') ? 'ns-resize' : 'ew-resize') : 'move'
+    } else {
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
+    }
+    return () => {
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
+    }
+  }, [isResizingCanvas, isMovingCanvas, resizeHandle])
+
   const canvasBgStyle =
     background.mode === 'gradient'
       ? {
@@ -166,6 +455,32 @@ export default function DashboardLayout({
       : {
           backgroundColor: hexToRgba(background.solid, background.opacity),
         }
+
+  // Handle background click (when not clicking a shape)
+  const handleBackgroundClick = (e: React.PointerEvent) => {
+    // Calculate viewport bounds
+    const viewportCenterX = window.innerWidth / 2 + canvasX
+    const viewportCenterY = window.innerHeight / 2 + canvasY
+    const halfWidth = canvasWidth / 2
+    const halfHeight = canvasHeight / 2
+    
+    const isInsideViewport = 
+      e.clientX >= viewportCenterX - halfWidth &&
+      e.clientX <= viewportCenterX + halfWidth &&
+      e.clientY >= viewportCenterY - halfHeight &&
+      e.clientY <= viewportCenterY + halfHeight
+
+    if (isInsideViewport) {
+      // Clicked inside viewport (but not on a shape) -> Start Drag
+      console.log('[CANVAS] Background click INSIDE viewport -> Start Drag')
+      setIsCanvasSelected(true)
+      startCanvasMove(e)
+    } else {
+      // Clicked outside viewport -> Deselect
+      console.log('[CANVAS] Background click OUTSIDE viewport -> Deselect')
+      setIsCanvasSelected(false)
+    }
+  }
 
   return (
     <div className="flex h-screen w-screen flex-col bg-[#0a0a0a] text-white overflow-hidden font-sans selection:bg-white/20">
@@ -394,16 +709,101 @@ export default function DashboardLayout({
              {/* Grid Background */}
              <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff03_1px,transparent_1px),linear-gradient(to_bottom,#ffffff03_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none" />
              
-             {/* 16:9 Aspect Ratio Container */}
-            <div
-              className="relative aspect-video w-full max-w-5xl overflow-visible shadow-[0_0_100px_-20px_rgba(0,0,0,0.7),inset_0_0_0_1px_rgba(255,255,255,0.05)]"
-              style={{
-                ...canvasBgStyle,
-                transition: 'background 150ms ease, opacity 150ms ease',
-              }}
-            >
-              {children}
-            </div>
+             {/* MotionCanvas - Fills entire workspace */}
+             <div 
+               className="absolute inset-0"
+               onPointerDown={handleBackgroundClick}
+               onWheel={handleCanvasWheel}
+             >
+               {React.Children.map(children, child => {
+                 if (React.isValidElement(child)) {
+                   // @ts-ignore - We know MotionCanvas accepts these props
+                   return React.cloneElement(child, { offsetX: canvasX, offsetY: canvasY })
+                 }
+                 return child
+               })}
+             </div>
+
+             {/* Viewport Overlay - Purple box that shows what will be rendered */}
+             <div
+               data-canvas-container
+               className="absolute overflow-visible shadow-[0_0_100px_-20px_rgba(0,0,0,0.7)] z-10 pointer-events-none"
+               style={{
+                 width: canvasWidth,
+                 height: canvasHeight,
+                 left: `calc(50% + ${canvasX}px)`,
+                 top: `calc(50% + ${canvasY}px)`,
+                 transform: 'translate(-50%, -50%)',
+               }}
+             >
+               {/* Canvas Label */}
+               <div
+                 data-canvas-label
+                 className="absolute -top-7 left-0 flex items-center gap-2 cursor-pointer select-none pointer-events-auto z-20"
+                 onClick={handleLabelClick}
+               >
+                 <Play className={`h-3.5 w-3.5 ${isCanvasSelected ? 'text-purple-400' : 'text-neutral-500'}`} />
+                 <span className={`text-sm font-medium ${isCanvasSelected ? 'text-purple-300' : 'text-neutral-500'}`}>Canvas</span>
+               </div>
+
+               {/* Viewport Frame - Visual border only, clicks pass through */}
+               <div
+                 data-canvas-clickable
+                 className={`relative w-full h-full border ${isCanvasSelected ? 'border-purple-500' : 'border-white/20'} pointer-events-none`}
+                 style={{
+                   transition: 'border-color 200ms ease',
+                 }}
+               />
+
+               {/* Resize Handles - Only show when selected */}
+               {isCanvasSelected && (
+                 <>
+                   {/* Corner Circles */}
+                   <div
+                     data-resize-handle
+                     className="absolute -top-2 -left-2 w-4 h-4 bg-white border-2 border-purple-500 rounded-full cursor-nwse-resize z-20 pointer-events-auto"
+                     onPointerDown={(e) => startCanvasResize(e, 'nw')}
+                   />
+                   <div
+                     data-resize-handle
+                     className="absolute -top-2 -right-2 w-4 h-4 bg-white border-2 border-purple-500 rounded-full cursor-nesw-resize z-20 pointer-events-auto"
+                     onPointerDown={(e) => startCanvasResize(e, 'ne')}
+                   />
+                   <div
+                     data-resize-handle
+                     className="absolute -bottom-2 -left-2 w-4 h-4 bg-white border-2 border-purple-500 rounded-full cursor-nesw-resize z-20 pointer-events-auto"
+                     onPointerDown={(e) => startCanvasResize(e, 'sw')}
+                   />
+                   <div
+                     data-resize-handle
+                     className="absolute -bottom-2 -right-2 w-4 h-4 bg-white border-2 border-purple-500 rounded-full cursor-nwse-resize z-20 pointer-events-auto"
+                     onPointerDown={(e) => startCanvasResize(e, 'se')}
+                   />
+
+                   {/* Edge Circles */}
+                   <div
+                     data-resize-handle
+                     className="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-white border-2 border-purple-500 rounded-full cursor-ns-resize z-20 pointer-events-auto"
+                     onPointerDown={(e) => startCanvasResize(e, 'n')}
+                   />
+                   <div
+                     data-resize-handle
+                     className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-white border-2 border-purple-500 rounded-full cursor-ns-resize z-20 pointer-events-auto"
+                     onPointerDown={(e) => startCanvasResize(e, 's')}
+                   />
+                   <div
+                     data-resize-handle
+                     className="absolute -left-2 top-1/2 -translate-y-1/2 w-4 h-4 bg-white border-2 border-purple-500 rounded-full cursor-ew-resize z-20 pointer-events-auto"
+                     onPointerDown={(e) => startCanvasResize(e, 'w')}
+                   />
+                   <div
+                     data-resize-handle
+                     className="absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-4 bg-white border-2 border-purple-500 rounded-full cursor-ew-resize z-20 pointer-events-auto"
+                     onPointerDown={(e) => startCanvasResize(e, 'e')}
+                   />
+                 </>
+               )}
+             </div>
           </div>
         </main>
 
