@@ -292,10 +292,10 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
     if (pathPoints.length === 0) return null
     const { width, height } = canvasBounds
     if (!width || !height) return null
-    const pts = pathPoints.map((pt) => ({ x: pt.x * width, y: pt.y * height }))
+    const pts = pathPoints.map((pt) => ({ x: pt.x * width + offsetX, y: pt.y * height + offsetY }))
     const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
     return { pts, d }
-  }, [canvasBounds, pathPoints])
+  }, [canvasBounds, pathPoints, offsetX, offsetY])
 
   // 2. Handle Template Changes (Draw & Animate)
   useEffect(() => {
@@ -754,8 +754,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
           onPointerDown={(e) => {
             if (!containerRef.current) return
             const bounds = containerRef.current.getBoundingClientRect()
-            const x = (e.clientX - bounds.left) / bounds.width
-            const y = (e.clientY - bounds.top) / bounds.height
+            const x = (e.clientX - bounds.left - offsetX) / bounds.width
+            const y = (e.clientY - bounds.top - offsetY) / bounds.height
             pathTraceActiveRef.current = true
             lastPathPointRef.current = { x, y }
             onAddPathPoint?.(x, y)
@@ -763,8 +763,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
           onPointerMove={(e) => {
             if (!pathTraceActiveRef.current || !containerRef.current) return
             const bounds = containerRef.current.getBoundingClientRect()
-            const x = (e.clientX - bounds.left) / bounds.width
-            const y = (e.clientY - bounds.top) / bounds.height
+            const x = (e.clientX - bounds.left - offsetX) / bounds.width
+            const y = (e.clientY - bounds.top - offsetY) / bounds.height
             const last = lastPathPointRef.current
             const dx = last ? x - last.x : 0
             const dy = last ? y - last.y : 0
@@ -776,8 +776,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
       onPointerUp={(e) => {
         if (!pathTraceActiveRef.current || !containerRef.current) return
         const bounds = containerRef.current.getBoundingClientRect()
-        const x = (e.clientX - bounds.left) / bounds.width
-        const y = (e.clientY - bounds.top) / bounds.height
+        const x = (e.clientX - bounds.left - offsetX) / bounds.width
+        const y = (e.clientY - bounds.top - offsetY) / bounds.height
             onAddPathPoint?.(x, y)
             pathTraceActiveRef.current = false
             onFinishPath?.()
@@ -799,7 +799,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
               d={(() => {
                 const { width, height } = canvasBounds
                 if (!width || !height || !currentPathClip.points.length) return ''
-                const pts = currentPathClip.points.map((pt) => ({ x: pt.x * width, y: pt.y * height }))
+                const pts = currentPathClip.points.map((pt) => ({ x: pt.x * width + offsetX, y: pt.y * height + offsetY }))
                 return pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
               })()}
               stroke="#22c55e"
@@ -814,8 +814,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
               const startPt = currentPathClip.points[0]
               return (
                 <circle
-                  cx={startPt.x * width}
-                  cy={startPt.y * height}
+                  cx={startPt.x * width + offsetX}
+                  cy={startPt.y * height + offsetY}
                   r={6}
                   fill="#22c55e"
                   stroke="#0f172a"
@@ -830,8 +830,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
               const endPt = currentPathClip.points[currentPathClip.points.length - 1]
               return (
                 <circle
-                  cx={endPt.x * width}
-                  cy={endPt.y * height}
+                  cx={endPt.x * width + offsetX}
+                  cy={endPt.y * height + offsetY}
                   r={6}
                   fill="#ef4444"
                   stroke="#0f172a"

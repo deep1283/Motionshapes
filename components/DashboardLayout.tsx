@@ -160,14 +160,14 @@ export default function DashboardLayout({
   // Handle canvas click to select
   const handleCanvasClick = (e: React.MouseEvent) => {
     e.stopPropagation()
-    console.log('[CANVAS] Click detected, selecting canvas')
+
     setIsCanvasSelected(true)
   }
 
   // Handle label click specifically
   const handleLabelClick = (e: React.MouseEvent) => {
     e.stopPropagation()
-    console.log('[CANVAS] Label clicked, selecting canvas')
+
     setIsCanvasSelected(true)
   }
 
@@ -184,18 +184,37 @@ export default function DashboardLayout({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  // Handle mouse wheel for panning
+  // Handle mouse wheel for panning or zooming (pinch)
   const handleCanvasWheel = (e: React.WheelEvent) => {
     e.preventDefault()
     
-    // Pan the canvas based on wheel delta
-    setCanvasX(prev => prev - e.deltaX)
-    setCanvasY(prev => prev - e.deltaY)
-    
-    // Save to localStorage
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('canvasX', (canvasX - e.deltaX).toString())
-      localStorage.setItem('canvasY', (canvasY - e.deltaY).toString())
+    // Check for pinch gesture (ctrlKey + wheel)
+    if (e.ctrlKey) {
+      // Pinch to resize
+      // deltaY is negative when zooming in (expanding), positive when zooming out (shrinking)
+      const zoomSensitivity = 0.01
+      const scale = 1 - (e.deltaY * zoomSensitivity)
+      
+      const newWidth = Math.max(MIN_CANVAS_WIDTH, Math.round(canvasWidth * scale))
+      const newHeight = Math.max(MIN_CANVAS_HEIGHT, Math.round(canvasHeight * scale))
+      
+      setCanvasWidth(newWidth)
+      setCanvasHeight(newHeight)
+      
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('canvasWidth', newWidth.toString())
+        localStorage.setItem('canvasHeight', newHeight.toString())
+      }
+    } else {
+      // Pan the canvas based on wheel delta
+      setCanvasX(prev => prev - e.deltaX)
+      setCanvasY(prev => prev - e.deltaY)
+      
+      // Save to localStorage
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('canvasX', (canvasX - e.deltaX).toString())
+        localStorage.setItem('canvasY', (canvasY - e.deltaY).toString())
+      }
     }
   }
 
@@ -342,34 +361,27 @@ export default function DashboardLayout({
 
       // Handle different resize directions
       if (handle.includes('e')) { // East (right)
-        newWidth = Math.max(MIN_CANVAS_WIDTH, startWidth + deltaX)
-      }
-      if (handle.includes('w')) { // West (left)
-        const potentialWidth = startWidth - deltaX
-        if (potentialWidth >= MIN_CANVAS_WIDTH) {
-          newWidth = potentialWidth
-          newX = startCanvasX + deltaX
-        }
-      }
-      if (handle.includes('s')) { // South (bottom)
-        newHeight = Math.max(MIN_CANVAS_HEIGHT, startHeight + deltaY)
-      }
-      if (handle.includes('n')) { // North (top)
-        const potentialHeight = startHeight - deltaY
-        if (potentialHeight >= MIN_CANVAS_HEIGHT) {
-          newHeight = potentialHeight
-          newY = startCanvasY + deltaY
-        }
+        const potentialWidth = Math.max(MIN_CANVAS_WIDTH, startWidth + deltaX)
+        const widthChange = potentialWidth - startWidth
+        newWidth = potentialWidth
+        newX = startCanvasX + widthChange / 2
+      } else if (handle.includes('w')) { // West (left)
+        const potentialWidth = Math.max(MIN_CANVAS_WIDTH, startWidth - deltaX)
+        const widthChange = potentialWidth - startWidth
+        newWidth = potentialWidth
+        newX = startCanvasX - widthChange / 2
       }
 
-      // For corner handles, maintain aspect ratio
-      if (handle.length === 2) { // Corner handle
-        const aspectRatio = startWidth / startHeight
-        if (handle.includes('e')) {
-          newHeight = newWidth / aspectRatio
-        } else if (handle.includes('w')) {
-          newHeight = newWidth / aspectRatio
-        }
+      if (handle.includes('s')) { // South (bottom)
+        const potentialHeight = Math.max(MIN_CANVAS_HEIGHT, startHeight + deltaY)
+        const heightChange = potentialHeight - startHeight
+        newHeight = potentialHeight
+        newY = startCanvasY + heightChange / 2
+      } else if (handle.includes('n')) { // North (top)
+        const potentialHeight = Math.max(MIN_CANVAS_HEIGHT, startHeight - deltaY)
+        const heightChange = potentialHeight - startHeight
+        newHeight = potentialHeight
+        newY = startCanvasY - heightChange / 2
       }
 
       setCanvasWidth(Math.round(newWidth))
@@ -472,12 +484,12 @@ export default function DashboardLayout({
 
     if (isInsideViewport) {
       // Clicked inside viewport (but not on a shape) -> Start Drag
-      console.log('[CANVAS] Background click INSIDE viewport -> Start Drag')
+
       setIsCanvasSelected(true)
       startCanvasMove(e)
     } else {
       // Clicked outside viewport -> Deselect
-      console.log('[CANVAS] Background click OUTSIDE viewport -> Deselect')
+
       setIsCanvasSelected(false)
     }
   }
