@@ -31,6 +31,7 @@ type TimelineState = {
   popWobble: boolean
   popSpeed: number
   popCollapse: boolean
+  popReappear: boolean
   templateClips: Array<{
     id: string
     layerId: string
@@ -46,6 +47,7 @@ type TimelineState = {
       popWobble?: boolean
       popSpeed?: number
       popCollapse?: boolean
+      popReappear?: boolean
       pathPoints?: Vec2[]
       pathLength?: number
     }
@@ -71,6 +73,7 @@ const defaultState: TimelineState = {
   popWobble: false,
   popSpeed: 1,
   popCollapse: true,
+  popReappear: true, // Default to true so shape is visible after pop
   templateClips: [],
 }
 
@@ -86,6 +89,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     popWobble: initialState?.popWobble ?? defaultState.popWobble,
     popSpeed: initialState?.popSpeed ?? defaultState.popSpeed,
     popCollapse: initialState?.popCollapse ?? defaultState.popCollapse,
+    popReappear: initialState?.popReappear ?? defaultState.popReappear,
     templateClips: initialState?.templateClips ?? defaultState.templateClips,
   }
 
@@ -347,6 +351,25 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         }
       }
 
+      const currentPopClip = updatedClips.find(c => c.id === clipId && c.template === 'pop')
+      const parameters = updates.parameters
+      const currentParams = currentPopClip?.parameters || {}
+
+      const nextPopReappear = parameters?.popReappear ?? currentParams.popReappear
+
+      if (popClip && typeof popClip.duration === 'number') {
+        const clipIndex = updatedClips.findIndex(c => c.id === popClip.id)
+        if (clipIndex !== -1) {
+          updatedClips[clipIndex] = {
+            ...updatedClips[clipIndex],
+            parameters: {
+              ...updatedClips[clipIndex].parameters,
+              popReappear: nextPopReappear
+            }
+          }
+        }
+      }
+
 
       // Helper to rebuild track from clips
       const rebuildTrackFromClips = (layerId: string, currentClips: typeof updatedClips, currentTracks: LayerTracks[]) => {
@@ -369,6 +392,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
 
         // Apply clips sequentially
         let prevClipEnd = 0
+        let lastPopStartState: SampledLayerState | null = null
         layerClips.forEach((clip, index) => {
            const start = clip.start ?? 0
            const duration = clip.duration ?? 0
@@ -389,27 +413,39 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
              // First clip: sample from original track
              clipBaseState = sampleLayerTracks(track, sampleTime, DEFAULT_LAYER_STATE)
              console.log(`[REBUILD] First clip - sampled from original track:`, clipBaseState.position)
-           } else {
-             // Subsequent clips: hybrid approach to preserve position but avoid scale issues
-             const positionFromNew = sampleLayerTracks(newTrack, sampleTime, DEFAULT_LAYER_STATE).position
-             const baseFromOriginal = sampleLayerTracks(track, sampleTime, DEFAULT_LAYER_STATE)
-             
-             console.log(`[REBUILD] Subsequent clip - hybrid sampling:`, {
-               positionFromNew,
-               positionFromOriginal: baseFromOriginal.position,
-               newTrackKeyframes: newTrack.position?.map(kf => ({ time: kf.time, value: kf.value })),
-               originalTrackKeyframes: track.position?.map(kf => ({ time: kf.time, value: kf.value }))
-             })
-             
-             clipBaseState = {
-               position: positionFromNew,
-               scale: baseFromOriginal.scale,
-               rotation: baseFromOriginal.rotation,
-               opacity: baseFromOriginal.opacity
-             }
-           }
+            } else {
+              // Subsequent clips: sample from the newly built track to get the actual end state
+              const sampledFromNew = sampleLayerTracks(newTrack, sampleTime, DEFAULT_LAYER_STATE)
+          
+          console.log(`[REBUILD] Subsequent clip - sampling from new track:`, {
+            sampleTime,
+            sampledState: sampledFromNew,
+          })
+          
+          // Preserve the sampled state by default; only force a reset after a collapsing Pop
+          const previousClip = layerClips[index - 1]
+          const cameFromPop = previousClip?.template === 'pop'
+          const popCollapsed = previousClip?.parameters?.popCollapse ?? prev.popCollapse
+          const popShouldReappear = previousClip?.parameters?.popReappear ?? prev.popReappear ?? true
+          const shouldRestoreFromPop = cameFromPop && popCollapsed && popShouldReappear
+          const restoredScale = shouldRestoreFromPop && lastPopStartState ? lastPopStartState.scale : sampledFromNew.scale
+          const restoredOpacity = shouldRestoreFromPop && lastPopStartState ? lastPopStartState.opacity : sampledFromNew.opacity
 
-           let preset
+          clipBaseState = {
+            position: sampledFromNew.position,
+            scale: restoredScale,
+            rotation: sampledFromNew.rotation,
+            opacity: restoredOpacity
+          }
+          
+          // If we need to restore after Pop, add explicit keyframes at the start of this clip
+          if (shouldRestoreFromPop) {
+            newTrack.scale = upsertKeyframe(newTrack.scale ?? [], { time: start, value: restoredScale })
+            newTrack.opacity = upsertKeyframe(newTrack.opacity ?? [], { time: start, value: restoredOpacity })
+          }
+        }
+
+       let preset
            if (clip.template === 'roll') {
              preset = PRESET_BUILDERS.roll(clip.parameters?.rollDistance ?? prev.rollDistance, clip.parameters?.templateSpeed ?? prev.templateSpeed)
              // Add explicit scale/opacity/position to prevent multiply mode issues and ensure final state
@@ -430,9 +466,15 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
                ]
              }
            } else if (clip.template === 'jump') {
-             preset = PRESET_BUILDERS.jump(clip.parameters?.jumpHeight ?? prev.jumpHeight, clip.parameters?.jumpVelocity ?? prev.jumpVelocity)
-           } else if (clip.template === 'pop') {
+           preset = PRESET_BUILDERS.jump(clip.parameters?.jumpHeight ?? prev.jumpHeight, clip.parameters?.jumpVelocity ?? prev.jumpVelocity)
+          } else if (clip.template === 'pop') {
              preset = PRESET_BUILDERS.pop(clip.parameters?.popScale ?? prev.popScale, clip.parameters?.popWobble ?? prev.popWobble, clip.parameters?.popSpeed ?? prev.popSpeed, clip.parameters?.popCollapse ?? prev.popCollapse)
+             const shouldCapturePopStart = (clip.parameters?.popCollapse ?? prev.popCollapse) && (clip.parameters?.popReappear ?? prev.popReappear ?? true)
+             if (shouldCapturePopStart) {
+               lastPopStartState = clipBaseState
+             } else {
+               lastPopStartState = null
+             }
            } else if (clip.template === 'path' && clip.parameters?.pathPoints) {
               newTrack.paths = [
                 ...(newTrack.paths ?? []),
@@ -733,6 +775,17 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       const durationScale = options?.targetDuration ? options.targetDuration / Math.max(1, preset.duration || 1) : 1
       const scaleTime = (t: number) => (t * durationScale) / speed
       let appliedStartOffset = 0
+      const priorClipForLayer = prev.templateClips
+        .filter((c) => c.layerId === layerId && (c.start ?? 0) <= (options?.startAt ?? 0))
+        .sort((a, b) => (b.start ?? 0) - (a.start ?? 0))[0]
+      const shouldRestoreFromPop =
+        priorClipForLayer?.template === 'pop' &&
+        (priorClipForLayer.parameters?.popCollapse ?? prev.popCollapse) &&
+        (priorClipForLayer.parameters?.popReappear ?? prev.popReappear ?? true)
+      const targetTrackBefore = prev.tracks.find((t) => t.layerId === layerId)
+      const popStartState = shouldRestoreFromPop && priorClipForLayer && targetTrackBefore
+        ? sampleLayerTracks(targetTrackBefore, priorClipForLayer.start ?? 0, DEFAULT_LAYER_STATE)
+        : null
 
       const tracks = prev.tracks.map((track) => {
         if (track.layerId !== layerId) return track
@@ -755,9 +808,9 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
 
         const baseSample = sampleLayerTracks(track, startOffset, DEFAULT_LAYER_STATE)
         const basePosition = base?.position ?? baseSample.position
-        const baseScale = base?.scale ?? baseSample.scale
+        const baseScale = base?.scale ?? (popStartState?.scale ?? baseSample.scale)
         const baseRotation = base?.rotation ?? baseSample.rotation
-        const baseOpacity = base?.opacity ?? baseSample.opacity
+        const baseOpacity = base?.opacity ?? (popStartState?.opacity ?? baseSample.opacity)
 
         const clearedTrack: LayerTracks = {
           ...track,
@@ -954,6 +1007,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           popWobble: prev.popWobble,
           popSpeed: prev.popSpeed,
           popCollapse: prev.popCollapse,
+          popReappear: prev.popReappear,
           ...parameters
         }
       }
@@ -988,13 +1042,26 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         }
 
         let prevClipEnd = 0
+        let lastPopStartState: SampledLayerState | null = null
         layerClips.forEach((clip, index) => {
            const start = clip.start ?? 0
            const duration = clip.duration ?? 0
            const end = start + duration
            
            const sampleTime = index === 0 ? 0 : prevClipEnd
-           const clipBaseState = sampleLayerTracks(track, sampleTime, DEFAULT_LAYER_STATE)
+          const previousClip = layerClips[index - 1]
+          const cameFromPop = previousClip?.template === 'pop'
+          const popCollapsed = previousClip?.parameters?.popCollapse ?? prev.popCollapse
+          const popShouldReappear = previousClip?.parameters?.popReappear ?? prev.popReappear ?? true
+          const shouldRestoreFromPop = cameFromPop && popCollapsed && popShouldReappear
+
+          const sampledState = sampleLayerTracks(track, sampleTime, DEFAULT_LAYER_STATE)
+          const clipBaseState = {
+            position: sampledState.position,
+            scale: shouldRestoreFromPop && lastPopStartState ? lastPopStartState.scale : sampledState.scale,
+            rotation: sampledState.rotation,
+            opacity: shouldRestoreFromPop && lastPopStartState ? lastPopStartState.opacity : sampledState.opacity
+          }
 
            let preset
            if (clip.template === 'roll') {
@@ -1003,6 +1070,12 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
              preset = PRESET_BUILDERS.jump(clip.parameters?.jumpHeight ?? prev.jumpHeight, clip.parameters?.jumpVelocity ?? prev.jumpVelocity)
            } else if (clip.template === 'pop') {
              preset = PRESET_BUILDERS.pop(clip.parameters?.popScale ?? prev.popScale, clip.parameters?.popWobble ?? prev.popWobble, clip.parameters?.popSpeed ?? prev.popSpeed, clip.parameters?.popCollapse ?? prev.popCollapse)
+             const shouldCapturePopStart = (clip.parameters?.popCollapse ?? prev.popCollapse) && (clip.parameters?.popReappear ?? prev.popReappear ?? true)
+             if (shouldCapturePopStart) {
+               lastPopStartState = clipBaseState
+             } else {
+               lastPopStartState = null
+             }
            } else if (clip.template === 'path' && clip.parameters?.pathPoints) {
               newTrack.paths = [
                 ...(newTrack.paths ?? []),
@@ -1033,16 +1106,23 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
               }
            }
 
-           if (!preset) return
+          if (!preset) return
 
-           // clipBaseState was calculated above
-           
-           if (index > 0 && start > prevClipEnd) {
-             newTrack.position?.push({ time: start - 1, value: clipBaseState.position })
-             newTrack.scale?.push({ time: start - 1, value: clipBaseState.scale })
-             newTrack.rotation?.push({ time: start - 1, value: clipBaseState.rotation })
-             newTrack.opacity?.push({ time: start - 1, value: clipBaseState.opacity })
-           }
+          // If we need to restore after Pop, add explicit keyframes at the start of this clip
+          if (shouldRestoreFromPop) {
+            newTrack.scale = upsertKeyframe(newTrack.scale ?? [], { time: start, value: clipBaseState.scale })
+            newTrack.opacity = upsertKeyframe(newTrack.opacity ?? [], { time: start, value: clipBaseState.opacity })
+          }
+
+          // clipBaseState was calculated above
+                      if (index > 0 && start > prevClipEnd) {
+              // Sample from the newly built track at prevClipEnd to get the actual state
+              const gapState = sampleLayerTracks(newTrack, prevClipEnd, DEFAULT_LAYER_STATE)
+              newTrack.position?.push({ time: start - 1, value: gapState.position })
+              newTrack.scale?.push({ time: start - 1, value: gapState.scale })
+              newTrack.rotation?.push({ time: start - 1, value: gapState.rotation })
+              newTrack.opacity?.push({ time: start - 1, value: gapState.opacity })
+            }
            
            const mergeKeyframes = <T,>(
              existing: TimelineKeyframe<T>[],
@@ -1229,11 +1309,12 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     }))
   }
 
-  const setPopCollapse = (enabled: boolean) => {
-    setState((prev) => ({
-      ...prev,
-      popCollapse: enabled,
-    }))
+  const setPopCollapse = (collapse: boolean) => {
+    setState((prev) => ({ ...prev, popCollapse: collapse }))
+  }
+
+  const setPopReappear = (reappear: boolean) => {
+    setState((prev) => ({ ...prev, popReappear: reappear }))
   }
 
   const setTemplateSpeed = (speed: number) => {
@@ -1343,6 +1424,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       popWobble: clip.parameters?.popWobble ?? prev.popWobble,
       popSpeed: clip.parameters?.popSpeed ?? prev.popSpeed,
       popCollapse: clip.parameters?.popCollapse ?? prev.popCollapse,
+      popReappear: clip.parameters?.popReappear ?? prev.popReappear,
     }))
   }
 
@@ -1364,6 +1446,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     setPopSpeed,
     setPopWobble,
     setPopCollapse,
+    setPopReappear,
     setTemplateSpeed,
     setPlaying,
     togglePlay,

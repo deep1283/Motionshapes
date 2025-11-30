@@ -66,6 +66,7 @@ function DashboardContent() {
   const popSpeed = useTimeline((s) => s.popSpeed)
   const popWobble = useTimeline((s) => s.popWobble)
   const popCollapse = useTimeline((s) => s.popCollapse)
+  const popReappear = useTimeline((s) => s.popReappear)
   const tracks = useTimeline((s) => s.tracks)
   const templateClips = useTimeline((s) => s.templateClips)
   const selectedSample = useTimeline((s) => 
@@ -118,7 +119,10 @@ function DashboardContent() {
           parameters.popScale = popScale
           parameters.popWobble = popWobble
           parameters.popSpeed = popSpeed
+          parameters.popWobble = popWobble
+          parameters.popSpeed = popSpeed
           parameters.popCollapse = popCollapse
+          parameters.popReappear = popReappear
         }
         
         timeline.updateTemplateClip(selectedLayerId, selectedClipId, {
@@ -330,6 +334,8 @@ function DashboardContent() {
     selectedLayerId,
     selectedClipId,
     timeline,
+    popReappear, // Added so toggling reappear updates the clip
+    popCollapse, // Added so toggling collapse updates the clip
     // Template-specific parameters removed from dependencies
     // They should only update existing clips via dedicated handlers (handleTemplateSpeedChange, etc.)
     // not by re-triggering this effect
@@ -551,6 +557,7 @@ function DashboardContent() {
       popScale={popScale}
       popSpeed={popSpeed}
       popCollapse={popCollapse}
+      popReappear={popReappear}
       onTemplateSpeedChange={handleTemplateSpeedChange}
       onRollDistanceChange={timeline.setRollDistance}
       onJumpHeightChange={timeline.setJumpHeight}
@@ -558,6 +565,7 @@ function DashboardContent() {
       onPopScaleChange={timeline.setPopScale}
       onPopSpeedChange={timeline.setPopSpeed}
       onPopCollapseChange={timeline.setPopCollapse}
+      onPopReappearChange={timeline.setPopReappear}
       selectedLayerScale={selectedSample?.scale}
       onSelectedLayerScaleChange={handleScaleChange}
       onClipClick={handleClipClick}
@@ -571,8 +579,8 @@ function DashboardContent() {
         onSelectLayer={handleSelectLayer}
         selectedLayerId={selectedLayerId}
         isDrawingPath={isDrawingPath}
-      pathPoints={pathPoints}
-      activePathPoints={activePathPoints}
+        pathPoints={pathPoints}
+        activePathPoints={activePathPoints}
         pathVersion={pathVersion}
         pathLayerId={selectedLayerId}
         onAddPathPoint={handleAddPathPoint}
@@ -582,6 +590,7 @@ function DashboardContent() {
         onClearPath={handleClearPath}
         onInsertPathPoint={handleInsertPathPoint}
         background={background}
+        popReappear={popReappear}
       />
     </DashboardLayout>
   )

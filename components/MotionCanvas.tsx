@@ -43,9 +43,10 @@ interface MotionCanvasProps {
   }
   offsetX?: number
   offsetY?: number
+  popReappear?: boolean
 }
 
-export default function MotionCanvas({ template, templateVersion, layers = [], onUpdateLayerPosition, onTemplateComplete, isDrawingPath = false, pathPoints = [], onAddPathPoint, onFinishPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint, background, offsetX = 0, offsetY = 0 }: MotionCanvasProps) {
+export default function MotionCanvas({ template, templateVersion, layers = [], onUpdateLayerPosition, onTemplateComplete, isDrawingPath = false, pathPoints = [], onAddPathPoint, onFinishPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint, background, offsetX = 0, offsetY = 0, popReappear = false }: MotionCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<PIXI.Application | null>(null)
   const [isReady, setIsReady] = useState(false)
@@ -684,7 +685,13 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
             graphics.rotation = 0
             graphics.x = centerX
           }
-          if (progress >= 1) notifyComplete()
+          if (progress >= 1) {
+            if (popReappear) {
+              graphics.alpha = 1
+              graphics.scale.set(1)
+            }
+            notifyComplete()
+          }
         }
     }
 

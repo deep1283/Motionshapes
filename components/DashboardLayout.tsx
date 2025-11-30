@@ -18,10 +18,23 @@ import {
   Zap,
   Activity,
   Circle,
-  SlidersHorizontal
+  Square,
+  Heart,
+  MessageCircle,
+  Send,
+  ThumbsUp,
+  MousePointer,
+  Pill,
+  Star,
+  Triangle,
+  SlidersHorizontal,
+  LayoutTemplate,
+  Shapes,
+  PenTool
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
+import { TemplatePreview } from './TemplatePreview'
 import { Button } from '@/components/ui/button'
 import TimelinePanel from '@/components/TimelinePanel'
 
@@ -56,13 +69,16 @@ interface DashboardLayoutProps {
   popScale?: number
   popSpeed?: number
   popCollapse?: boolean
+  popReappear?: boolean
   onTemplateSpeedChange?: (value: number) => void
   onRollDistanceChange?: (value: number) => void
   onJumpHeightChange?: (value: number) => void
   onJumpVelocityChange?: (value: number) => void
-  onPopScaleChange?: (value: number) => void
-  onPopSpeedChange?: (value: number) => void
-  onPopCollapseChange?: (value: boolean) => void
+  onPopScaleChange?: (scale: number) => void
+  onPopWobbleChange?: (wobble: boolean) => void
+  onPopSpeedChange?: (speed: number) => void
+  onPopCollapseChange?: (collapse: boolean) => void
+  onPopReappearChange?: (reappear: boolean) => void
   selectedLayerScale?: number
   onSelectedLayerScaleChange?: (value: number) => void
   onClipClick?: (clip: { id: string; template: string }) => void
@@ -90,13 +106,16 @@ export default function DashboardLayout({
   popScale = 1.6,
   popSpeed = 1,
   popCollapse = true,
+  popReappear = false,
   onTemplateSpeedChange,
   onRollDistanceChange,
   onJumpHeightChange,
   onJumpVelocityChange,
   onPopScaleChange,
+  onPopWobbleChange,
   onPopSpeedChange,
   onPopCollapseChange,
+  onPopReappearChange,
   selectedLayerScale = 1,
   onSelectedLayerScaleChange,
   onClipClick,
@@ -494,6 +513,8 @@ export default function DashboardLayout({
     }
   }
 
+  const [activeTab, setActiveTab] = useState<'templates' | 'shapes' | 'draw'>('templates')
+
   return (
     <div className="flex h-screen w-screen flex-col bg-[#0a0a0a] text-white overflow-hidden font-sans selection:bg-white/20">
       {/* Top Navbar */}
@@ -508,6 +529,34 @@ export default function DashboardLayout({
             </div>
             <span className="font-semibold tracking-tight text-sm text-neutral-200">MotionShapes</span>
           </div>
+        </div>
+
+        {/* Center Navigation Tabs */}
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-1 bg-white/5 p-1 rounded-lg border border-white/5">
+            <button
+                onClick={() => setActiveTab('templates')}
+                className={cn(
+                    "flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                    activeTab === 'templates' 
+                        ? "bg-white/10 text-white shadow-sm" 
+                        : "text-neutral-400 hover:text-white hover:bg-white/5"
+                )}
+            >
+                <LayoutTemplate className="h-3.5 w-3.5" />
+                Templates
+            </button>
+            <button
+                onClick={() => setActiveTab('shapes')}
+                className={cn(
+                    "flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                    activeTab === 'shapes' 
+                        ? "bg-white/10 text-white shadow-sm" 
+                        : "text-neutral-400 hover:text-white hover:bg-white/5"
+                )}
+            >
+                <Shapes className="h-3.5 w-3.5" />
+                Shapes
+            </button>
         </div>
         
         <div className="flex items-center gap-3">
@@ -526,66 +575,97 @@ export default function DashboardLayout({
       <div className="flex flex-1 overflow-hidden min-h-0">
         {/* Left Sidebar */}
         <aside className="w-64 border-r border-white/5 bg-[#0a0a0a] p-4 flex flex-col gap-6 z-40">
-          <div>
-              <h2 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-neutral-600 px-2">
-                Templates
-              </h2>
-              <nav className="space-y-0.5">
-                {templates.map((template) => (
+          
+          {/* Templates Tab Content */}
+          {activeTab === 'templates' && (
+            <div className="flex flex-col gap-4">
+                <div>
+                  <h2 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-neutral-600 px-2">
+                    Custom
+                  </h2>
                   <button
-                    key={template.id}
-                    onClick={() => onSelectTemplate(template.id)}
+                    onClick={() => onStartDrawPath?.()}
                     className={cn(
-                      "group flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-sm font-medium transition-all duration-200",
-                      selectedTemplate === template.id
-                        ? "bg-white/10 text-white shadow-[0_0_15px_rgba(255,255,255,0.05)] border border-white/5"
-                        : "text-neutral-400 hover:bg-white/5 hover:text-neutral-200"
+                      "group flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-sm font-medium transition-all duration-200 border border-transparent",
+                      isDrawingPath
+                        ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                        : "text-neutral-400 hover:bg-white/5 hover:text-neutral-200 hover:border-white/5"
                     )}
                   >
-                    <template.icon className={cn("h-4 w-4 transition-colors", selectedTemplate === template.id ? "text-white" : "text-neutral-500 group-hover:text-neutral-300")} />
-                    {template.name}
+                    <PenTool className={cn("h-4 w-4", isDrawingPath ? "text-emerald-400" : "text-neutral-500 group-hover:text-neutral-300")} />
+                    Draw a custom path
                   </button>
-                ))}
-              </nav>
-          </div>
+                </div>
 
-          <div>
-            <h2 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-neutral-600 px-2">
-              Custom
-            </h2>
-            <div className="space-y-3 px-2">
-              <Button
-                variant="ghost"
-                className="w-full justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2"
-                onClick={() => onStartDrawPath?.()}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2 h-4 w-4 text-neutral-500 group-hover:text-white transition-colors">
-                  <path d="M4 12c0-6 8-6 8 0s8 6 8 0" />
-                </svg>
-                Draw Path
-              </Button>
-              {showSelectShapeHint && (
-                <p className="text-[10px] text-amber-400/90 bg-amber-400/10 p-2 rounded border border-amber-400/20">
-                  Select a shape first, then click Draw Path.
-                </p>
-              )}
-              <p className="text-[10px] text-neutral-500 leading-relaxed px-2">
-                Click "Draw Path" to mark a motion path on the canvas. Double-click to finish.
-              </p>
+                <div>
+                    <h2 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-neutral-600 px-2">
+                      Templates
+                    </h2>
+                    <nav className="grid grid-cols-2 gap-2">
+                      {templates.map((template) => (
+                        <TemplatePreview
+                          key={template.id}
+                          id={template.id}
+                          name={template.name}
+                          isSelected={selectedTemplate === template.id}
+                          onClick={() => onSelectTemplate(template.id)}
+                        />
+                      ))}
+                    </nav>
+                </div>
             </div>
-          </div>
+          )}
 
-          <div>
-              <h2 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-neutral-600 px-2">
-                Shapes
-              </h2>
-              <div className="grid grid-cols-1 gap-1">
-                <Button onClick={() => onAddShape?.()} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
-                  <Circle className="mr-2 h-4 w-4 text-neutral-500" />
-                  Circle
-                </Button>
-              </div>
-          </div>
+          {/* Shapes Tab Content */}
+          {activeTab === 'shapes' && (
+            <div>
+                <h2 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-neutral-600 px-2">
+                  Shapes
+                </h2>
+                <div className="grid grid-cols-1 gap-1">
+                  <Button onClick={() => onAddShape?.()} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
+                    <Circle className="mr-2 h-4 w-4 text-neutral-500" />
+                    Circle
+                  </Button>
+                  <Button onClick={() => onAddShape?.()} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
+                    <Square className="mr-2 h-4 w-4 text-neutral-500" />
+                    Square
+                  </Button>
+                  <Button onClick={() => onAddShape?.()} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
+                    <Heart className="mr-2 h-4 w-4 text-neutral-500" />
+                    Heart
+                  </Button>
+                  <Button onClick={() => onAddShape?.()} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
+                    <Star className="mr-2 h-4 w-4 text-neutral-500" />
+                    Star
+                  </Button>
+                  <Button onClick={() => onAddShape?.()} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
+                    <Triangle className="mr-2 h-4 w-4 text-neutral-500" />
+                    Triangle
+                  </Button>
+                  <Button onClick={() => onAddShape?.()} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
+                    <Pill className="mr-2 h-4 w-4 text-neutral-500" />
+                    Pill
+                  </Button>
+                  <Button onClick={() => onAddShape?.()} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
+                    <ThumbsUp className="mr-2 h-4 w-4 text-neutral-500" />
+                    Like
+                  </Button>
+                  <Button onClick={() => onAddShape?.()} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
+                    <MessageCircle className="mr-2 h-4 w-4 text-neutral-500" />
+                    Comment
+                  </Button>
+                  <Button onClick={() => onAddShape?.()} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
+                    <Send className="mr-2 h-4 w-4 text-neutral-500" />
+                    Share
+                  </Button>
+                  <Button onClick={() => onAddShape?.()} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
+                    <MousePointer className="mr-2 h-4 w-4 text-neutral-500" />
+                    Cursor
+                  </Button>
+                </div>
+            </div>
+          )}
 
         </aside>
 
@@ -976,6 +1056,19 @@ export default function DashboardLayout({
                       className="peer sr-only"
                       checked={popCollapse}
                       onChange={(e) => onPopCollapseChange?.(e.target.checked)}
+                    />
+                    <div className="peer h-4 w-7 rounded-full bg-neutral-700 peer-checked:bg-emerald-500 transition-colors" />
+                    <div className="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-white transition-transform peer-checked:translate-x-3" />
+                  </label>
+                </div>
+                <div className="flex items-center justify-between pt-2">
+                  <span className="text-[11px] font-semibold text-neutral-200">Reappear</span>
+                  <label className="relative inline-flex cursor-pointer items-center">
+                    <input
+                      type="checkbox"
+                      className="peer sr-only"
+                      checked={popReappear}
+                      onChange={(e) => onPopReappearChange?.(e.target.checked)}
                     />
                     <div className="peer h-4 w-7 rounded-full bg-neutral-700 peer-checked:bg-emerald-500 transition-colors" />
                     <div className="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-white transition-transform peer-checked:translate-x-3" />
