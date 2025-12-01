@@ -30,12 +30,14 @@ import {
   SlidersHorizontal,
   LayoutTemplate,
   Shapes,
-  PenTool
+  PenTool,
+  Wand2
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
-import { TemplatePreview } from './TemplatePreview'
 import { Button } from '@/components/ui/button'
+import { EffectPreview } from '@/components/EffectPreview'
+import { TemplatePreview } from '@/components/TemplatePreview'
 import TimelinePanel from '@/components/TimelinePanel'
 
 export type BackgroundSettings = {
@@ -44,6 +46,15 @@ export type BackgroundSettings = {
   from: string
   to: string
   opacity: number
+}
+
+export type EffectType = 'glow' | 'dropShadow' | 'blur' | 'glitch' | 'pixelate' | 'sparkles' | 'confetti'
+
+export interface Effect {
+  id: string
+  type: EffectType
+  isEnabled: boolean
+  params: Record<string, any>
 }
 
 type ShapeKind =
@@ -106,6 +117,12 @@ interface DashboardLayoutProps {
   selectedClipDuration?: number
   onClipDurationChange?: (value: number) => void
   onClipClick?: (clip: { id: string; template: string }) => void
+  // Effects
+  activeEffectId?: string
+  onSelectEffect?: (effectId: string) => void
+  onUpdateEffect?: (effectId: string, params: Record<string, any>) => void
+  onToggleEffect?: (effectId: string, isEnabled: boolean) => void
+  layerEffects?: Effect[]
 }
 
 export default function DashboardLayout({ 
@@ -155,10 +172,16 @@ export default function DashboardLayout({
   selectedClipDuration,
   onClipDurationChange,
   onClipClick,
+  activeEffectId,
+  onSelectEffect,
+  onUpdateEffect,
+  onToggleEffect,
+  layerEffects = [],
 }: DashboardLayoutProps) {
   const router = useRouter()
   const supabase = createClient()
   const [showBackgroundPanel, setShowBackgroundPanel] = useState(false)
+  const [activeTab, setActiveTab] = useState<'templates' | 'shapes' | 'effects'>('templates')
 
   // Canvas resize and move state
   const DEFAULT_CANVAS_WIDTH = 680
@@ -358,6 +381,16 @@ export default function DashboardLayout({
         </svg>
       )
     },
+  ]
+
+  const availableEffects: { id: EffectType; name: string; icon: any }[] = [
+    { id: 'glow', name: 'Glow', icon: Wand2 },
+    { id: 'dropShadow', name: 'Drop Shadow', icon: Wand2 },
+    { id: 'blur', name: 'Blur', icon: Wand2 },
+    { id: 'glitch', name: 'Glitch', icon: Wand2 },
+    { id: 'pixelate', name: 'Pixelate', icon: Wand2 },
+    { id: 'sparkles', name: 'Sparkles', icon: Wand2 },
+    { id: 'confetti', name: 'Confetti', icon: Wand2 },
   ]
 
   const updateBackground = (patch: Partial<BackgroundSettings>) => {
@@ -587,8 +620,6 @@ export default function DashboardLayout({
       setIsCanvasSelected(false)
     }
   }
-
-  const [activeTab, setActiveTab] = useState<'templates' | 'shapes' | 'draw'>('templates')
   
   // Sidebar Resize Logic
   const [sidebarWidth, setSidebarWidth] = useState(256)
@@ -695,28 +726,37 @@ export default function DashboardLayout({
         {/* Center Navigation Tabs */}
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-1 bg-white/5 p-1 rounded-lg border border-white/5">
             <button
-                onClick={() => setActiveTab('templates')}
-                className={cn(
-                    "flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
-                    activeTab === 'templates' 
-                        ? "bg-white/10 text-white shadow-sm" 
-                        : "text-neutral-400 hover:text-white hover:bg-white/5"
-                )}
+              onClick={() => setActiveTab('templates')}
+              className={cn(
+                "flex-1 border-b-2 py-3 text-[11px] font-medium transition-colors",
+                activeTab === 'templates'
+                  ? "border-emerald-500 text-emerald-400"
+                  : "border-transparent text-neutral-400 hover:text-neutral-200"
+              )}
             >
-                <LayoutTemplate className="h-3.5 w-3.5" />
-                Templates
+              Templates
             </button>
             <button
-                onClick={() => setActiveTab('shapes')}
-                className={cn(
-                    "flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
-                    activeTab === 'shapes' 
-                        ? "bg-white/10 text-white shadow-sm" 
-                        : "text-neutral-400 hover:text-white hover:bg-white/5"
-                )}
+              onClick={() => setActiveTab('effects')}
+              className={cn(
+                "flex-1 border-b-2 py-3 text-[11px] font-medium transition-colors",
+                activeTab === 'effects'
+                  ? "border-emerald-500 text-emerald-400"
+                  : "border-transparent text-neutral-400 hover:text-neutral-200"
+              )}
             >
-                <Shapes className="h-3.5 w-3.5" />
-                Shapes
+              Effects
+            </button>
+            <button
+              onClick={() => setActiveTab('shapes')}
+              className={cn(
+                "flex-1 border-b-2 py-3 text-[11px] font-medium transition-colors",
+                activeTab === 'shapes'
+                  ? "border-emerald-500 text-emerald-400"
+                  : "border-transparent text-neutral-400 hover:text-neutral-200"
+              )}
+            >
+              Shapes
             </button>
         </div>
         
@@ -786,6 +826,33 @@ export default function DashboardLayout({
                       ))}
                     </nav>
                 </div>
+            </div>
+          )}
+
+          {/* Effects Tab Content */}
+          {activeTab === 'effects' && (
+            <div>
+              <h2 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-neutral-600 px-2">
+                Effects
+              </h2>
+              <div className="grid grid-cols-2 gap-2">
+                {availableEffects.map((effect) => {
+                  const isEnabled = layerEffects.some(e => e.type === effect.id && e.isEnabled)
+                  const isActive = activeEffectId === effect.id
+                  
+                  return (
+                    <EffectPreview
+                      key={effect.id}
+                      id={effect.id}
+                      name={effect.name}
+                      isActive={isActive}
+                      isEnabled={isEnabled}
+                      onClick={() => onSelectEffect?.(effect.id)}
+                      icon={effect.icon}
+                    />
+                  )
+                })}
+              </div>
             </div>
           )}
 
@@ -1392,6 +1459,228 @@ export default function DashboardLayout({
                   />
                 </div>
               </>
+            )}
+            
+            {/* Effect Controls */}
+            {activeTab === 'effects' && activeEffectId && (
+              <div className="space-y-4 pt-4 border-t border-white/10">
+                <div className="flex items-center justify-between px-2">
+                  <div className="flex items-center gap-2 text-[11px] font-semibold text-neutral-200">
+                    <Wand2 className="h-3.5 w-3.5" />
+                    {availableEffects.find(e => e.id === activeEffectId)?.name} Settings
+                  </div>
+                  <label className="relative inline-flex cursor-pointer items-center">
+                    <input
+                      type="checkbox"
+                      className="peer sr-only"
+                      checked={layerEffects.find(e => e.type === activeEffectId)?.isEnabled ?? false}
+                      onChange={(e) => onToggleEffect?.(activeEffectId, e.target.checked)}
+                    />
+                    <div className="peer h-4 w-7 rounded-full bg-neutral-700 peer-checked:bg-emerald-500 transition-colors" />
+                    <div className="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-white transition-transform peer-checked:translate-x-3" />
+                  </label>
+                </div>
+
+                {/* Glow Controls */}
+                {activeEffectId === 'glow' && (
+                  <>
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[11px] font-semibold text-neutral-200">Intensity</span>
+                        <span className="text-[10px] text-neutral-400">
+                          {(layerEffects.find(e => e.type === 'glow')?.params.intensity ?? 0).toFixed(1)}
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={5}
+                        step={0.1}
+                        value={layerEffects.find(e => e.type === 'glow')?.params.intensity ?? 0}
+                        onChange={(e) => onUpdateEffect?.('glow', { intensity: Number(e.target.value) })}
+                        className="w-full accent-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[11px] font-semibold text-neutral-200">Blur Radius</span>
+                        <span className="text-[10px] text-neutral-400">
+                          {(layerEffects.find(e => e.type === 'glow')?.params.blur ?? 0).toFixed(0)}px
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={50}
+                        step={1}
+                        value={layerEffects.find(e => e.type === 'glow')?.params.blur ?? 0}
+                        onChange={(e) => onUpdateEffect?.('glow', { blur: Number(e.target.value) })}
+                        className="w-full accent-emerald-500"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Drop Shadow Controls */}
+                {activeEffectId === 'dropShadow' && (
+                  <>
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[11px] font-semibold text-neutral-200">Distance</span>
+                        <span className="text-[10px] text-neutral-400">
+                          {(layerEffects.find(e => e.type === 'dropShadow')?.params.distance ?? 5).toFixed(0)}px
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={50}
+                        step={1}
+                        value={layerEffects.find(e => e.type === 'dropShadow')?.params.distance ?? 5}
+                        onChange={(e) => onUpdateEffect?.('dropShadow', { distance: Number(e.target.value) })}
+                        className="w-full accent-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[11px] font-semibold text-neutral-200">Blur</span>
+                        <span className="text-[10px] text-neutral-400">
+                          {(layerEffects.find(e => e.type === 'dropShadow')?.params.blur ?? 2).toFixed(0)}px
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={20}
+                        step={1}
+                        value={layerEffects.find(e => e.type === 'dropShadow')?.params.blur ?? 2}
+                        onChange={(e) => onUpdateEffect?.('dropShadow', { blur: Number(e.target.value) })}
+                        className="w-full accent-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[11px] font-semibold text-neutral-200">Angle</span>
+                        <span className="text-[10px] text-neutral-400">
+                          {(layerEffects.find(e => e.type === 'dropShadow')?.params.rotation ?? 45).toFixed(0)}°
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={360}
+                        step={15}
+                        value={layerEffects.find(e => e.type === 'dropShadow')?.params.rotation ?? 45}
+                        onChange={(e) => onUpdateEffect?.('dropShadow', { rotation: Number(e.target.value) })}
+                        className="w-full accent-emerald-500"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Blur Controls */}
+                {activeEffectId === 'blur' && (
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-semibold text-neutral-200">Strength</span>
+                      <span className="text-[10px] text-neutral-400">
+                        {(layerEffects.find(e => e.type === 'blur')?.params.strength ?? 0).toFixed(1)}px
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={20}
+                      step={0.5}
+                      value={layerEffects.find(e => e.type === 'blur')?.params.strength ?? 0}
+                      onChange={(e) => onUpdateEffect?.('blur', { strength: Number(e.target.value) })}
+                      className="w-full accent-emerald-500"
+                    />
+                  </div>
+                )}
+
+                {/* Glitch Controls */}
+                {activeEffectId === 'glitch' && (
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-semibold text-neutral-200">Intensity</span>
+                      <span className="text-[10px] text-neutral-400">
+                        {(layerEffects.find(e => e.type === 'glitch')?.params.slices ?? 0).toFixed(0)}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={2}
+                      max={20}
+                      step={1}
+                      value={layerEffects.find(e => e.type === 'glitch')?.params.slices ?? 0}
+                      onChange={(e) => onUpdateEffect?.('glitch', { slices: Number(e.target.value) })}
+                      className="w-full accent-emerald-500"
+                    />
+                  </div>
+                )}
+
+                {/* Pixelate Controls */}
+                {activeEffectId === 'pixelate' && (
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-semibold text-neutral-200">Pixel Size</span>
+                      <span className="text-[10px] text-neutral-400">
+                        {(layerEffects.find(e => e.type === 'pixelate')?.params.size ?? 10).toFixed(0)}px
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={2}
+                      max={50}
+                      step={2}
+                      value={layerEffects.find(e => e.type === 'pixelate')?.params.size ?? 10}
+                      onChange={(e) => onUpdateEffect?.('pixelate', { size: Number(e.target.value) })}
+                      className="w-full accent-emerald-500"
+                    />
+                  </div>
+                )}
+
+                {/* Sparkles/Confetti Controls */}
+                {(activeEffectId === 'sparkles' || activeEffectId === 'confetti') && (
+                  <>
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[11px] font-semibold text-neutral-200">Density</span>
+                        <span className="text-[10px] text-neutral-400">
+                          {(layerEffects.find(e => e.type === activeEffectId)?.params.density ?? 0.5).toFixed(2)}
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0.1}
+                        max={1}
+                        step={0.05}
+                        value={layerEffects.find(e => e.type === activeEffectId)?.params.density ?? 0.5}
+                        onChange={(e) => onUpdateEffect?.(activeEffectId, { density: Number(e.target.value) })}
+                        className="w-full accent-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[11px] font-semibold text-neutral-200">Speed</span>
+                        <span className="text-[10px] text-neutral-400">
+                          {(layerEffects.find(e => e.type === activeEffectId)?.params.speed ?? 1).toFixed(1)}x
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0.1}
+                        max={3}
+                        step={0.1}
+                        value={layerEffects.find(e => e.type === activeEffectId)?.params.speed ?? 1}
+                        onChange={(e) => onUpdateEffect?.(activeEffectId, { speed: Number(e.target.value) })}
+                        className="w-full accent-emerald-500"
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
             )}
             {selectedTemplate === 'path' && (
               <div>

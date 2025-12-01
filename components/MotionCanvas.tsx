@@ -6,6 +6,12 @@ import 'pixi.js/app' // ensure Application plugins (ticker/resize) are registere
 import 'pixi.js/events' // enable pointer events
 import { sampleTimeline } from '@/lib/timeline'
 import { useTimeline, useTimelineActions } from '@/lib/timeline-store'
+import { GlowFilter } from 'pixi-filters'
+import { DropShadowFilter } from 'pixi-filters'
+import { GlitchFilter } from 'pixi-filters'
+import { PixelateFilter } from 'pixi-filters'
+import { AdjustmentFilter } from 'pixi-filters'
+import { SimpleParticleEmitter } from '@/lib/particle-emitter'
 
 interface MotionCanvasProps {
   template: string
@@ -18,6 +24,12 @@ interface MotionCanvasProps {
     width: number
     height: number
     fillColor: number
+    effects?: Array<{
+      id: string
+      type: string
+      isEnabled: boolean
+      params: Record<string, any>
+    }>
   }>
   onUpdateLayerPosition?: (id: string, x: number, y: number) => void
   onTemplateComplete?: () => void
@@ -63,6 +75,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
   const dragRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null)
   const graphicsByIdRef = useRef<Record<string, PIXI.Graphics>>({})
   const outlinesByIdRef = useRef<Record<string, PIXI.Graphics>>({})
+  const filtersByLayerIdRef = useRef<Record<string, PIXI.Filter[]>>({})
+  const emittersByLayerIdRef = useRef<Record<string, SimpleParticleEmitter[]>>({})
   const iconTextureCacheRef = useRef<Record<string, PIXI.Texture>>({})
   const layersRef = useRef(layers)
   const pathTraceActiveRef = useRef(false)
@@ -213,21 +227,182 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
       if (g) g.rotation = state.rotation
       if (g) g.alpha = state.opacity
       
-      // Apply blur filter for off-canvas shapes
+      // Apply filters (Effects + Off-canvas Blur)
       if (g) {
+        const layerEffects = filtersByLayerIdRef.current[id] || []
+        let activeFilters = [...layerEffects]
+
         if (isOffCanvas) {
-          if (!g.filters || !g.filters.some(f => f instanceof PIXI.BlurFilter)) {
-            const blurFilter = new PIXI.BlurFilter()
-            blurFilter.blur = 4
-            g.filters = [blurFilter]
-          }
-        } else {
-          g.filters = null
+          // Add blur if off-canvas
+          const blurFilter = new PIXI.BlurFilter()
+          blurFilter.blur = 4
+          activeFilters.push(blurFilter)
         }
+        
+        g.filters = activeFilters.length > 0 ? activeFilters : null
       }
     })
     appRef.current?.render()
   }
+
+  // Update filters when layers/effects change
+  useEffect(() => {
+    layers.forEach(layer => {
+      const effects = layer.effects || []
+      const filters: PIXI.Filter[] = []
+      
+      effects.forEach(effect => {
+        if (!effect.isEnabled) return
+        
+        try {
+          if (effect.type === 'glow') {
+            filters.push(new GlowFilter({ 
+              distance: 15, 
+              outerStrength: effect.params.intensity ?? 0,
+              innerStrength: 0,
+              color: 0xffffff,
+              quality: 0.1,
+              knockout: false,
+            }))
+          } else if (effect.type === 'dropShadow') {
+            filters.push(new DropShadowFilter({
+              distance: effect.params.distance ?? 5,
+              blur: effect.params.blur ?? 2,
+              rotation: effect.params.rotation ?? 45,
+              alpha: effect.params.alpha ?? 0.5,
+              color: 0x000000
+            } as any))
+          } else if (effect.type === 'blur') {
+             const f = new PIXI.BlurFilter()
+             f.blur = effect.params.strength ?? 0
+             filters.push(f)
+          } else if (effect.type === 'glitch') {
+            filters.push(new GlitchFilter({
+              slices: effect.params.slices ?? 5,
+              offset: effect.params.offset ?? 10,
+              direction: 0,
+              fillMode: 0,
+              average: false,
+              seed: Math.random()
+            }))
+          } else if (effect.type === 'pixelate') {
+            const pixelSize = effect.params.size ?? 10
+            filters.push(new PixelateFilter(pixelSize))
+          }
+        } catch (e) {
+          console.error('Failed to create filter', effect.type, e)
+        }
+      })
+      
+      filtersByLayerIdRef.current[layer.id] = filters
+      
+      // Handle Particles
+      const currentEmitters = emittersByLayerIdRef.current[layer.id] || []
+      const newEmitters: SimpleParticleEmitter[] = []
+      
+      effects.forEach(effect => {
+        if (!effect.isEnabled) return
+        if (effect.type !== 'sparkles' && effect.type !== 'confetti') return
+        
+        let emitter = currentEmitters.find(e => (e as any)._effectType === effect.type)
+        
+        if (!emitter) {
+           const container = new PIXI.Container()
+           if (appRef.current) {
+             appRef.current.stage.addChild(container)
+             
+             // Create a simple circle texture for particles
+             const graphics = new PIXI.Graphics()
+             graphics.circle(0, 0, 4)
+             graphics.fill(0xffffff)
+             const texture = appRef.current.renderer.generateTexture(graphics)
+             
+             emitter = new SimpleParticleEmitter(
+               container,
+               effect.type as 'sparkles' | 'confetti',
+               texture
+             )
+             ;(emitter as any)._effectType = effect.type
+             ;(emitter as any)._container = container
+           }
+        }
+        
+        if (emitter) {
+           // Update params
+           if (effect.params.density !== undefined) {
+             emitter.frequency = (effect.type === 'sparkles' ? 0.008 : 0.05) / effect.params.density
+           }
+           if (effect.params.speed !== undefined) {
+             emitter.speedMultiplier = effect.params.speed
+           }
+           
+           // Update position to match layer
+           const g = graphicsByIdRef.current[layer.id]
+           if (g) {
+              emitter.updateOwnerPos(g.x, g.y)
+           }
+           
+           newEmitters.push(emitter)
+        }
+      })
+      
+      emittersByLayerIdRef.current[layer.id] = newEmitters
+
+      // Cleanup removed emitters
+      currentEmitters.forEach(e => {
+         if (!newEmitters.includes(e)) {
+            e.destroy()
+            if ((e as any)._container) {
+               (e as any)._container.destroy()
+            }
+         }
+      })
+
+      // Apply immediately
+      const g = graphicsByIdRef.current[layer.id]
+      if (g) {
+         // We don't handle off-canvas logic here, just base effects
+         // The render loop will merge them
+         g.filters = filters.length > 0 ? filters : null
+      }
+    })
+  }, [layers])
+
+  // Update particles loop
+  useEffect(() => {
+    const app = appRef.current
+    if (!app) return
+    
+    let lastTime = Date.now()
+    
+    const update = () => {
+       const now = Date.now()
+       const dt = (now - lastTime) / 1000
+       lastTime = now
+       
+       let hasParticles = false
+       Object.values(emittersByLayerIdRef.current).forEach(emitters => {
+          emitters.forEach(emitter => {
+             if (!emitter || emitter.destroyed) return
+             try {
+               emitter.update(dt)
+               hasParticles = true
+             } catch (e) {
+               console.warn('Particle update failed', e)
+             }
+          })
+       })
+       
+       if (hasParticles) {
+          app.render()
+       }
+    }
+    
+    app.ticker.add(update)
+    return () => {
+      app.ticker.remove(update)
+    }
+  }, [isReady])
 
   // Apply timeline-sampled transforms onto Pixi graphics so playhead/scrub reflects on-canvas
   useEffect(() => {

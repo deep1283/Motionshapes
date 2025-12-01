@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
-import DashboardLayout, { BackgroundSettings } from '@/components/DashboardLayout'
+import DashboardLayout, { BackgroundSettings, Effect, EffectType } from '@/components/DashboardLayout'
 import dynamic from 'next/dynamic'
 import { TimelineProvider, useTimeline, useTimelineActions } from '@/lib/timeline-store'
 import { sampleTimeline } from '@/lib/timeline'
@@ -36,6 +36,7 @@ interface Layer {
   width: number
   height: number
   fillColor: number
+  effects?: Effect[]
 }
 
 export default function DashboardPage() {
@@ -58,6 +59,8 @@ function DashboardContent() {
   const [pathVersion, setPathVersion] = useState(0)
   const [selectedLayerId, setSelectedLayerId] = useState('')
   const [selectedClipId, setSelectedClipId] = useState('')
+
+  const [activeEffectId, setActiveEffectId] = useState<string>('')
   const [showSelectShapeHint, setShowSelectShapeHint] = useState(false)
   const [background, setBackground] = useState<BackgroundSettings>({
     mode: 'solid',
@@ -426,6 +429,59 @@ function DashboardContent() {
     }
   }
 
+
+
+  const handleSelectEffect = (effectId: string) => {
+    setActiveEffectId(effectId)
+  }
+
+  const handleUpdateEffect = (effectId: string, params: Record<string, any>) => {
+    if (!selectedLayerId) return
+    setLayers(prev => prev.map(layer => {
+      if (layer.id !== selectedLayerId) return layer
+      const effects = layer.effects || []
+      const existing = effects.find(e => e.type === effectId)
+      
+      let newEffects
+      if (existing) {
+        newEffects = effects.map(e => e.type === effectId ? { ...e, params: { ...e.params, ...params } } : e)
+      } else {
+        // Initialize with params if creating new
+        newEffects = [...effects, { id: crypto.randomUUID(), type: effectId as EffectType, isEnabled: true, params }]
+      }
+      return { ...layer, effects: newEffects }
+    }))
+  }
+
+  const handleToggleEffect = (effectId: string, isEnabled: boolean) => {
+    if (!selectedLayerId) return
+    setLayers(prev => prev.map(layer => {
+      if (layer.id !== selectedLayerId) return layer
+      const effects = layer.effects || []
+      const existing = effects.find(e => e.type === effectId)
+      
+      let newEffects
+      if (existing) {
+        newEffects = effects.map(e => e.type === effectId ? { ...e, isEnabled } : e)
+      } else {
+        if (isEnabled) {
+           // Initialize with default params
+           let defaultParams = {}
+           if (effectId === 'glow') defaultParams = { intensity: 1, blur: 10 }
+           if (effectId === 'dropShadow') defaultParams = { distance: 5, blur: 2, rotation: 45, alpha: 0.5 }
+           if (effectId === 'blur') defaultParams = { strength: 4 }
+           if (effectId === 'glitch') defaultParams = { slices: 5, offset: 10 }
+           if (effectId === 'pixelate') defaultParams = { size: 10 }
+           
+           newEffects = [...effects, { id: crypto.randomUUID(), type: effectId as EffectType, isEnabled: true, params: defaultParams }]
+        } else {
+           newEffects = effects
+        }
+      }
+      return { ...layer, effects: newEffects }
+    }))
+  }
+
   const shapeDefaults: Record<ShapeKind, { width: number; height: number }> = {
     circle: { width: 120, height: 120 },
     square: { width: 120, height: 120 },
@@ -694,7 +750,15 @@ function DashboardContent() {
       onSelectedLayerScaleChange={handleScaleChange}
       selectedClipDuration={selectedClipDuration}
       onClipDurationChange={handleClipDurationChange}
-      onClipClick={handleClipClick}
+      onClipClick={(clip) => {
+        setSelectedClipId(clip.id)
+        setSelectedTemplate(clip.template)
+      }}
+      activeEffectId={activeEffectId}
+      onSelectEffect={handleSelectEffect}
+      onUpdateEffect={handleUpdateEffect}
+      onToggleEffect={handleToggleEffect}
+      layerEffects={layers.find(l => l.id === selectedLayerId)?.effects}
     >
       <MotionCanvas 
         template={selectedTemplate} 
