@@ -264,39 +264,41 @@ export default function DashboardLayout({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  const canvasContainerRef = useRef<HTMLDivElement>(null)
+
   // Handle mouse wheel for panning or zooming (pinch)
-  const handleCanvasWheel = (e: React.WheelEvent) => {
-    e.preventDefault()
-    
-    // Check for pinch gesture (ctrlKey + wheel)
-    if (e.ctrlKey) {
-      // Pinch to resize
-      // deltaY is negative when zooming in (expanding), positive when zooming out (shrinking)
-      const zoomSensitivity = 0.01
-      const scale = 1 - (e.deltaY * zoomSensitivity)
+  // Attached via ref to support non-passive listener
+  useEffect(() => {
+    const container = canvasContainerRef.current
+    if (!container) return
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault()
       
-      const newWidth = Math.max(MIN_CANVAS_WIDTH, Math.round(canvasWidth * scale))
-      const newHeight = Math.max(MIN_CANVAS_HEIGHT, Math.round(canvasHeight * scale))
-      
-      setCanvasWidth(newWidth)
-      setCanvasHeight(newHeight)
-      
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('canvasWidth', newWidth.toString())
-        localStorage.setItem('canvasHeight', newHeight.toString())
-      }
-    } else {
-      // Pan the canvas based on wheel delta
-      setCanvasX(prev => prev - e.deltaX)
-      setCanvasY(prev => prev - e.deltaY)
-      
-      // Save to localStorage
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('canvasX', (canvasX - e.deltaX).toString())
-        localStorage.setItem('canvasY', (canvasY - e.deltaY).toString())
+      // Check for pinch gesture (ctrlKey + wheel)
+      if (e.ctrlKey) {
+        // Pinch to resize
+        // deltaY is negative when zooming in (expanding), positive when zooming out (shrinking)
+        const zoomSensitivity = 0.01
+        const scale = 1 - (e.deltaY * zoomSensitivity)
+        
+        const newWidth = Math.max(MIN_CANVAS_WIDTH, Math.round(canvasWidth * scale))
+        const newHeight = Math.max(MIN_CANVAS_HEIGHT, Math.round(canvasHeight * scale))
+        
+        setCanvasWidth(newWidth)
+        setCanvasHeight(newHeight)
+      } else {
+        // Pan
+        setCanvasX(prev => prev - e.deltaX)
+        setCanvasY(prev => prev - e.deltaY)
       }
     }
-  }
+
+    container.addEventListener('wheel', handleWheel, { passive: false })
+    return () => container.removeEventListener('wheel', handleWheel)
+  }, [canvasWidth, canvasHeight]) // Re-bind when dimensions change to capture current values
+
+
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -1049,11 +1051,11 @@ export default function DashboardLayout({
              <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff03_1px,transparent_1px),linear-gradient(to_bottom,#ffffff03_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none" />
              
              {/* MotionCanvas - Fills entire workspace */}
-             <div 
-               className="absolute inset-0"
-               onPointerDown={handleBackgroundClick}
-               onWheel={handleCanvasWheel}
-             >
+              <div 
+                ref={canvasContainerRef}
+                className="absolute inset-0"
+                onPointerDown={handleBackgroundClick}
+              >
                {React.Children.map(children, child => {
                  if (React.isValidElement(child)) {
                    // @ts-ignore - We know MotionCanvas accepts these props

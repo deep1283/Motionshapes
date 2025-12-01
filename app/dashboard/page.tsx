@@ -472,6 +472,8 @@ function DashboardContent() {
            if (effectId === 'blur') defaultParams = { strength: 4 }
            if (effectId === 'glitch') defaultParams = { slices: 5, offset: 10 }
            if (effectId === 'pixelate') defaultParams = { size: 10 }
+           if (effectId === 'sparkles') defaultParams = { density: 0.5, speed: 1 }
+           if (effectId === 'confetti') defaultParams = { density: 0.5, speed: 1 }
            
            newEffects = [...effects, { id: crypto.randomUUID(), type: effectId as EffectType, isEnabled: true, params: defaultParams }]
         } else {
@@ -534,14 +536,12 @@ function DashboardContent() {
   }
 
   const handleSelectLayer = (id: string) => {
-    console.log('✅ handleSelectLayer called:', id)
     setSelectedLayerId(id)
     setSelectedClipId('')
     setShowSelectShapeHint(false)
   }
 
   const handleDeselectShape = () => {
-    console.log('❌ handleDeselectShape called')
     setSelectedLayerId('')
     setSelectedClipId('')
     setSelectedTemplate('')

@@ -298,12 +298,15 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
       filtersByLayerIdRef.current[layer.id] = filters
       
       // Handle Particles
+      // Get current emitters for this layer
       const currentEmitters = emittersByLayerIdRef.current[layer.id] || []
-      const newEmitters: SimpleParticleEmitter[] = []
+      const activeEffectTypes = new Set<string>()
       
       effects.forEach(effect => {
         if (!effect.isEnabled) return
         if (effect.type !== 'sparkles' && effect.type !== 'confetti') return
+        
+        activeEffectTypes.add(effect.type)
         
         let emitter = currentEmitters.find(e => (e as any)._effectType === effect.type)
         
@@ -325,10 +328,20 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
              )
              ;(emitter as any)._effectType = effect.type
              ;(emitter as any)._container = container
+             
+             // Add to array and update ref immediately
+             currentEmitters.push(emitter)
+             emittersByLayerIdRef.current[layer.id] = currentEmitters
            }
         }
         
         if (emitter) {
+           // Ensure container is on stage (in case stage was cleared)
+           const container = (emitter as any)._container
+           if (container && !container.parent && appRef.current) {
+              appRef.current.stage.addChild(container)
+           }
+
            // Update params
            if (effect.params.density !== undefined) {
              emitter.frequency = (effect.type === 'sparkles' ? 0.008 : 0.05) / effect.params.density
@@ -342,22 +355,21 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
            if (g) {
               emitter.updateOwnerPos(g.x, g.y)
            }
-           
-           newEmitters.push(emitter)
         }
       })
       
-      emittersByLayerIdRef.current[layer.id] = newEmitters
-
-      // Cleanup removed emitters
-      currentEmitters.forEach(e => {
-         if (!newEmitters.includes(e)) {
-            e.destroy()
-            if ((e as any)._container) {
-               (e as any)._container.destroy()
-            }
-         }
-      })
+      // Cleanup emitters for effects that are no longer active
+      const emittersToRemove = currentEmitters.filter(e => !activeEffectTypes.has((e as any)._effectType))
+      if (emittersToRemove.length > 0) {
+        emittersToRemove.forEach(e => {
+           e.destroy()
+           if ((e as any)._container) {
+              (e as any)._container.destroy()
+           }
+        })
+        // Update ref with remaining emitters
+        emittersByLayerIdRef.current[layer.id] = currentEmitters.filter(e => activeEffectTypes.has((e as any)._effectType))
+      }
 
       // Apply immediately
       const g = graphicsByIdRef.current[layer.id]
@@ -382,10 +394,16 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
        lastTime = now
        
        let hasParticles = false
-       Object.values(emittersByLayerIdRef.current).forEach(emitters => {
+       // Update particle positions to follow shapes
+       Object.entries(emittersByLayerIdRef.current).forEach(([layerId, emitters]) => {
+          const g = graphicsByIdRef.current[layerId]
           emitters.forEach(emitter => {
              if (!emitter || emitter.destroyed) return
              try {
+               // Update emitter position to match shape
+               if (g) {
+                 emitter.updateOwnerPos(g.x, g.y)
+               }
                emitter.update(dt)
                hasParticles = true
              } catch (e) {
@@ -499,6 +517,17 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
     // Cleanup previous scene
     stage.removeChildren()
     
+    // Re-add particle containers if they exist
+    // This is critical because stage.removeChildren() wipes them out
+    Object.values(emittersByLayerIdRef.current).forEach(emitters => {
+      emitters.forEach(emitter => {
+        const container = (emitter as any)._container
+        if (container) {
+          stage.addChild(container)
+        }
+      })
+    })
+    
     // We need to define the ticker callback variable so we can remove it later
     let tickerCallback: ((ticker: PIXI.Ticker) => void) | null = null
     const centerX = screenWidth / 2
@@ -548,15 +577,12 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
 
     stage.on('pointermove', handlePointerMove)
     const handleStagePointerDown = (e: PIXI.FederatedPointerEvent) => {
-      console.log('🟢 Stage background clicked, target:', e.target)
       // Only deselect if clicking directly on the stage, not on a shape
       if (e.target !== stage) {
-        console.log('  ↳ Target is not stage, ignoring')
         return
       }
       if (dragRef.current) return
       // Clicked on stage background (not on a shape)
-      console.log('  ↳ Calling onCanvasBackgroundClick')
       onCanvasBackgroundClick?.()
     }
     stage.on('pointerdown', handleStagePointerDown)
@@ -748,18 +774,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
         g.cursor = 'pointer'
         g.hitArea = new PIXI.Rectangle(-layer.width / 2, -layer.height / 2, layer.width, layer.height)
         
-        console.log('[SHAPE SETUP]', {
-          id: layer.id,
-          position: { x: g.x, y: g.y },
-          layerPos: { x: layer.x, y: layer.y },
-          screenPos: { x: posX, y: posY },
-          hitArea: { radius: layer.width / 2 },
-          interactive: g.interactive,
-          eventMode: g.eventMode
-        })
-        
         g.on('pointerdown', (e) => {
-          console.log('🔵 Shape clicked:', layer.id)
           e.stopPropagation()
           if (e.originalEvent) {
             e.originalEvent.stopPropagation()
