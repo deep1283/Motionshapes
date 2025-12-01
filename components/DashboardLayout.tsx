@@ -183,7 +183,7 @@ export default function DashboardLayout({
   const router = useRouter()
   const supabase = createClient()
   const [showBackgroundPanel, setShowBackgroundPanel] = useState(false)
-  const [activeTab, setActiveTab] = useState<'templates' | 'shapes' | 'effects'>('templates')
+  const [activeTab, setActiveTab] = useState<'templates' | 'shapes' | 'effects'>('shapes')
 
   // Canvas resize and move state
   const DEFAULT_CANVAS_WIDTH = 680
@@ -733,7 +733,7 @@ export default function DashboardLayout({
         </div>
 
         {/* Center Navigation Tabs */}
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-1 bg-white/5 p-1 rounded-lg border border-white/5">
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-4 bg-white/5 p-1 rounded-lg border border-white/5">
             <button
               onClick={() => setActiveTab('templates')}
               className={cn(
