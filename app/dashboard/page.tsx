@@ -77,11 +77,31 @@ function DashboardContent() {
   const popWobble = useTimeline((s) => s.popWobble)
   const popCollapse = useTimeline((s) => s.popCollapse)
   const popReappear = useTimeline((s) => s.popReappear)
+  const shakeDistance = useTimeline((s) => s.shakeDistance)
   const tracks = useTimeline((s) => s.tracks)
   const templateClips = useTimeline((s) => s.templateClips)
   const selectedSample = useTimeline((s) => 
     selectedLayerId ? sampleTimeline(s.tracks, s.currentTime)[selectedLayerId] : undefined
   )
+  
+  // Get the selected clip's duration
+  const selectedClip = templateClips.find(c => c.id === selectedClipId)
+  const selectedClipDuration = selectedClip?.duration
+
+  // Auto-select the latest clip for the active template/layer so duration slider stays in sync
+  useEffect(() => {
+    if (!selectedLayerId || !selectedTemplate) return
+    const clipsForLayer = templateClips
+      .filter((c) => c.layerId === selectedLayerId && c.template === selectedTemplate)
+      .sort((a, b) => b.start - a.start)
+    const latest = clipsForLayer[0]
+    if (!latest) return
+    const currentClip = templateClips.find((c) => c.id === selectedClipId)
+    const currentMatches = currentClip && currentClip.template === selectedTemplate
+    if (!currentMatches) {
+      setSelectedClipId(latest.id)
+    }
+  }, [selectedTemplate, selectedLayerId, templateClips, selectedClipId])
 
   useEffect(() => {
     const checkUser = async () => {
@@ -558,6 +578,14 @@ function DashboardContent() {
       }
     }
   }
+  
+  const handleClipDurationChange = (value: number) => {
+    if (selectedClipId && selectedLayerId) {
+      timeline.updateTemplateClip(selectedLayerId, selectedClipId, {
+        duration: value
+      })
+    }
+  }
 
   return (
     <DashboardLayout
@@ -590,8 +618,12 @@ function DashboardContent() {
       onPopSpeedChange={timeline.setPopSpeed}
       onPopCollapseChange={timeline.setPopCollapse}
       onPopReappearChange={timeline.setPopReappear}
+      shakeDistance={shakeDistance}
+      onShakeDistanceChange={timeline.setShakeDistance}
       selectedLayerScale={selectedSample?.scale}
       onSelectedLayerScaleChange={handleScaleChange}
+      selectedClipDuration={selectedClipDuration}
+      onClipDurationChange={handleClipDurationChange}
       onClipClick={handleClipClick}
     >
       <MotionCanvas 

@@ -32,6 +32,7 @@ type TimelineState = {
   popSpeed: number
   popCollapse: boolean
   popReappear: boolean
+  shakeDistance: number
   templateClips: Array<{
     id: string
     layerId: string
@@ -48,6 +49,7 @@ type TimelineState = {
       popSpeed?: number
       popCollapse?: boolean
       popReappear?: boolean
+      shakeDistance?: number
       pathPoints?: Vec2[]
       pathLength?: number
     }
@@ -73,7 +75,8 @@ const defaultState: TimelineState = {
   popWobble: false,
   popSpeed: 1,
   popCollapse: true,
-  popReappear: true, // Default to true so shape is visible after pop
+  popReappear: false,
+  shakeDistance: 10,
   templateClips: [],
 }
 
@@ -90,6 +93,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     popSpeed: initialState?.popSpeed ?? defaultState.popSpeed,
     popCollapse: initialState?.popCollapse ?? defaultState.popCollapse,
     popReappear: initialState?.popReappear ?? defaultState.popReappear,
+    shakeDistance: initialState?.shakeDistance ?? defaultState.shakeDistance,
     templateClips: initialState?.templateClips ?? defaultState.templateClips,
   }
 
@@ -267,6 +271,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       const rollClip = layerClips.find((c) => c.id === clipId && c.template === 'roll')
       const jumpClip = layerClips.find((c) => c.id === clipId && c.template === 'jump')
       const popClip = layerClips.find((c) => c.id === clipId && c.template === 'pop')
+      const shakeClip = layerClips.find((c) => c.id === clipId && c.template === 'shake')
 
       const nextRollDistance =
         rollClip && typeof rollClip.duration === 'number'
@@ -365,6 +370,20 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             parameters: {
               ...updatedClips[clipIndex].parameters,
               popReappear: nextPopReappear
+            }
+          }
+        }
+      }
+
+      if (shakeClip && typeof shakeClip.duration === 'number') {
+        const clipIndex = updatedClips.findIndex(c => c.id === shakeClip.id)
+        if (clipIndex !== -1) {
+          updatedClips[clipIndex] = {
+            ...updatedClips[clipIndex],
+            parameters: {
+              ...updatedClips[clipIndex].parameters,
+              shakeDistance: updates.parameters?.shakeDistance ?? prev.shakeDistance,
+              templateSpeed: updates.parameters?.templateSpeed ?? prev.templateSpeed
             }
           }
         }
@@ -475,6 +494,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
              } else {
                lastPopStartState = null
              }
+           } else if (clip.template === 'shake') {
+             preset = PRESET_BUILDERS.shake(clip.parameters?.shakeDistance ?? prev.shakeDistance, clip.parameters?.templateSpeed ?? prev.templateSpeed, clip.duration)
            } else if (clip.template === 'path' && clip.parameters?.pathPoints) {
               newTrack.paths = [
                 ...(newTrack.paths ?? []),
@@ -511,7 +532,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
 
            console.log(`[REBUILD] Preset for clip ${index} (${clip.template}):`, {
              duration: preset.duration,
-             positionKeyframes: preset.position?.map(kf => ({ time: kf.time, value: kf.value })),
+             positionKeyframes: preset.position?.map((kf: TimelineKeyframe<Vec2>) => ({ time: kf.time, value: kf.value })),
              willBeShiftedBy: start
            })
 
@@ -721,6 +742,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         popWobble?: boolean;
         popSpeed?: number;
         popCollapse?: boolean;
+        shakeDistance?: number;
       }
     }
   ) => {
@@ -739,6 +761,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
                 options?.parameters?.popSpeed ?? state.popSpeed, 
                 options?.parameters?.popCollapse ?? state.popCollapse
               )
+          : template === 'shake'
+            ? PRESET_BUILDERS.shake(options?.parameters?.shakeDistance ?? state.shakeDistance, state.templateSpeed, options?.targetDuration)
             : undefined
     if (!preset) return
     ensureTrack(layerId)
@@ -963,6 +987,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             popWobble: prev.popWobble,
             popSpeed: prev.popSpeed,
             popCollapse: prev.popCollapse,
+            shakeDistance: options?.parameters?.shakeDistance ?? prev.shakeDistance,
           },
         },
       ]
@@ -1008,6 +1033,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           popSpeed: prev.popSpeed,
           popCollapse: prev.popCollapse,
           popReappear: prev.popReappear,
+          shakeDistance: prev.shakeDistance,
           ...parameters
         }
       }
@@ -1076,6 +1102,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
              } else {
                lastPopStartState = null
              }
+           } else if (clip.template === 'shake') {
+             preset = PRESET_BUILDERS.shake(clip.parameters?.shakeDistance ?? prev.shakeDistance, clip.parameters?.templateSpeed ?? prev.templateSpeed, clip.duration)
            } else if (clip.template === 'path' && clip.parameters?.pathPoints) {
               newTrack.paths = [
                 ...(newTrack.paths ?? []),
@@ -1317,6 +1345,11 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     setState((prev) => ({ ...prev, popReappear: reappear }))
   }
 
+  const setShakeDistance = (distance: number) => {
+    const clamped = Math.max(0, Math.min(100, distance))
+    setState((prev) => ({ ...prev, shakeDistance: clamped }))
+  }
+
   const setTemplateSpeed = (speed: number) => {
     const clamped = Math.max(0.1, Math.min(4, speed))
     setState((prev) => ({
@@ -1447,6 +1480,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     setPopWobble,
     setPopCollapse,
     setPopReappear,
+    setShakeDistance,
     setTemplateSpeed,
     setPlaying,
     togglePlay,

@@ -63,6 +63,21 @@ export const TemplatePreview: React.FC<TemplatePreviewProps> = ({
             }}
           />
         )
+      case 'shake':
+        return (
+          <motion.div
+            className="h-8 w-8 rounded-full bg-neutral-400"
+            animate={{
+              x: [0, -5, 5, -5, 5, 0],
+            }}
+            transition={{
+              duration: 0.5,
+              repeat: Infinity,
+              ease: "linear",
+              repeatDelay: 1,
+            }}
+          />
+        )
       default:
         return <div className="h-8 w-8 rounded-full bg-neutral-400" />
     }

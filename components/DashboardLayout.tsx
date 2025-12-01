@@ -46,14 +46,26 @@ export type BackgroundSettings = {
   opacity: number
 }
 
+type ShapeKind =
+  | 'circle'
+  | 'square'
+  | 'heart'
+  | 'star'
+  | 'triangle'
+  | 'pill'
+  | 'like'
+  | 'comment'
+  | 'share'
+  | 'cursor'
+
 interface DashboardLayoutProps {
   children: React.ReactNode
   selectedTemplate: string
   onSelectTemplate: (template: string) => void
-  onAddShape?: (shapeKind?: string) => void
+  onAddShape?: (shapeKind?: ShapeKind) => void
   onStartDrawPath?: () => void
   showSelectShapeHint?: boolean
-  layers: Array<{ id: string; shapeKind: string }>
+  layers: Array<{ id: string; shapeKind: ShapeKind }>
   selectedLayerId?: string
   isDrawingPath?: boolean
   onFinishPath?: () => void
@@ -79,8 +91,12 @@ interface DashboardLayoutProps {
   onPopSpeedChange?: (speed: number) => void
   onPopCollapseChange?: (collapse: boolean) => void
   onPopReappearChange?: (reappear: boolean) => void
+  shakeDistance?: number
+  onShakeDistanceChange?: (value: number) => void
   selectedLayerScale?: number
   onSelectedLayerScaleChange?: (value: number) => void
+  selectedClipDuration?: number
+  onClipDurationChange?: (value: number) => void
   onClipClick?: (clip: { id: string; template: string }) => void
 }
 
@@ -105,8 +121,9 @@ export default function DashboardLayout({
   jumpVelocity = 1.5,
   popScale = 1.6,
   popSpeed = 1,
-  popCollapse = true,
-  popReappear = false,
+  popCollapse,
+  popReappear,
+  shakeDistance,
   onTemplateSpeedChange,
   onRollDistanceChange,
   onJumpHeightChange,
@@ -116,8 +133,11 @@ export default function DashboardLayout({
   onPopSpeedChange,
   onPopCollapseChange,
   onPopReappearChange,
+  onShakeDistanceChange,
   selectedLayerScale = 1,
   onSelectedLayerScaleChange,
+  selectedClipDuration,
+  onClipDurationChange,
   onClipClick,
 }: DashboardLayoutProps) {
   const router = useRouter()
@@ -280,6 +300,21 @@ export default function DashboardLayout({
           <path d="M17 7l1.4-1.4" />
           <path d="M7 17l-1.4 1.4" />
           <path d="M7 7l-1.4-1.4" />
+        </svg>
+      )
+    },
+    { 
+      id: 'shake', 
+      name: 'Shake', 
+      icon: (props: SVGProps<SVGSVGElement>) => (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+          <path d="M2 12h2" />
+          <path d="M20 12h2" />
+          <path d="M12 2v2" />
+          <path d="M12 20v2" />
+          <path d="M5 5l14 14" className="opacity-30" />
+          <path d="M5 19l14-14" className="opacity-30" />
+          <rect x="8" y="8" width="8" height="8" rx="2" />
         </svg>
       )
     },
@@ -1159,6 +1194,55 @@ export default function DashboardLayout({
                     <div className="peer h-4 w-7 rounded-full bg-neutral-700 peer-checked:bg-emerald-500 transition-colors" />
                     <div className="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-white transition-transform peer-checked:translate-x-3" />
                   </label>
+                </div>
+              </>
+            )}
+            {selectedTemplate === 'shake' && (
+              <>
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-semibold text-neutral-200">Intensity</span>
+                    <span className="text-[10px] text-neutral-400">{shakeDistance}px</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={shakeDistance}
+                    onChange={(e) => onShakeDistanceChange?.(Number(e.target.value))}
+                    className="w-full accent-emerald-500"
+                  />
+                </div>
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-semibold text-neutral-200">Duration</span>
+                    <span className="text-[10px] text-neutral-400">{((selectedClipDuration ?? 500) / 1000).toFixed(2)}s</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={100}
+                    max={3000}
+                    step={50}
+                    value={selectedClipDuration ?? 500}
+                    onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
+                    className="w-full accent-emerald-500"
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-semibold text-neutral-200">Speed</span>
+                    <span className="text-[10px] text-neutral-400">{templateSpeed?.toFixed(1)}x</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.1}
+                    max={4}
+                    step={0.1}
+                    value={templateSpeed}
+                    onChange={(e) => onTemplateSpeedChange?.(Number(e.target.value))}
+                    className="w-full accent-emerald-500"
+                  />
                 </div>
               </>
             )}

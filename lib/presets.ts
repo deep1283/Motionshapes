@@ -1,6 +1,6 @@
 import { TimelineKeyframe, Vec2 } from '@/lib/timeline'
 
-export type TemplateId = 'roll' | 'jump' | 'pop' | 'path'
+export type TemplateId = 'roll' | 'jump' | 'pop' | 'path' | 'shake'
 
 export interface PresetResult {
   position?: TimelineKeyframe<Vec2>[]
@@ -14,6 +14,7 @@ export interface PresetResult {
     popScale?: number
     wobble?: boolean
     collapse?: boolean
+    shakeDistance?: number
   }
 }
 
@@ -155,10 +156,40 @@ const popPreset = (peakScale: number = 1.6, wobble: boolean = false, speed: numb
   }
 }
 
+export const SHAKE_BASE_DISTANCE = 10 // pixels
+export const SHAKE_BASE_DURATION = 500 // ms
+
+const shakePreset = (distance: number = SHAKE_BASE_DISTANCE, speed: number = 1, targetDuration?: number): PresetResult => {
+  // duration is driven by the clip (purple bar); use base when not provided
+  const duration = targetDuration ?? SHAKE_BASE_DURATION
+  // Convert pixel distance to normalized coordinates (assuming ~1000px canvas width)
+  // 10px = 0.01 normalized units
+  const normalizedDist = Math.max(1, distance) / 1000
+
+  // Speed controls how many oscillations happen within the fixed duration
+  const cycles = Math.max(1, Math.round(Math.max(0.1, speed) * 3))
+  const keyframes = []
+  keyframes.push({ time: 0, value: { x: 0, y: 0 } })
+  const steps = cycles * 2 // left/right per cycle
+  for (let i = 1; i <= steps; i++) {
+    const t = (i / steps) * duration
+    const dir = i % 2 === 0 ? 1 : -1
+    keyframes.push({ time: t, value: { x: dir * normalizedDist, y: 0 } })
+  }
+  keyframes.push({ time: duration, value: { x: 0, y: 0 } })
+
+  return {
+    duration,
+    position: keyframes,
+    meta: { shakeDistance: distance },
+  }
+}
+
 export const PRESET_BUILDERS = {
   roll: rollPreset,
   jump: jumpPreset,
   pop: popPreset,
+  shake: shakePreset,
 } as const
 
 export type PresetBuilderMap = typeof PRESET_BUILDERS
