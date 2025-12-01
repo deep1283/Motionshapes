@@ -78,6 +78,29 @@ export const TemplatePreview: React.FC<TemplatePreviewProps> = ({
             }}
           />
         )
+      case 'pulse':
+        return (
+          <motion.div
+            className="h-8 w-8 rounded-full bg-neutral-400"
+            animate={{
+              scale: [1, 1.2, 0.9, 1.2, 1],
+              opacity: [0.9, 1, 0.95, 1, 0.9],
+            }}
+            transition={{
+              duration: 1.2,
+              repeat: Infinity,
+              ease: "easeInOut",
+            }}
+          />
+        )
+      case 'spin':
+        return (
+          <motion.div
+            className="h-8 w-8 rounded-full bg-neutral-400"
+            animate={{ rotate: [0, 360] }}
+            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+          />
+        )
       default:
         return <div className="h-8 w-8 rounded-full bg-neutral-400" />
     }

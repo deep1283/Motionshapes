@@ -1,6 +1,6 @@
 import { TimelineKeyframe, Vec2 } from '@/lib/timeline'
 
-export type TemplateId = 'roll' | 'jump' | 'pop' | 'path' | 'shake'
+export type TemplateId = 'roll' | 'jump' | 'pop' | 'path' | 'shake' | 'pulse' | 'spin'
 
 export interface PresetResult {
   position?: TimelineKeyframe<Vec2>[]
@@ -15,6 +15,9 @@ export interface PresetResult {
     wobble?: boolean
     collapse?: boolean
     shakeDistance?: number
+    pulseScale?: number
+    spinSpeed?: number
+    spinDirection?: 1 | -1
   }
 }
 
@@ -185,11 +188,57 @@ const shakePreset = (distance: number = SHAKE_BASE_DISTANCE, speed: number = 1, 
   }
 }
 
+export const PULSE_BASE_SCALE = 0.2 // +20% peak
+export const PULSE_BASE_DURATION = 800 // ms
+
+const pulsePreset = (scaleAmount: number = PULSE_BASE_SCALE, speed: number = 1, targetDuration?: number): PresetResult => {
+  const duration = targetDuration ?? PULSE_BASE_DURATION
+  const amplitude = Math.max(0.05, scaleAmount)
+  const cycles = Math.max(1, Math.round(Math.max(0.1, speed) * 2))
+  const steps = cycles * 2
+
+  const frames: TimelineKeyframe<number>[] = []
+  frames.push({ time: 0, value: 1 })
+  for (let i = 1; i <= steps; i++) {
+    const t = (i / steps) * duration
+    // alternate between peak and trough
+    const isPeak = i % 2 === 1
+    const value = isPeak ? 1 + amplitude : Math.max(0.05, 1 - amplitude * 0.35)
+    frames.push({ time: t, value, easing: 'easeInOutQuad' })
+  }
+  frames.push({ time: duration, value: 1 })
+
+  return {
+    duration,
+    scale: frames,
+    meta: { pulseScale: scaleAmount },
+  }
+}
+
+export const SPIN_BASE_SPEED = 1 // rotations per duration
+export const SPIN_BASE_DURATION = 1200 // ms
+
+const spinPreset = (speed: number = SPIN_BASE_SPEED, direction: 1 | -1 = 1, targetDuration?: number): PresetResult => {
+  const duration = targetDuration ?? SPIN_BASE_DURATION
+  const rotations = Math.max(0.1, speed)
+  const endRotation = direction * rotations * Math.PI * 2
+  return {
+    duration,
+    rotation: [
+      { time: 0, value: 0, easing: 'linear' },
+      { time: duration, value: endRotation, easing: 'linear' },
+    ],
+    meta: { spinSpeed: speed, spinDirection: direction },
+  }
+}
+
 export const PRESET_BUILDERS = {
   roll: rollPreset,
   jump: jumpPreset,
   pop: popPreset,
   shake: shakePreset,
+  pulse: pulsePreset,
+  spin: spinPreset,
 } as const
 
 export type PresetBuilderMap = typeof PRESET_BUILDERS

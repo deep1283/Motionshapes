@@ -33,6 +33,10 @@ type TimelineState = {
   popCollapse: boolean
   popReappear: boolean
   shakeDistance: number
+  pulseScale: number
+  pulseSpeed: number
+  spinSpeed: number
+  spinDirection: 1 | -1
   templateClips: Array<{
     id: string
     layerId: string
@@ -50,6 +54,10 @@ type TimelineState = {
       popCollapse?: boolean
       popReappear?: boolean
       shakeDistance?: number
+      pulseScale?: number
+      pulseSpeed?: number
+      spinSpeed?: number
+      spinDirection?: 1 | -1
       pathPoints?: Vec2[]
       pathLength?: number
     }
@@ -77,6 +85,10 @@ const defaultState: TimelineState = {
   popCollapse: true,
   popReappear: false,
   shakeDistance: 10,
+  pulseScale: 0.2,
+  pulseSpeed: 1,
+  spinSpeed: 1,
+  spinDirection: 1,
   templateClips: [],
 }
 
@@ -94,6 +106,10 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     popCollapse: initialState?.popCollapse ?? defaultState.popCollapse,
     popReappear: initialState?.popReappear ?? defaultState.popReappear,
     shakeDistance: initialState?.shakeDistance ?? defaultState.shakeDistance,
+    pulseScale: initialState?.pulseScale ?? defaultState.pulseScale,
+    pulseSpeed: initialState?.pulseSpeed ?? defaultState.pulseSpeed,
+    spinSpeed: initialState?.spinSpeed ?? defaultState.spinSpeed,
+    spinDirection: initialState?.spinDirection ?? defaultState.spinDirection,
     templateClips: initialState?.templateClips ?? defaultState.templateClips,
   }
 
@@ -272,6 +288,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       const jumpClip = layerClips.find((c) => c.id === clipId && c.template === 'jump')
       const popClip = layerClips.find((c) => c.id === clipId && c.template === 'pop')
       const shakeClip = layerClips.find((c) => c.id === clipId && c.template === 'shake')
+      const pulseClip = layerClips.find((c) => c.id === clipId && c.template === 'pulse')
+      const spinClip = layerClips.find((c) => c.id === clipId && c.template === 'spin')
 
       const nextRollDistance =
         rollClip && typeof rollClip.duration === 'number'
@@ -287,6 +305,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         popClip && typeof popClip.duration === 'number'
           ? popSpeedForDuration(popClip.duration)
           : prev.popSpeed
+      const nextPulseScale = prev.pulseScale
+      const nextSpinSpeed = prev.spinSpeed
 
       
       // For path clips: if duration changed (from dragging the bar), calculate the new speed
@@ -383,6 +403,35 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             parameters: {
               ...updatedClips[clipIndex].parameters,
               shakeDistance: updates.parameters?.shakeDistance ?? prev.shakeDistance,
+              templateSpeed: updates.parameters?.templateSpeed ?? prev.templateSpeed
+            }
+          }
+        }
+      }
+
+      if (pulseClip && typeof pulseClip.duration === 'number') {
+        const clipIndex = updatedClips.findIndex(c => c.id === pulseClip.id)
+        if (clipIndex !== -1) {
+          updatedClips[clipIndex] = {
+            ...updatedClips[clipIndex],
+            parameters: {
+              ...updatedClips[clipIndex].parameters,
+              pulseScale: updates.parameters?.pulseScale ?? prev.pulseScale,
+              pulseSpeed: updates.parameters?.pulseSpeed ?? prev.pulseSpeed
+            }
+          }
+        }
+      }
+
+      if (spinClip && typeof spinClip.duration === 'number') {
+        const clipIndex = updatedClips.findIndex(c => c.id === spinClip.id)
+        if (clipIndex !== -1) {
+          updatedClips[clipIndex] = {
+            ...updatedClips[clipIndex],
+            parameters: {
+              ...updatedClips[clipIndex].parameters,
+              spinSpeed: updates.parameters?.spinSpeed ?? prev.spinSpeed,
+              spinDirection: updates.parameters?.spinDirection ?? prev.spinDirection,
               templateSpeed: updates.parameters?.templateSpeed ?? prev.templateSpeed
             }
           }
@@ -496,6 +545,10 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
              }
            } else if (clip.template === 'shake') {
              preset = PRESET_BUILDERS.shake(clip.parameters?.shakeDistance ?? prev.shakeDistance, clip.parameters?.templateSpeed ?? prev.templateSpeed, clip.duration)
+           } else if (clip.template === 'pulse') {
+             preset = PRESET_BUILDERS.pulse(clip.parameters?.pulseScale ?? prev.pulseScale, clip.parameters?.pulseSpeed ?? prev.pulseSpeed, clip.duration)
+           } else if (clip.template === 'spin') {
+             preset = PRESET_BUILDERS.spin(clip.parameters?.spinSpeed ?? prev.spinSpeed, clip.parameters?.spinDirection ?? prev.spinDirection, clip.duration)
            } else if (clip.template === 'path' && clip.parameters?.pathPoints) {
               newTrack.paths = [
                 ...(newTrack.paths ?? []),
@@ -743,6 +796,11 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         popSpeed?: number;
         popCollapse?: boolean;
         shakeDistance?: number;
+        pulseScale?: number;
+        pulseSpeed?: number;
+        spinSpeed?: number;
+        spinDirection?: 1 | -1;
+        templateSpeed?: number;
       }
     }
   ) => {
@@ -762,7 +820,11 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
                 options?.parameters?.popCollapse ?? state.popCollapse
               )
           : template === 'shake'
-            ? PRESET_BUILDERS.shake(options?.parameters?.shakeDistance ?? state.shakeDistance, state.templateSpeed, options?.targetDuration)
+            ? PRESET_BUILDERS.shake(options?.parameters?.shakeDistance ?? state.shakeDistance, options?.parameters?.templateSpeed ?? state.templateSpeed, options?.targetDuration)
+          : template === 'pulse'
+            ? PRESET_BUILDERS.pulse(options?.parameters?.pulseScale ?? state.pulseScale, options?.parameters?.pulseSpeed ?? state.pulseSpeed, options?.targetDuration)
+          : template === 'spin'
+            ? PRESET_BUILDERS.spin(options?.parameters?.spinSpeed ?? state.spinSpeed, options?.parameters?.spinDirection ?? state.spinDirection, options?.targetDuration)
             : undefined
     if (!preset) return
     ensureTrack(layerId)
@@ -988,6 +1050,10 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             popSpeed: prev.popSpeed,
             popCollapse: prev.popCollapse,
             shakeDistance: options?.parameters?.shakeDistance ?? prev.shakeDistance,
+            pulseScale: options?.parameters?.pulseScale ?? prev.pulseScale,
+            pulseSpeed: options?.parameters?.pulseSpeed ?? prev.pulseSpeed,
+            spinSpeed: options?.parameters?.spinSpeed ?? prev.spinSpeed,
+            spinDirection: options?.parameters?.spinDirection ?? prev.spinDirection,
           },
         },
       ]
@@ -1034,6 +1100,10 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           popCollapse: prev.popCollapse,
           popReappear: prev.popReappear,
           shakeDistance: prev.shakeDistance,
+          pulseScale: prev.pulseScale,
+          pulseSpeed: prev.pulseSpeed,
+          spinSpeed: prev.spinSpeed,
+          spinDirection: prev.spinDirection,
           ...parameters
         }
       }
@@ -1104,6 +1174,10 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
              }
            } else if (clip.template === 'shake') {
              preset = PRESET_BUILDERS.shake(clip.parameters?.shakeDistance ?? prev.shakeDistance, clip.parameters?.templateSpeed ?? prev.templateSpeed, clip.duration)
+           } else if (clip.template === 'pulse') {
+             preset = PRESET_BUILDERS.pulse(clip.parameters?.pulseScale ?? prev.pulseScale, clip.parameters?.pulseSpeed ?? prev.pulseSpeed, clip.duration)
+           } else if (clip.template === 'spin') {
+             preset = PRESET_BUILDERS.spin(clip.parameters?.spinSpeed ?? prev.spinSpeed, clip.parameters?.spinDirection ?? prev.spinDirection, clip.duration)
            } else if (clip.template === 'path' && clip.parameters?.pathPoints) {
               newTrack.paths = [
                 ...(newTrack.paths ?? []),
@@ -1350,6 +1424,25 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     setState((prev) => ({ ...prev, shakeDistance: clamped }))
   }
 
+  const setPulseScale = (scale: number) => {
+    const clamped = Math.max(0.05, Math.min(1, scale))
+    setState((prev) => ({ ...prev, pulseScale: clamped }))
+  }
+
+  const setPulseSpeed = (speed: number) => {
+    const clamped = Math.max(0.1, Math.min(5, speed))
+    setState((prev) => ({ ...prev, pulseSpeed: clamped }))
+  }
+
+  const setSpinSpeed = (speed: number) => {
+    const clamped = Math.max(0.1, Math.min(10, speed))
+    setState((prev) => ({ ...prev, spinSpeed: clamped }))
+  }
+
+  const setSpinDirection = (dir: 1 | -1) => {
+    setState((prev) => ({ ...prev, spinDirection: dir }))
+  }
+
   const setTemplateSpeed = (speed: number) => {
     const clamped = Math.max(0.1, Math.min(4, speed))
     setState((prev) => ({
@@ -1457,7 +1550,12 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       popWobble: clip.parameters?.popWobble ?? prev.popWobble,
       popSpeed: clip.parameters?.popSpeed ?? prev.popSpeed,
       popCollapse: clip.parameters?.popCollapse ?? prev.popCollapse,
-      popReappear: clip.parameters?.popReappear ?? prev.popReappear,
+     popReappear: clip.parameters?.popReappear ?? prev.popReappear,
+     shakeDistance: clip.parameters?.shakeDistance ?? prev.shakeDistance,
+     pulseScale: clip.parameters?.pulseScale ?? prev.pulseScale,
+     pulseSpeed: clip.parameters?.pulseSpeed ?? prev.pulseSpeed,
+      spinSpeed: clip.parameters?.spinSpeed ?? prev.spinSpeed,
+      spinDirection: clip.parameters?.spinDirection ?? prev.spinDirection,
     }))
   }
 
@@ -1481,6 +1579,10 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     setPopCollapse,
     setPopReappear,
     setShakeDistance,
+    setPulseScale,
+    setPulseSpeed,
+    setSpinSpeed,
+    setSpinDirection,
     setTemplateSpeed,
     setPlaying,
     togglePlay,

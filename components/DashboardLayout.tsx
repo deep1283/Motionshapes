@@ -91,6 +91,14 @@ interface DashboardLayoutProps {
   onPopSpeedChange?: (speed: number) => void
   onPopCollapseChange?: (collapse: boolean) => void
   onPopReappearChange?: (reappear: boolean) => void
+  pulseScale?: number
+  pulseSpeed?: number
+  onPulseScaleChange?: (value: number) => void
+  onPulseSpeedChange?: (value: number) => void
+  spinSpeed?: number
+  spinDirection?: 1 | -1
+  onSpinSpeedChange?: (value: number) => void
+  onSpinDirectionChange?: (value: 1 | -1) => void
   shakeDistance?: number
   onShakeDistanceChange?: (value: number) => void
   selectedLayerScale?: number
@@ -121,8 +129,12 @@ export default function DashboardLayout({
   jumpVelocity = 1.5,
   popScale = 1.6,
   popSpeed = 1,
+  pulseScale = 0.2,
+  pulseSpeed = 1,
   popCollapse,
   popReappear,
+  spinSpeed = 1,
+  spinDirection = 1,
   shakeDistance,
   onTemplateSpeedChange,
   onRollDistanceChange,
@@ -133,6 +145,10 @@ export default function DashboardLayout({
   onPopSpeedChange,
   onPopCollapseChange,
   onPopReappearChange,
+  onPulseScaleChange,
+  onPulseSpeedChange,
+  onSpinSpeedChange,
+  onSpinDirectionChange,
   onShakeDistanceChange,
   selectedLayerScale = 1,
   onSelectedLayerScaleChange,
@@ -315,6 +331,30 @@ export default function DashboardLayout({
           <path d="M5 5l14 14" className="opacity-30" />
           <path d="M5 19l14-14" className="opacity-30" />
           <rect x="8" y="8" width="8" height="8" rx="2" />
+        </svg>
+      )
+    },
+    { 
+      id: 'pulse', 
+      name: 'Pulse', 
+      icon: (props: SVGProps<SVGSVGElement>) => (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+          <circle cx="12" cy="12" r="9" className="opacity-40" />
+          <path d="M5 12h2l2-5 3 10 2-5h3" />
+        </svg>
+      )
+    },
+    { 
+      id: 'spin', 
+      name: 'Spin', 
+      icon: (props: SVGProps<SVGSVGElement>) => (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+          <path d="M4 12a8 8 0 0 1 8-8" />
+          <path d="M20 12a8 8 0 0 1-8 8" />
+          <path d="M8 12h2" />
+          <path d="M14 12h2" />
+          <path d="M12 8v2" />
+          <path d="M12 14v2" />
         </svg>
       )
     },
@@ -1241,6 +1281,113 @@ export default function DashboardLayout({
                     step={0.1}
                     value={templateSpeed}
                     onChange={(e) => onTemplateSpeedChange?.(Number(e.target.value))}
+                    className="w-full accent-emerald-500"
+                  />
+                </div>
+              </>
+            )}
+            {selectedTemplate === 'pulse' && (
+              <>
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-semibold text-neutral-200">Scale Amount</span>
+                    <span className="text-[10px] text-neutral-400">+{(pulseScale * 100).toFixed(0)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.05}
+                    max={1}
+                    step={0.01}
+                    value={pulseScale}
+                    onChange={(e) => onPulseScaleChange?.(Number(e.target.value))}
+                    className="w-full accent-emerald-500"
+                  />
+                </div>
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-semibold text-neutral-200">Speed</span>
+                    <span className="text-[10px] text-neutral-400">{pulseSpeed.toFixed(1)}x</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.1}
+                    max={5}
+                    step={0.1}
+                    value={pulseSpeed}
+                    onChange={(e) => onPulseSpeedChange?.(Number(e.target.value))}
+                    className="w-full accent-emerald-500"
+                  />
+                </div>
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-semibold text-neutral-200">Duration</span>
+                    <span className="text-[10px] text-neutral-400">{((selectedClipDuration ?? 800) / 1000).toFixed(2)}s</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={200}
+                    max={4000}
+                    step={50}
+                    value={selectedClipDuration ?? 800}
+                    onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
+                    className="w-full accent-emerald-500"
+                  />
+                </div>
+              </>
+            )}
+            {selectedTemplate === 'spin' && (
+              <>
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-semibold text-neutral-200">Speed</span>
+                    <span className="text-[10px] text-neutral-400">{spinSpeed.toFixed(1)}x</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.1}
+                    max={10}
+                    step={0.1}
+                    value={spinSpeed}
+                    onChange={(e) => onSpinSpeedChange?.(Number(e.target.value))}
+                    className="w-full accent-emerald-500"
+                  />
+                </div>
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-semibold text-neutral-200">Direction</span>
+                    <span className="text-[10px] text-neutral-400">{spinDirection === 1 ? 'CW' : 'CCW'}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => onSpinDirectionChange?.(1)}
+                      className={`flex-1 rounded-md border px-3 py-1 text-[11px] font-semibold ${
+                        spinDirection === 1 ? 'border-emerald-500 text-emerald-400 bg-emerald-500/10' : 'border-white/10 text-neutral-300 hover:bg-white/5'
+                      }`}
+                    >
+                      CW
+                    </button>
+                    <button
+                      onClick={() => onSpinDirectionChange?.(-1)}
+                      className={`flex-1 rounded-md border px-3 py-1 text-[11px] font-semibold ${
+                        spinDirection === -1 ? 'border-emerald-500 text-emerald-400 bg-emerald-500/10' : 'border-white/10 text-neutral-300 hover:bg-white/5'
+                      }`}
+                    >
+                      CCW
+                    </button>
+                  </div>
+                </div>
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-semibold text-neutral-200">Duration</span>
+                    <span className="text-[10px] text-neutral-400">{((selectedClipDuration ?? 1200) / 1000).toFixed(2)}s</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={200}
+                    max={4000}
+                    step={50}
+                    value={selectedClipDuration ?? 1200}
+                    onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
                     className="w-full accent-emerald-500"
                   />
                 </div>

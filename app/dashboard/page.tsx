@@ -77,6 +77,10 @@ function DashboardContent() {
   const popWobble = useTimeline((s) => s.popWobble)
   const popCollapse = useTimeline((s) => s.popCollapse)
   const popReappear = useTimeline((s) => s.popReappear)
+  const pulseScale = useTimeline((s) => s.pulseScale)
+  const pulseSpeed = useTimeline((s) => s.pulseSpeed)
+  const spinSpeed = useTimeline((s) => s.spinSpeed)
+  const spinDirection = useTimeline((s) => s.spinDirection)
   const shakeDistance = useTimeline((s) => s.shakeDistance)
   const tracks = useTimeline((s) => s.tracks)
   const templateClips = useTimeline((s) => s.templateClips)
@@ -153,6 +157,16 @@ function DashboardContent() {
           parameters.popSpeed = popSpeed
           parameters.popCollapse = popCollapse
           parameters.popReappear = popReappear
+        } else if (selectedTemplate === 'shake') {
+          parameters.shakeDistance = shakeDistance
+          parameters.templateSpeed = templateSpeed
+        } else if (selectedTemplate === 'pulse') {
+          parameters.pulseScale = pulseScale
+          parameters.pulseSpeed = pulseSpeed
+        } else if (selectedTemplate === 'spin') {
+          parameters.spinSpeed = spinSpeed
+          parameters.spinDirection = spinDirection
+          parameters.templateSpeed = templateSpeed
         }
         
         timeline.updateTemplateClip(selectedLayerId, selectedClipId, {
@@ -388,6 +402,30 @@ function DashboardContent() {
     timeline.setPlaying(false)
   }
 
+  const handlePulseScaleChange = (value: number) => {
+    timeline.setPulseScale(value)
+    if (selectedClipId && selectedLayerId) {
+      const clip = templateClips.find(c => c.id === selectedClipId)
+      if (clip && clip.template === 'pulse') {
+        timeline.updateTemplateClip(selectedLayerId, selectedClipId, {
+          parameters: { pulseScale: value }
+        })
+      }
+    }
+  }
+
+  const handlePulseSpeedChange = (value: number) => {
+    timeline.setPulseSpeed(value)
+    if (selectedClipId && selectedLayerId) {
+      const clip = templateClips.find(c => c.id === selectedClipId)
+      if (clip && clip.template === 'pulse') {
+        timeline.updateTemplateClip(selectedLayerId, selectedClipId, {
+          parameters: { pulseSpeed: value }
+        })
+      }
+    }
+  }
+
   const shapeDefaults: Record<ShapeKind, { width: number; height: number }> = {
     circle: { width: 120, height: 120 },
     square: { width: 120, height: 120 },
@@ -578,6 +616,30 @@ function DashboardContent() {
       }
     }
   }
+
+  const handleSpinSpeedChange = (value: number) => {
+    timeline.setSpinSpeed(value)
+    if (selectedClipId && selectedLayerId) {
+      const clip = templateClips.find(c => c.id === selectedClipId)
+      if (clip && clip.template === 'spin') {
+        timeline.updateTemplateClip(selectedLayerId, selectedClipId, {
+          parameters: { templateSpeed: value, spinSpeed: value }
+        })
+      }
+    }
+  }
+
+  const handleSpinDirectionChange = (value: 1 | -1) => {
+    timeline.setSpinDirection(value)
+    if (selectedClipId && selectedLayerId) {
+      const clip = templateClips.find(c => c.id === selectedClipId)
+      if (clip && clip.template === 'spin') {
+        timeline.updateTemplateClip(selectedLayerId, selectedClipId, {
+          parameters: { spinDirection: value }
+        })
+      }
+    }
+  }
   
   const handleClipDurationChange = (value: number) => {
     if (selectedClipId && selectedLayerId) {
@@ -610,6 +672,10 @@ function DashboardContent() {
       popSpeed={popSpeed}
       popCollapse={popCollapse}
       popReappear={popReappear}
+      pulseScale={pulseScale}
+      pulseSpeed={pulseSpeed}
+      spinSpeed={spinSpeed}
+      spinDirection={spinDirection}
       onTemplateSpeedChange={handleTemplateSpeedChange}
       onRollDistanceChange={timeline.setRollDistance}
       onJumpHeightChange={timeline.setJumpHeight}
@@ -618,6 +684,10 @@ function DashboardContent() {
       onPopSpeedChange={timeline.setPopSpeed}
       onPopCollapseChange={timeline.setPopCollapse}
       onPopReappearChange={timeline.setPopReappear}
+      onPulseScaleChange={handlePulseScaleChange}
+      onPulseSpeedChange={handlePulseSpeedChange}
+      onSpinSpeedChange={handleSpinSpeedChange}
+      onSpinDirectionChange={handleSpinDirectionChange}
       shakeDistance={shakeDistance}
       onShakeDistanceChange={timeline.setShakeDistance}
       selectedLayerScale={selectedSample?.scale}
