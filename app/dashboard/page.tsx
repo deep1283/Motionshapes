@@ -375,10 +375,10 @@ function DashboardContent() {
     star: { width: 130, height: 130 },
     triangle: { width: 140, height: 120 },
     pill: { width: 160, height: 80 },
-    like: { width: 140, height: 130 },
-    comment: { width: 160, height: 110 },
-    share: { width: 150, height: 110 },
-    cursor: { width: 110, height: 140 },
+    like: { width: 120, height: 120 },
+    comment: { width: 120, height: 120 },
+    share: { width: 120, height: 120 },
+    cursor: { width: 120, height: 120 },
   }
 
   const handleAddShape = (shapeKind: ShapeKind = 'circle') => {

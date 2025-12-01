@@ -63,6 +63,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
   const dragRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null)
   const graphicsByIdRef = useRef<Record<string, PIXI.Graphics>>({})
   const outlinesByIdRef = useRef<Record<string, PIXI.Graphics>>({})
+  const iconTextureCacheRef = useRef<Record<string, PIXI.Texture>>({})
   const layersRef = useRef(layers)
   const pathTraceActiveRef = useRef(false)
   const lastPathPointRef = useRef<{ x: number; y: number } | null>(null)
@@ -425,46 +426,15 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
         g.roundRect(-width / 2, -height / 2, width, height, radius)
       }
 
-      const drawLike = (g: PIXI.Graphics, width: number, height: number) => {
-        const palmW = width * 0.55
-        const palmH = height * 0.55
-        const thumbW = width * 0.25
-        const thumbH = height * 0.4
-        g.roundRect(-palmW / 2, -palmH / 2, palmW, palmH, Math.min(palmW, palmH) * 0.1)
-        g.roundRect(palmW / 2 - thumbW * 0.6, -palmH / 2 - thumbH * 0.6, thumbW, thumbH, Math.min(thumbW, thumbH) * 0.2)
+      // Map shape kinds to SVG file paths
+      const iconPaths: Record<string, string> = {
+        like: '/icons/like.svg',
+        comment: '/icons/comment.svg',
+        share: '/icons/share.svg',
+        cursor: '/icons/cursor.svg',
       }
-
-      const drawComment = (g: PIXI.Graphics, width: number, height: number) => {
-        const bodyW = width * 0.8
-        const bodyH = height * 0.7
-        const tailW = width * 0.18
-        const tailH = height * 0.2
-        g.roundRect(-bodyW / 2, -bodyH / 2, bodyW, bodyH, Math.min(bodyW, bodyH) * 0.1)
-        g.moveTo(-bodyW * 0.2, bodyH / 2)
-        g.lineTo(-bodyW * 0.05, bodyH / 2 + tailH)
-        g.lineTo(bodyW * 0.15, bodyH / 2)
-        g.closePath()
-      }
-
-      const drawShare = (g: PIXI.Graphics, width: number, height: number) => {
-        g.moveTo(-width / 2, height / 2)
-        g.lineTo(width / 2, 0)
-        g.lineTo(-width / 2, -height / 2)
-        g.lineTo(-width / 2 + width * 0.25, 0)
-        g.closePath()
-      }
-
-      const drawCursor = (g: PIXI.Graphics, width: number, height: number) => {
-        g.moveTo(-width / 2, -height / 2)
-        g.lineTo(width / 2, 0)
-        g.lineTo(-width / 6, height / 8)
-        g.lineTo(0, height / 2)
-        g.lineTo(-width / 4, height / 2.5)
-        g.lineTo(-width / 2, -height / 2)
-        g.closePath()
-      }
-
-      const drawShape = (graphics: PIXI.Graphics, kind: MotionCanvasProps['layers'][number]['shapeKind'], width: number, height: number, fillColor: number) => {
+      
+      const drawShape = (graphics: PIXI.Graphics, kind: string, width: number, height: number, fillColor: number) => {
         graphics.clear()
         switch (kind) {
           case 'square':
@@ -482,18 +452,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
           case 'pill':
             drawPill(graphics, width, height)
             break
-          case 'like':
-            drawLike(graphics, width, height)
-            break
-          case 'comment':
-            drawComment(graphics, width, height)
-            break
-          case 'share':
-            drawShare(graphics, width, height)
-            break
-          case 'cursor':
-            drawCursor(graphics, width, height)
-            break
           case 'circle':
           default:
             graphics.circle(0, 0, width / 2)
@@ -501,10 +459,91 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
         }
         graphics.fill(fillColor)
       }
+      
+      // Load SVG icon as texture and create sprite
+      const loadIconSprite = async (kind: string, width: number, height: number, fillColor: number): Promise<PIXI.Container> => {
+        const container = new PIXI.Container()
+        
+        // Check if this shape uses an SVG icon
+        const iconPath = iconPaths[kind]
+        if (!iconPath) {
+          // Fallback to manual drawing
+          const g = new PIXI.Graphics()
+          drawShape(g, kind as any, width, height, fillColor)
+          container.addChild(g)
+          return container
+        }
+        
+        try {
+          // Check cache
+          let texture = iconTextureCacheRef.current[kind]
+          
+          if (!texture) {
+            // Load the SVG file
+            texture = await PIXI.Assets.load(iconPath)
+            iconTextureCacheRef.current[kind] = texture
+          }
+          
+          // Create sprite
+          const sprite = new PIXI.Sprite(texture)
+          sprite.anchor.set(0.5)
+          sprite.width = width
+          sprite.height = height
+          sprite.tint = fillColor
+          
+          container.addChild(sprite)
+        } catch (error) {
+          console.error(`Failed to load icon ${kind}:`, error)
+          // Fallback to manual drawing
+          const g = new PIXI.Graphics()
+          drawShape(g, kind as any, width, height, fillColor)
+          container.addChild(g)
+        }
+        
+        return container
+      }
 
-      layers.forEach((layer) => {
+      layers.forEach(async (layer) => {
         const g = new PIXI.Graphics()
-        drawShape(g, layer.shapeKind, layer.width, layer.height, layer.fillColor)
+        
+        // Check if this shape uses an SVG icon
+        const usesIcon = ['like', 'comment', 'share', 'cursor'].includes(layer.shapeKind)
+        
+        if (usesIcon) {
+          // For icon shapes, load SVG asynchronously
+          const iconPath = iconPaths[layer.shapeKind]
+          if (iconPath) {
+            try {
+              // Check cache
+              let texture = iconTextureCacheRef.current[layer.shapeKind]
+              
+              if (!texture) {
+                // Load the SVG file
+                texture = await PIXI.Assets.load(iconPath)
+                iconTextureCacheRef.current[layer.shapeKind] = texture
+              }
+              
+              // Create sprite
+              const sprite = new PIXI.Sprite(texture)
+              sprite.anchor.set(0.5)
+              sprite.width = layer.width
+              sprite.height = layer.height
+              sprite.tint = layer.fillColor
+              
+              g.addChild(sprite)
+            } catch (error) {
+              console.error(`Failed to load icon ${layer.shapeKind}:`, error)
+              // Fallback to manual drawing
+              drawShape(g, layer.shapeKind, layer.width, layer.height, layer.fillColor)
+            }
+          } else {
+            // Fallback if no icon path
+            drawShape(g, layer.shapeKind, layer.width, layer.height, layer.fillColor)
+          }
+        } else {
+          // For non-icon shapes, use manual drawing
+          drawShape(g, layer.shapeKind, layer.width, layer.height, layer.fillColor)
+        }
         
         // Selection outline will be added by a separate effect
         
@@ -568,16 +607,11 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
             drawPill(outline, layer.width, layer.height)
             break
           case 'like':
-            drawLike(outline, layer.width, layer.height)
-            break
           case 'comment':
-            drawComment(outline, layer.width, layer.height)
-            break
           case 'share':
-            drawShare(outline, layer.width, layer.height)
-            break
           case 'cursor':
-            drawCursor(outline, layer.width, layer.height)
+            // For SVG icon shapes, draw a simple rectangle outline
+            outline.rect(-layer.width / 2, -layer.height / 2, layer.width, layer.height)
             break
           case 'circle':
           default:
