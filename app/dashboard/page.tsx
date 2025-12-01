@@ -534,9 +534,17 @@ function DashboardContent() {
   }
 
   const handleSelectLayer = (id: string) => {
+    console.log('✅ handleSelectLayer called:', id)
     setSelectedLayerId(id)
     setSelectedClipId('')
     setShowSelectShapeHint(false)
+  }
+
+  const handleDeselectShape = () => {
+    console.log('❌ handleDeselectShape called')
+    setSelectedLayerId('')
+    setSelectedClipId('')
+    setSelectedTemplate('')
   }
 
   const handleStartDrawPath = () => {
@@ -754,6 +762,7 @@ function DashboardContent() {
         setSelectedClipId(clip.id)
         setSelectedTemplate(clip.template)
       }}
+      onDeselectShape={handleDeselectShape}
       activeEffectId={activeEffectId}
       onSelectEffect={handleSelectEffect}
       onUpdateEffect={handleUpdateEffect}
@@ -781,6 +790,7 @@ function DashboardContent() {
         onInsertPathPoint={handleInsertPathPoint}
         background={background}
         popReappear={popReappear}
+        onCanvasBackgroundClick={handleDeselectShape}
       />
     </DashboardLayout>
   )

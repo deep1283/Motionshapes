@@ -56,9 +56,10 @@ interface MotionCanvasProps {
   offsetX?: number
   offsetY?: number
   popReappear?: boolean
+  onCanvasBackgroundClick?: () => void
 }
 
-export default function MotionCanvas({ template, templateVersion, layers = [], onUpdateLayerPosition, onTemplateComplete, isDrawingPath = false, pathPoints = [], onAddPathPoint, onFinishPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint, background, offsetX = 0, offsetY = 0, popReappear = false }: MotionCanvasProps) {
+export default function MotionCanvas({ template, templateVersion, layers = [], onUpdateLayerPosition, onTemplateComplete, isDrawingPath = false, pathPoints = [], onAddPathPoint, onFinishPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint, background, offsetX = 0, offsetY = 0, popReappear = false, onCanvasBackgroundClick }: MotionCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<PIXI.Application | null>(null)
   const [isReady, setIsReady] = useState(false)
@@ -547,7 +548,16 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
 
     stage.on('pointermove', handlePointerMove)
     const handleStagePointerDown = (e: PIXI.FederatedPointerEvent) => {
+      console.log('🟢 Stage background clicked, target:', e.target)
+      // Only deselect if clicking directly on the stage, not on a shape
+      if (e.target !== stage) {
+        console.log('  ↳ Target is not stage, ignoring')
+        return
+      }
       if (dragRef.current) return
+      // Clicked on stage background (not on a shape)
+      console.log('  ↳ Calling onCanvasBackgroundClick')
+      onCanvasBackgroundClick?.()
     }
     stage.on('pointerdown', handleStagePointerDown)
     stage.on('pointerup', clearDrag)
@@ -749,6 +759,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
         })
         
         g.on('pointerdown', (e) => {
+          console.log('🔵 Shape clicked:', layer.id)
           e.stopPropagation()
           if (e.originalEvent) {
             e.originalEvent.stopPropagation()

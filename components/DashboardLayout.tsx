@@ -117,6 +117,7 @@ interface DashboardLayoutProps {
   selectedClipDuration?: number
   onClipDurationChange?: (value: number) => void
   onClipClick?: (clip: { id: string; template: string }) => void
+  onDeselectShape?: () => void
   // Effects
   activeEffectId?: string
   onSelectEffect?: (effectId: string) => void
@@ -172,6 +173,7 @@ export default function DashboardLayout({
   selectedClipDuration,
   onClipDurationChange,
   onClipClick,
+  onDeselectShape,
   activeEffectId,
   onSelectEffect,
   onUpdateEffect,
@@ -597,6 +599,13 @@ export default function DashboardLayout({
 
   // Handle background click (when not clicking a shape)
   const handleBackgroundClick = (e: React.PointerEvent) => {
+    // Check if the click is on the canvas element itself
+    const target = e.target as HTMLElement
+    if (target.tagName === 'CANVAS') {
+      // Clicking on the PixiJS canvas - let MotionCanvas handle it
+      return
+    }
+    
     // Calculate viewport bounds
     const viewportCenterX = window.innerWidth / 2 + canvasX
     const viewportCenterY = window.innerHeight / 2 + canvasY
@@ -610,13 +619,11 @@ export default function DashboardLayout({
       e.clientY <= viewportCenterY + halfHeight
 
     if (isInsideViewport) {
-      // Clicked inside viewport (but not on a shape) -> Start Drag
-
+      // Clicked inside viewport (but not on canvas) -> Start Drag
       setIsCanvasSelected(true)
       startCanvasMove(e)
     } else {
       // Clicked outside viewport -> Deselect
-
       setIsCanvasSelected(false)
     }
   }
