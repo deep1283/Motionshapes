@@ -468,27 +468,14 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
            
            const sampleTime = index === 0 ? 0 : prevClipEnd
            
-           console.log(`[REBUILD] Clip ${index} (${clip.template}):`, {
-             start,
-             duration,
-             prevClipEnd,
-             sampleTime,
-             isFirstClip: index === 0
-           })
-           
            let clipBaseState
            if (index === 0) {
              // First clip: sample from original track
-             clipBaseState = sampleLayerTracks(track, sampleTime, DEFAULT_LAYER_STATE)
-             console.log(`[REBUILD] First clip - sampled from original track:`, clipBaseState.position)
+             const sampledFromOriginal = sampleLayerTracks(track, sampleTime, DEFAULT_LAYER_STATE)
+             clipBaseState = sampledFromOriginal
             } else {
               // Subsequent clips: sample from the newly built track to get the actual end state
               const sampledFromNew = sampleLayerTracks(newTrack, sampleTime, DEFAULT_LAYER_STATE)
-          
-          console.log(`[REBUILD] Subsequent clip - sampling from new track:`, {
-            sampleTime,
-            sampledState: sampledFromNew,
-          })
           
           // Preserve the sampled state by default; only force a reset after a collapsing Pop
           const previousClip = layerClips[index - 1]
@@ -547,9 +534,15 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
              preset = PRESET_BUILDERS.shake(clip.parameters?.shakeDistance ?? prev.shakeDistance, clip.parameters?.templateSpeed ?? prev.templateSpeed, clip.duration)
            } else if (clip.template === 'pulse') {
              preset = PRESET_BUILDERS.pulse(clip.parameters?.pulseScale ?? prev.pulseScale, clip.parameters?.pulseSpeed ?? prev.pulseSpeed, clip.duration)
-           } else if (clip.template === 'spin') {
-             preset = PRESET_BUILDERS.spin(clip.parameters?.spinSpeed ?? prev.spinSpeed, clip.parameters?.spinDirection ?? prev.spinDirection, clip.duration)
-           } else if (clip.template === 'path' && clip.parameters?.pathPoints) {
+            } else if (clip.template === 'spin') {
+              preset = PRESET_BUILDERS.spin(clip.parameters?.spinSpeed ?? prev.spinSpeed, clip.parameters?.spinDirection ?? prev.spinDirection, clip.duration)
+            } else if ([
+              'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in',
+              'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out'
+            ].includes(clip.template)) {
+              // @ts-ignore
+              preset = PRESET_BUILDERS[clip.template](clip.duration)
+            } else if (clip.template === 'path' && clip.parameters?.pathPoints) {
               newTrack.paths = [
                 ...(newTrack.paths ?? []),
                 {
@@ -583,27 +576,10 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
 
            if (!preset) return
 
-           console.log(`[REBUILD] Preset for clip ${index} (${clip.template}):`, {
-             duration: preset.duration,
-             positionKeyframes: preset.position?.map((kf: TimelineKeyframe<Vec2>) => ({ time: kf.time, value: kf.value })),
-             willBeShiftedBy: start
-           })
-
-           // clipBaseState was calculated above
-           
-           console.log('[CLIP DEBUG] Processing clip:', {
-             index,
-             template: clip.template,
-             start,
-             end,
-             prevClipEnd,
-             sampleTime,
-             clipBaseState: clipBaseState.position
-           })
+            // clipBaseState was calculated above
            
             // If there's a gap between this clip and the previous one, add static keyframes
             if (index > 0 && start > prevClipEnd) {
-              console.log('[CLIP DEBUG] Gap detected, adding static keyframes from', prevClipEnd, 'to', start - 1)
               // Add keyframe at end of previous clip to hold the state
               newTrack.position?.push({ time: start - 1, value: clipBaseState.position })
               newTrack.scale?.push({ time: start - 1, value: clipBaseState.scale })
@@ -623,14 +599,6 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
              // because the previous clip already has a keyframe at that time
              const isAdjacentClip = index > 0 && start === prevClipEnd
              const framesToProcess = isAdjacentClip ? newFrames.slice(1) : newFrames
-             
-             console.log(`[MERGE] Merging keyframes for clip ${index}:`, {
-               isAdjacentClip,
-               originalFrameCount: newFrames.length,
-               framesToProcessCount: framesToProcess.length,
-               start,
-               prevClipEnd
-             })
              
              const shiftedNew = framesToProcess.map(f => {
                let value = f.value
@@ -669,18 +637,17 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
              return deduplicated
            }
 
+           
            newTrack = {
              ...newTrack,
              position: mergeKeyframes(newTrack.position ?? [], preset.position, clipBaseState.position, 'add'),
              scale: mergeKeyframes(newTrack.scale ?? [], preset.scale, clipBaseState.scale, 'multiply'),
              rotation: mergeKeyframes(newTrack.rotation ?? [], preset.rotation, clipBaseState.rotation, 'add'),
-             opacity: mergeKeyframes(newTrack.opacity ?? [], preset.opacity, clipBaseState.opacity, 'multiply'),
-           }
-           
-           console.log(`[REBUILD] After merging clip ${index} (${clip.template}):`, {
-             positionKeyframes: newTrack.position?.map(kf => ({ time: kf.time, value: kf.value })),
-             clipBaseStateUsed: clipBaseState.position
-           })
+             opacity: mergeKeyframes(newTrack.opacity ?? [], preset.opacity, clipBaseState.opacity, [
+                'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in',
+                'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out'
+              ].includes(clip.template) ? 'replace' : 'multiply'),
+            }
            
            // Update prevClipEnd for next iteration
            prevClipEnd = end
@@ -692,32 +659,31 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         const initialState = sampleLayerTracks(track, 0, DEFAULT_LAYER_STATE)
         const firstClipStart = layerClips.length > 0 ? (layerClips[0].start ?? 0) : 0
         
-        console.log('[KEYFRAME DEBUG] Rebuild track:', {
-          layerId,
-          firstClipStart,
-          initialState: initialState.position,
-          currentPositionKeyframes: newTrack.position?.map(kf => ({ time: kf.time, value: kf.value }))
-        })
-        
         // Always add a keyframe at time 0 if it doesn't exist or if first clip starts later
         if (firstClipStart > 0 || (newTrack.position?.length ?? 0) === 0) {
-          // Ensure we have a keyframe at time 0
-          const hasKeyframeAtZero = newTrack.position?.some(kf => kf.time === 0)
-          if (!hasKeyframeAtZero) {
-            console.log('[KEYFRAME DEBUG] Adding static keyframe at time 0')
+          // Check each property independently for keyframe at time 0
+          const hasPositionAtZero = newTrack.position?.some(kf => kf.time === 0)
+          const hasScaleAtZero = newTrack.scale?.some(kf => kf.time === 0)
+          const hasRotationAtZero = newTrack.rotation?.some(kf => kf.time === 0)
+          const hasOpacityAtZero = newTrack.opacity?.some(kf => kf.time === 0)
+          
+          if (!hasPositionAtZero) {
             newTrack.position = [{ time: 0, value: initialState.position }, ...(newTrack.position ?? [])]
+          }
+          if (!hasScaleAtZero) {
             newTrack.scale = [{ time: 0, value: initialState.scale }, ...(newTrack.scale ?? [])]
+          }
+          if (!hasRotationAtZero) {
             newTrack.rotation = [{ time: 0, value: initialState.rotation }, ...(newTrack.rotation ?? [])]
+          }
+          if (!hasOpacityAtZero) {
             newTrack.opacity = [{ time: 0, value: initialState.opacity }, ...(newTrack.opacity ?? [])]
-          } else {
-            console.log('[KEYFRAME DEBUG] Keyframe at time 0 already exists')
           }
           
           // CRITICAL: Add duplicate keyframe at clip start time to prevent interpolation
           // If first clip starts at time T > 0, we need keyframes at both 0 and T-1 with the same value
           // This prevents the shape from interpolating between 0 and T
           if (firstClipStart > 0) {
-            console.log('[KEYFRAME DEBUG] Adding duplicate keyframe at time:', firstClipStart - 1)
             // Insert keyframe just before the clip starts (at firstClipStart - 1ms)
             // This ensures no interpolation happens before the clip
             const insertIndex = newTrack.position?.findIndex(kf => kf.time >= firstClipStart) ?? 0
@@ -727,8 +693,6 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             newTrack.opacity?.splice(insertIndex, 0, { time: firstClipStart - 1, value: initialState.opacity })
           }
         }
-        
-        console.log('[KEYFRAME DEBUG] Final position keyframes:', newTrack.position?.map(kf => ({ time: kf.time, value: kf.value })))
         
         // Fallback: if track is still empty, add defaults
         if ((newTrack.position?.length ?? 0) === 0) newTrack.position = [{ time: 0, value: initialState.position }]
@@ -825,7 +789,13 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             ? PRESET_BUILDERS.pulse(options?.parameters?.pulseScale ?? state.pulseScale, options?.parameters?.pulseSpeed ?? state.pulseSpeed, options?.targetDuration)
           : template === 'spin'
             ? PRESET_BUILDERS.spin(options?.parameters?.spinSpeed ?? state.spinSpeed, options?.parameters?.spinDirection ?? state.spinDirection, options?.targetDuration)
-            : undefined
+            : [
+                'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in',
+                'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out'
+              ].includes(template)
+              // @ts-ignore
+              ? PRESET_BUILDERS[template](options?.targetDuration)
+              : PRESET_BUILDERS.roll(options?.parameters?.rollDistance ?? state.rollDistance, state.templateSpeed)
     if (!preset) return
     ensureTrack(layerId)
 
@@ -880,15 +850,6 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         const startOffset = typeof options?.startAt === 'number' ? options.startAt : append ? getTrackEndTime(track) : 0
         appliedStartOffset = startOffset
         
-        console.log('[APPLY_PRESET DEBUG]', {
-          layerId,
-          template,
-          append,
-          optionsStartAt: options?.startAt,
-          startOffset,
-          appliedStartOffset
-        })
-
         const trimFrames = <T,>(frames: TimelineKeyframe<T>[] | undefined) =>
           (frames ?? []).filter((f) => f.time < startOffset)
 
@@ -897,7 +858,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         const baseScale = base?.scale ?? (popStartState?.scale ?? baseSample.scale)
         const baseRotation = base?.rotation ?? baseSample.rotation
         const baseOpacity = base?.opacity ?? (popStartState?.opacity ?? baseSample.opacity)
-
+        
         const clearedTrack: LayerTracks = {
           ...track,
           position: trimFrames(track.position),
@@ -937,6 +898,11 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             },
           ]
         } else if (!append && startOffset === 0) {
+          const isInOutAnimation = [
+            'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in',
+            'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out'
+          ].includes(template)
+          
           clearedTrack.position = [
             {
               time: 0,
@@ -955,7 +921,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
               value: baseRotation,
             },
           ]
-          clearedTrack.opacity = [
+          // For In/Out animations, don't set initial opacity - let the animation define it
+          clearedTrack.opacity = isInOutAnimation ? [] : [
             {
               time: 0,
               value: baseOpacity,
@@ -986,18 +953,29 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             time: startOffset + scaleTime(f.time),
           })) ?? []
 
-        const mappedOpacity =
-          preset.opacity?.map((f: TimelineKeyframe<number>) => ({
-            ...normalizeNumberFrame(f, baseState.opacity, false),
-            time: startOffset + scaleTime(f.time),
-          })) ?? []
+        const isInOutAnimation = [
+          'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in',
+          'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out'
+        ].includes(template)
 
+        const mappedOpacity = isInOutAnimation
+          ? preset.opacity?.map((f: TimelineKeyframe<number>) => ({
+              ...f,
+              time: startOffset + scaleTime(f.time),
+            })) ?? []
+          : preset.opacity?.map((f: TimelineKeyframe<number>) => ({
+              ...normalizeNumberFrame(f, baseState.opacity, false),
+              time: startOffset + scaleTime(f.time),
+            })) ?? []
+
+        const finalOpacity = mergeFrames(clearedTrack.opacity, mappedOpacity).sort((a, b) => a.time - b.time)
+        
         return {
           ...track,
           position: mergeFrames(clearedTrack.position, mappedPosition).sort((a, b) => a.time - b.time),
           scale: mergeFrames(clearedTrack.scale, mappedScale).sort((a, b) => a.time - b.time),
           rotation: mergeFrames(clearedTrack.rotation, mappedRotation).sort((a, b) => a.time - b.time),
-          opacity: mergeFrames(clearedTrack.opacity, mappedOpacity).sort((a, b) => a.time - b.time),
+          opacity: finalOpacity,
         }
       })
 
@@ -1024,7 +1002,6 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         // This prevents replacing clips when switching templates
         if (clipsForTemplate.length > 0 && Math.abs(clipsForTemplate[0].start - appliedStartOffset) < 100) {
           existingClip = clipsForTemplate[0]
-          console.log('[CLIP UPDATE] Found existing clip to update:', existingClip.id, 'at', existingClip.start)
         }
       }
 
@@ -1152,12 +1129,12 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           const shouldRestoreFromPop = cameFromPop && popCollapsed && popShouldReappear
 
           const sampledState = sampleLayerTracks(track, sampleTime, DEFAULT_LAYER_STATE)
-          const clipBaseState = {
-            position: sampledState.position,
-            scale: shouldRestoreFromPop && lastPopStartState ? lastPopStartState.scale : sampledState.scale,
-            rotation: sampledState.rotation,
-            opacity: shouldRestoreFromPop && lastPopStartState ? lastPopStartState.opacity : sampledState.opacity
-          }
+           const clipBaseState = {
+             position: sampledState.position,
+             scale: shouldRestoreFromPop && lastPopStartState ? lastPopStartState.scale : sampledState.scale,
+             rotation: sampledState.rotation,
+             opacity: shouldRestoreFromPop && lastPopStartState ? lastPopStartState.opacity : sampledState.opacity
+           }
 
            let preset
            if (clip.template === 'roll') {
@@ -1178,7 +1155,14 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
              preset = PRESET_BUILDERS.pulse(clip.parameters?.pulseScale ?? prev.pulseScale, clip.parameters?.pulseSpeed ?? prev.pulseSpeed, clip.duration)
            } else if (clip.template === 'spin') {
              preset = PRESET_BUILDERS.spin(clip.parameters?.spinSpeed ?? prev.spinSpeed, clip.parameters?.spinDirection ?? prev.spinDirection, clip.duration)
-           } else if (clip.template === 'path' && clip.parameters?.pathPoints) {
+           } else if ([
+             'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in',
+             'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out'
+           ].includes(clip.template)) {
+             // @ts-ignore
+             preset = PRESET_BUILDERS[clip.template](clip.duration)
+           }
+           else if (clip.template === 'path' && clip.parameters?.pathPoints) {
               newTrack.paths = [
                 ...(newTrack.paths ?? []),
                 {
@@ -1257,14 +1241,14 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
              return [...existing, ...shiftedNew].sort((a, b) => a.time - b.time)
            }
 
-           newTrack = {
-             ...newTrack,
-             position: mergeKeyframes(newTrack.position ?? [], preset.position, clipBaseState.position, 'add'),
-             scale: mergeKeyframes(newTrack.scale ?? [], preset.scale, clipBaseState.scale, 'multiply'),
-             rotation: mergeKeyframes(newTrack.rotation ?? [], preset.rotation, clipBaseState.rotation, 'add'),
-             opacity: mergeKeyframes(newTrack.opacity ?? [], preset.opacity, clipBaseState.opacity, 'multiply'),
-           }
-           
+            newTrack = {
+              ...newTrack,
+              position: mergeKeyframes(newTrack.position ?? [], preset.position, clipBaseState.position, 'add'),
+              scale: mergeKeyframes(newTrack.scale ?? [], preset.scale, clipBaseState.scale, 'multiply'),
+              rotation: mergeKeyframes(newTrack.rotation ?? [], preset.rotation, clipBaseState.rotation, 'add'),
+              opacity: mergeKeyframes(newTrack.opacity ?? [], preset.opacity, clipBaseState.opacity, [ 'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in', 'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out' ].includes(clip.template) ? 'replace' : 'multiply'),
+            }
+            
            prevClipEnd = end
          })
          
@@ -1272,23 +1256,30 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         const initialState = sampleLayerTracks(track, 0, DEFAULT_LAYER_STATE)
         const firstClipStart = layerClips.length > 0 ? (layerClips[0].start ?? 0) : 0
         
-        if (firstClipStart > 0 || (newTrack.position?.length ?? 0) === 0) {
-          const hasKeyframeAtZero = newTrack.position?.some(kf => kf.time === 0)
-          if (!hasKeyframeAtZero) {
-            newTrack.position = [{ time: 0, value: initialState.position }, ...(newTrack.position ?? [])]
-            newTrack.scale = [{ time: 0, value: initialState.scale }, ...(newTrack.scale ?? [])]
-            newTrack.rotation = [{ time: 0, value: initialState.rotation }, ...(newTrack.rotation ?? [])]
-            newTrack.opacity = [{ time: 0, value: initialState.opacity }, ...(newTrack.opacity ?? [])]
-          }
-          
-          if (firstClipStart > 0) {
-            const insertIndex = newTrack.position?.findIndex(kf => kf.time >= firstClipStart) ?? 0
-            newTrack.position?.splice(insertIndex, 0, { time: firstClipStart - 1, value: initialState.position })
-            newTrack.scale?.splice(insertIndex, 0, { time: firstClipStart - 1, value: initialState.scale })
-            newTrack.rotation?.splice(insertIndex, 0, { time: firstClipStart - 1, value: initialState.rotation })
-            newTrack.opacity?.splice(insertIndex, 0, { time: firstClipStart - 1, value: initialState.opacity })
-          }
+        const ensureStartKeyframes = <T,>(
+            frames: TimelineKeyframe<T>[] | undefined, 
+            defaultValue: T
+        ): TimelineKeyframe<T>[] => {
+            const fs = [...(frames ?? [])]
+            const hasKeyframeAtZero = fs.some(kf => kf.time === 0)
+            
+            if (!hasKeyframeAtZero) {
+                fs.unshift({ time: 0, value: defaultValue })
+            }
+            
+            if (firstClipStart > 0) {
+                const insertIndex = fs.findIndex(kf => kf.time >= firstClipStart)
+                const effectiveIndex = insertIndex === -1 ? fs.length : insertIndex
+                fs.splice(effectiveIndex, 0, { time: firstClipStart - 1, value: defaultValue })
+            }
+            
+            return fs.sort((a, b) => a.time - b.time)
         }
+
+        newTrack.position = ensureStartKeyframes(newTrack.position, initialState.position)
+        newTrack.scale = ensureStartKeyframes(newTrack.scale, initialState.scale)
+        newTrack.rotation = ensureStartKeyframes(newTrack.rotation, initialState.rotation)
+        newTrack.opacity = ensureStartKeyframes(newTrack.opacity, initialState.opacity)
         
         if ((newTrack.position?.length ?? 0) === 0) newTrack.position = [{ time: 0, value: initialState.position }]
         if ((newTrack.scale?.length ?? 0) === 0) newTrack.scale = [{ time: 0, value: initialState.scale }]

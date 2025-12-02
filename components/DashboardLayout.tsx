@@ -183,7 +183,8 @@ export default function DashboardLayout({
   const router = useRouter()
   const supabase = createClient()
   const [showBackgroundPanel, setShowBackgroundPanel] = useState(false)
-  const [activeTab, setActiveTab] = useState<'templates' | 'shapes' | 'effects'>('shapes')
+  const [activeTab, setActiveTab] = useState<'templates' | 'shapes' | 'effects' | 'animations'>('shapes')
+  const [animationType, setAnimationType] = useState<'in' | 'out'>('in')
 
   // Canvas resize and move state
   const DEFAULT_CANVAS_WIDTH = 680
@@ -249,6 +250,12 @@ export default function DashboardLayout({
     e.stopPropagation()
 
     setIsCanvasSelected(true)
+  }
+
+  // Allow dragging the viewport via the Canvas label
+  const handleLabelPointerDown = (e: React.PointerEvent) => {
+    setIsCanvasSelected(true)
+    startCanvasMove(e, true)
   }
 
   // Deselect canvas when clicking outside
@@ -439,7 +446,7 @@ export default function DashboardLayout({
     }
   }
 
-  const startCanvasMove = (e: React.PointerEvent) => {
+  const startCanvasMove = (e: React.PointerEvent, allowLabelMove = false) => {
     // Don't start move if clicking on a resize handle
     if ((e.target as HTMLElement).hasAttribute('data-resize-handle')) {
       return
@@ -447,22 +454,24 @@ export default function DashboardLayout({
     
     // Don't start move if clicking on a shape (SVG elements or canvas children)
     const target = e.target as HTMLElement
-    if (target.tagName === 'svg' || target.tagName === 'circle' || target.tagName === 'path' || 
-        target.tagName === 'rect' || target.tagName === 'ellipse' || target.tagName === 'line' ||
-        target.tagName === 'polygon' || target.tagName === 'polyline' || target.tagName === 'text' ||
-        target.closest('svg')) {
-      return
-    }
-    
-    // Only start move if clicking directly on the canvas background
-    if (!target.hasAttribute('data-canvas-clickable')) {
-      return
+    if (!allowLabelMove) {
+      if (target.tagName === 'svg' || target.tagName === 'circle' || target.tagName === 'path' || 
+          target.tagName === 'rect' || target.tagName === 'ellipse' || target.tagName === 'line' ||
+          target.tagName === 'polygon' || target.tagName === 'polyline' || target.tagName === 'text' ||
+          target.closest('svg')) {
+        return
+      }
+      
+      // Only start move if clicking directly on the canvas background
+      if (!target.hasAttribute('data-canvas-clickable')) {
+        return
+      }
     }
     
     e.preventDefault()
     e.stopPropagation()
     
-    const targetEl = e.target as HTMLElement
+    const targetEl = (e.currentTarget as HTMLElement) || (e.target as HTMLElement)
     targetEl.setPointerCapture(e.pointerId)
     
     setIsMovingCanvas(true)
@@ -746,6 +755,17 @@ export default function DashboardLayout({
               Templates
             </button>
             <button
+              onClick={() => setActiveTab('animations')}
+              className={cn(
+                "flex-1 border-b-2 py-3 text-[11px] font-medium transition-colors",
+                activeTab === 'animations'
+                  ? "border-emerald-500 text-emerald-400"
+                  : "border-transparent text-neutral-400 hover:text-neutral-200"
+              )}
+            >
+              Animations
+            </button>
+            <button
               onClick={() => setActiveTab('effects')}
               className={cn(
                 "flex-1 border-b-2 py-3 text-[11px] font-medium transition-colors",
@@ -835,6 +855,169 @@ export default function DashboardLayout({
                       ))}
                     </nav>
                 </div>
+            </div>
+          )}
+
+          {/* Animations Tab Content */}
+          {activeTab === 'animations' && (
+            <div className="flex flex-col h-full">
+              {/* Sub-tabs for IN / OUT */}
+              <div className="flex w-full bg-white/5 border-b border-white/5 mb-4">
+                <button
+                  onClick={() => setAnimationType('in')}
+                  className={cn(
+                    "flex-1 py-3 text-[11px] font-bold tracking-wider uppercase transition-colors",
+                    animationType === 'in'
+                      ? "bg-[#8b5cf6] text-white" // Purple active state as requested
+                      : "text-neutral-400 hover:text-neutral-200 hover:bg-white/5"
+                  )}
+                >
+                  In
+                </button>
+                <button
+                  onClick={() => setAnimationType('out')}
+                  className={cn(
+                    "flex-1 py-3 text-[11px] font-bold tracking-wider uppercase transition-colors",
+                    animationType === 'out'
+                      ? "bg-[#8b5cf6] text-white"
+                      : "text-neutral-400 hover:text-neutral-200 hover:bg-white/5"
+                  )}
+                >
+                  Out
+                </button>
+                <button
+                   className="flex-1 py-3 text-[11px] font-bold tracking-wider uppercase text-neutral-400 hover:text-neutral-200 hover:bg-white/5 transition-colors"
+                >
+                  Custom
+                </button>
+              </div>
+
+              <div className={cn(
+                "grid gap-2",
+                sidebarWidth < 240 ? "grid-cols-1" : "grid-cols-2"
+              )}>
+                {animationType === 'in' ? (
+                  <>
+                    <div className="col-span-full mb-1 mt-2">
+                      <h3 className="text-[11px] font-semibold text-neutral-300">Fade</h3>
+                    </div>
+                    <TemplatePreview
+                      id="fade_in"
+                      name="Fade in"
+                      isSelected={selectedTemplate === 'fade_in'}
+                      onClick={() => onSelectTemplate('fade_in')}
+                    />
+                    <TemplatePreview
+                      id="slide_in"
+                      name="Slide in"
+                      isSelected={selectedTemplate === 'slide_in'}
+                      onClick={() => onSelectTemplate('slide_in')}
+                    />
+
+                    <div className="col-span-full mb-1 mt-4">
+                      <h3 className="text-[11px] font-semibold text-neutral-300">Scale</h3>
+                    </div>
+                    <TemplatePreview
+                      id="grow_in"
+                      name="Grow in"
+                      isSelected={selectedTemplate === 'grow_in'}
+                      onClick={() => onSelectTemplate('grow_in')}
+                    />
+                    <TemplatePreview
+                      id="shrink_in"
+                      name="Shrink in"
+                      isSelected={selectedTemplate === 'shrink_in'}
+                      onClick={() => onSelectTemplate('shrink_in')}
+                    />
+
+                    <div className="col-span-full mb-1 mt-4">
+                      <h3 className="text-[11px] font-semibold text-neutral-300">Spin & Twist</h3>
+                    </div>
+                    <TemplatePreview
+                      id="spin_in"
+                      name="Spin in"
+                      isSelected={selectedTemplate === 'spin_in'}
+                      onClick={() => onSelectTemplate('spin_in')}
+                    />
+                    <TemplatePreview
+                      id="twist_in"
+                      name="Twist in"
+                      isSelected={selectedTemplate === 'twist_in'}
+                      onClick={() => onSelectTemplate('twist_in')}
+                    />
+                    
+                    <div className="col-span-full mb-1 mt-4">
+                      <h3 className="text-[11px] font-semibold text-neutral-300">Move</h3>
+                    </div>
+                    <TemplatePreview
+                      id="move_scale_in"
+                      name="Move & Scale in"
+                      isSelected={selectedTemplate === 'move_scale_in'}
+                      onClick={() => onSelectTemplate('move_scale_in')}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <div className="col-span-full mb-1 mt-2">
+                      <h3 className="text-[11px] font-semibold text-neutral-300">Fade</h3>
+                    </div>
+                    <TemplatePreview
+                      id="fade_out"
+                      name="Fade out"
+                      isSelected={selectedTemplate === 'fade_out'}
+                      onClick={() => onSelectTemplate('fade_out')}
+                    />
+                    <TemplatePreview
+                      id="slide_out"
+                      name="Slide out"
+                      isSelected={selectedTemplate === 'slide_out'}
+                      onClick={() => onSelectTemplate('slide_out')}
+                    />
+
+                    <div className="col-span-full mb-1 mt-4">
+                      <h3 className="text-[11px] font-semibold text-neutral-300">Scale</h3>
+                    </div>
+                    <TemplatePreview
+                      id="grow_out"
+                      name="Grow out"
+                      isSelected={selectedTemplate === 'grow_out'}
+                      onClick={() => onSelectTemplate('grow_out')}
+                    />
+                    <TemplatePreview
+                      id="shrink_out"
+                      name="Shrink out"
+                      isSelected={selectedTemplate === 'shrink_out'}
+                      onClick={() => onSelectTemplate('shrink_out')}
+                    />
+
+                    <div className="col-span-full mb-1 mt-4">
+                      <h3 className="text-[11px] font-semibold text-neutral-300">Spin & Twist</h3>
+                    </div>
+                    <TemplatePreview
+                      id="spin_out"
+                      name="Spin out"
+                      isSelected={selectedTemplate === 'spin_out'}
+                      onClick={() => onSelectTemplate('spin_out')}
+                    />
+                    <TemplatePreview
+                      id="twist_out"
+                      name="Twist out"
+                      isSelected={selectedTemplate === 'twist_out'}
+                      onClick={() => onSelectTemplate('twist_out')}
+                    />
+
+                    <div className="col-span-full mb-1 mt-4">
+                      <h3 className="text-[11px] font-semibold text-neutral-300">Move</h3>
+                    </div>
+                    <TemplatePreview
+                      id="move_scale_out"
+                      name="Move & Scale out"
+                      isSelected={selectedTemplate === 'move_scale_out'}
+                      onClick={() => onSelectTemplate('move_scale_out')}
+                    />
+                  </>
+                )}
+              </div>
             </div>
           )}
 
@@ -1085,6 +1268,7 @@ export default function DashboardLayout({
                  data-canvas-label
                  className="absolute -top-7 left-0 flex items-center gap-2 cursor-pointer select-none pointer-events-auto z-20"
                  onClick={handleLabelClick}
+                 onPointerDown={handleLabelPointerDown}
                >
                  <Play className={`h-3.5 w-3.5 ${isCanvasSelected ? 'text-purple-400' : 'text-neutral-500'}`} />
                  <span className={`text-sm font-medium ${isCanvasSelected ? 'text-purple-300' : 'text-neutral-500'}`}>Canvas</span>

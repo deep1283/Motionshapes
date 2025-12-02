@@ -101,6 +101,120 @@ export const TemplatePreview: React.FC<TemplatePreviewProps> = ({
             transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
           />
         )
+      // IN Animations
+      case 'fade_in':
+        return (
+          <motion.div
+            className="h-8 w-8 rounded-full bg-neutral-400"
+            animate={{ opacity: [0, 1] }}
+            transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 0.5 }}
+          />
+        )
+      case 'slide_in':
+        return (
+          <motion.div
+            className="h-8 w-8 rounded-full bg-neutral-400"
+            animate={{ x: [-30, 0], opacity: [0, 1] }}
+            transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 0.5, ease: "easeOut" }}
+          />
+        )
+      case 'grow_in':
+        return (
+          <motion.div
+            className="h-8 w-8 rounded-full bg-neutral-400"
+            animate={{ scale: [0, 1], opacity: [0, 1] }}
+            transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 0.5, ease: "backOut" }}
+          />
+        )
+      case 'shrink_in':
+        return (
+          <motion.div
+            className="h-8 w-8 rounded-full bg-neutral-400"
+            animate={{ scale: [2, 1], opacity: [0, 1] }}
+            transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 0.5, ease: "easeOut" }}
+          />
+        )
+      case 'spin_in':
+        return (
+          <motion.div
+            className="h-8 w-8 rounded-full bg-neutral-400"
+            animate={{ rotate: [-180, 0], scale: [0, 1], opacity: [0, 1] }}
+            transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 0.5, ease: "backOut" }}
+          />
+        )
+      case 'twist_in':
+        return (
+          <motion.div
+            className="h-8 w-8 rounded-full bg-neutral-400"
+            animate={{ rotate: [-90, 0], opacity: [0, 1] }}
+            transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 0.5, ease: "easeOut" }}
+          />
+        )
+      case 'move_scale_in':
+        return (
+          <motion.div
+            className="h-8 w-8 rounded-full bg-neutral-400"
+            animate={{ y: [20, 0], scale: [0.5, 1], opacity: [0, 1] }}
+            transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 0.5, ease: "backOut" }}
+          />
+        )
+      // OUT Animations
+      case 'fade_out':
+        return (
+          <motion.div
+            className="h-8 w-8 rounded-full bg-neutral-400"
+            animate={{ opacity: [1, 0] }}
+            transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 0.5 }}
+          />
+        )
+      case 'slide_out':
+        return (
+          <motion.div
+            className="h-8 w-8 rounded-full bg-neutral-400"
+            animate={{ x: [0, 30], opacity: [1, 0] }}
+            transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 0.5, ease: "easeIn" }}
+          />
+        )
+      case 'grow_out':
+        return (
+          <motion.div
+            className="h-8 w-8 rounded-full bg-neutral-400"
+            animate={{ scale: [1, 2], opacity: [1, 0] }}
+            transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 0.5, ease: "easeIn" }}
+          />
+        )
+      case 'shrink_out':
+        return (
+          <motion.div
+            className="h-8 w-8 rounded-full bg-neutral-400"
+            animate={{ scale: [1, 0], opacity: [1, 0] }}
+            transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 0.5, ease: "backIn" }}
+          />
+        )
+      case 'spin_out':
+        return (
+          <motion.div
+            className="h-8 w-8 rounded-full bg-neutral-400"
+            animate={{ rotate: [0, 180], scale: [1, 0], opacity: [1, 0] }}
+            transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 0.5, ease: "backIn" }}
+          />
+        )
+      case 'twist_out':
+        return (
+          <motion.div
+            className="h-8 w-8 rounded-full bg-neutral-400"
+            animate={{ rotate: [0, 90], opacity: [1, 0] }}
+            transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 0.5, ease: "easeIn" }}
+          />
+        )
+      case 'move_scale_out':
+        return (
+          <motion.div
+            className="h-8 w-8 rounded-full bg-neutral-400"
+            animate={{ y: [0, 20], scale: [1, 0.5], opacity: [1, 0] }}
+            transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 0.5, ease: "backIn" }}
+          />
+        )
       default:
         return <div className="h-8 w-8 rounded-full bg-neutral-400" />
     }

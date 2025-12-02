@@ -1,6 +1,9 @@
 import { TimelineKeyframe, Vec2 } from '@/lib/timeline'
 
-export type TemplateId = 'roll' | 'jump' | 'pop' | 'path' | 'shake' | 'pulse' | 'spin'
+export type TemplateId =
+  | 'roll' | 'jump' | 'pop' | 'path' | 'shake' | 'pulse' | 'spin'
+  | 'fade_in' | 'slide_in' | 'grow_in' | 'shrink_in' | 'spin_in' | 'twist_in' | 'move_scale_in'
+  | 'fade_out' | 'slide_out' | 'grow_out' | 'shrink_out' | 'spin_out' | 'twist_out' | 'move_scale_out'
 
 export interface PresetResult {
   position?: TimelineKeyframe<Vec2>[]
@@ -232,6 +235,185 @@ const spinPreset = (speed: number = SPIN_BASE_SPEED, direction: 1 | -1 = 1, targ
   }
 }
 
+export const ANIMATION_BASE_DURATION = 1500
+
+const fadeInPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult => ({
+  duration,
+  opacity: [
+    { time: 0, value: 0, easing: 'easeInOutQuad' as any },
+    { time: duration, value: 1, easing: 'easeInOutQuad' as any },
+  ]
+})
+
+const slideInPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult => ({
+  duration,
+  position: [
+    { time: 0, value: { x: -0.5, y: 0 }, easing: 'easeOutExpo' as any }, // Start off-screen left
+    { time: duration, value: { x: 0, y: 0 }, easing: 'easeOutExpo' as any },
+  ],
+  opacity: [
+    { time: 0, value: 0 },
+    { time: duration * 0.2, value: 1 },
+  ]
+})
+
+const growInPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult => ({
+  duration,
+  scale: [
+    { time: 0, value: 0, easing: 'easeOutBack' as any },
+    { time: duration, value: 1, easing: 'easeOutBack' as any },
+  ],
+  opacity: [
+    { time: 0, value: 0 },
+    { time: duration * 0.1, value: 1 },
+  ]
+})
+
+const shrinkInPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult => ({
+  duration,
+  scale: [
+    { time: 0, value: 2, easing: 'easeOutExpo' as any },
+    { time: duration, value: 1, easing: 'easeOutExpo' as any },
+  ],
+  opacity: [
+    { time: 0, value: 0 },
+    { time: duration * 0.2, value: 1 },
+  ]
+})
+
+const spinInPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult => ({
+  duration,
+  rotation: [
+    { time: 0, value: -Math.PI * 2, easing: 'easeOutBack' as any },
+    { time: duration, value: 0, easing: 'easeOutBack' as any },
+  ],
+  scale: [
+    { time: 0, value: 0, easing: 'easeOutBack' as any },
+    { time: duration, value: 1, easing: 'easeOutBack' as any },
+  ],
+  opacity: [
+    { time: 0, value: 0 },
+    { time: duration * 0.1, value: 1 },
+  ]
+})
+
+const twistInPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult => ({
+  duration,
+  rotation: [
+    { time: 0, value: -Math.PI, easing: 'easeOutExpo' as any },
+    { time: duration, value: 0, easing: 'easeOutExpo' as any },
+  ],
+  opacity: [
+    { time: 0, value: 0, easing: 'easeOutQuad' as any },
+    { time: duration, value: 1, easing: 'easeOutQuad' as any },
+  ]
+})
+
+const moveScaleInPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult => ({
+  duration,
+  position: [
+    { time: 0, value: { x: 0, y: 0.2 }, easing: 'easeOutBack' as any },
+    { time: duration, value: { x: 0, y: 0 }, easing: 'easeOutBack' as any },
+  ],
+  scale: [
+    { time: 0, value: 0.5, easing: 'easeOutBack' as any },
+    { time: duration, value: 1, easing: 'easeOutBack' as any },
+  ],
+  opacity: [
+    { time: 0, value: 0 },
+    { time: duration * 0.2, value: 1 },
+  ]
+})
+
+// OUT Presets (Mirrors of IN)
+const fadeOutPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult => ({
+  duration,
+  opacity: [
+    { time: 0, value: 1, easing: 'easeInQuad' as any },
+    { time: duration, value: 0, easing: 'easeInQuad' as any },
+  ]
+})
+
+const slideOutPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult => ({
+  duration,
+  position: [
+    { time: 0, value: { x: 0, y: 0 }, easing: 'easeInExpo' as any },
+    { time: duration, value: { x: 0.5, y: 0 }, easing: 'easeInExpo' as any },
+  ],
+  opacity: [
+    { time: duration * 0.8, value: 1 },
+    { time: duration, value: 0 },
+  ]
+})
+
+const growOutPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult => ({
+  duration,
+  scale: [
+    { time: 0, value: 1, easing: 'easeInBack' as any },
+    { time: duration, value: 2, easing: 'easeInBack' as any },
+  ],
+  opacity: [
+    { time: duration * 0.5, value: 1 },
+    { time: duration, value: 0 },
+  ]
+})
+
+const shrinkOutPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult => ({
+  duration,
+  scale: [
+    { time: 0, value: 1, easing: 'easeInBack' as any },
+    { time: duration, value: 0, easing: 'easeInBack' as any },
+  ],
+  opacity: [
+    { time: duration * 0.8, value: 1 },
+    { time: duration, value: 0 },
+  ]
+})
+
+const spinOutPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult => ({
+  duration,
+  rotation: [
+    { time: 0, value: 0, easing: 'easeInBack' as any },
+    { time: duration, value: Math.PI * 2, easing: 'easeInBack' as any },
+  ],
+  scale: [
+    { time: 0, value: 1, easing: 'easeInBack' as any },
+    { time: duration, value: 0, easing: 'easeInBack' as any },
+  ],
+  opacity: [
+    { time: duration * 0.8, value: 1 },
+    { time: duration, value: 0 },
+  ]
+})
+
+const twistOutPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult => ({
+  duration,
+  rotation: [
+    { time: 0, value: 0, easing: 'easeInExpo' as any },
+    { time: duration, value: Math.PI, easing: 'easeInExpo' as any },
+  ],
+  opacity: [
+    { time: 0, value: 1, easing: 'easeInQuad' as any },
+    { time: duration, value: 0, easing: 'easeInQuad' as any },
+  ]
+})
+
+const moveScaleOutPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult => ({
+  duration,
+  position: [
+    { time: 0, value: { x: 0, y: 0 }, easing: 'easeInBack' as any },
+    { time: duration, value: { x: 0, y: 0.2 }, easing: 'easeInBack' as any },
+  ],
+  scale: [
+    { time: 0, value: 1, easing: 'easeInBack' as any },
+    { time: duration, value: 0.5, easing: 'easeInBack' as any },
+  ],
+  opacity: [
+    { time: duration * 0.8, value: 1 },
+    { time: duration, value: 0 },
+  ]
+})
+
 export const PRESET_BUILDERS = {
   roll: rollPreset,
   jump: jumpPreset,
@@ -239,6 +421,22 @@ export const PRESET_BUILDERS = {
   shake: shakePreset,
   pulse: pulsePreset,
   spin: spinPreset,
+  // Animations
+  fade_in: fadeInPreset,
+  slide_in: slideInPreset,
+  grow_in: growInPreset,
+  shrink_in: shrinkInPreset,
+  spin_in: spinInPreset,
+  twist_in: twistInPreset,
+  move_scale_in: moveScaleInPreset,
+  // Out
+  fade_out: fadeOutPreset,
+  slide_out: slideOutPreset,
+  grow_out: growOutPreset,
+  shrink_out: shrinkOutPreset,
+  spin_out: spinOutPreset,
+  twist_out: twistOutPreset,
+  move_scale_out: moveScaleOutPreset,
 } as const
 
 export type PresetBuilderMap = typeof PRESET_BUILDERS
