@@ -650,16 +650,68 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
            // Opacity is special - we might want it to be 0 for fade_in, so don't force it here
            // But for other properties, we need a base to add to.
 
-           newTrack = {
-             ...newTrack,
-             position: mergeKeyframes(newTrack.position ?? [], preset.position, clipBaseState.position, 'add'),
-             scale: mergeKeyframes(newTrack.scale ?? [], preset.scale, clipBaseState.scale, 'multiply'),
-             rotation: mergeKeyframes(newTrack.rotation ?? [], preset.rotation, clipBaseState.rotation, 'add'),
-             opacity: mergeKeyframes(newTrack.opacity ?? [], preset.opacity, clipBaseState.opacity, [
-                'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in',
-                'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out'
-              ].includes(clip.template) ? 'replace' : 'multiply'),
+          const isInOutAnimation = [
+            'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in',
+            'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out'
+          ].includes(clip.template)
+
+          const mergedPosition = isInOutAnimation && preset.position
+            ? preset.position.map(f => {
+                const v = f.value as unknown as Vec2
+                return {
+                  ...f,
+                  value: {
+                    x: (clipBaseState.position?.x ?? 0) + (v?.x ?? 0),
+                    y: (clipBaseState.position?.y ?? 0) + (v?.y ?? 0),
+                  },
+                }
+              })
+            : preset.position
+
+          const mergedScale = isInOutAnimation && preset.scale
+            ? preset.scale // treat as absolute for in/out animations
+            : preset.scale
+
+          const mergedRotation = isInOutAnimation && preset.rotation
+            ? preset.rotation // treat as absolute for in/out animations
+            : preset.rotation
+
+          const debugInOutUpdate = clip.template === 'slide_in' || clip.template === 'grow_in'
+          if (debugInOutUpdate) {
+            console.log(`[${clip.template}][updateTemplateClip]`, {
+              start,
+              duration,
+              base: clipBaseState,
+              mergedPosition,
+              mergedScale,
+              mergedRotation,
+              opacityFrames: preset.opacity,
+              trackBefore: newTrack,
+            })
+          }
+
+            const debugSlide = clip.template === 'slide_in'
+            const debugGrow = clip.template === 'grow_in'
+            if (debugSlide || debugGrow) {
+              console.log(`[${clip.template}][addTemplateClip]`, {
+                start,
+                duration,
+                base: clipBaseState,
+                mergedPosition,
+                mergedScale,
+                mergedRotation,
+                opacityFrames: preset.opacity,
+                trackBefore: newTrack,
+              })
             }
+
+          newTrack = {
+            ...newTrack,
+            position: mergeKeyframes(newTrack.position ?? [], mergedPosition, clipBaseState.position, isInOutAnimation ? 'replace' : 'add'),
+            scale: mergeKeyframes(newTrack.scale ?? [], mergedScale, clipBaseState.scale, isInOutAnimation ? 'replace' : 'multiply'),
+            rotation: mergeKeyframes(newTrack.rotation ?? [], mergedRotation, clipBaseState.rotation, isInOutAnimation ? 'replace' : 'add'),
+            opacity: mergeKeyframes(newTrack.opacity ?? [], preset.opacity, clipBaseState.opacity, isInOutAnimation ? 'replace' : 'multiply'),
+          }
            
            // Update prevClipEnd for next iteration
            prevClipEnd = end
@@ -1290,12 +1342,49 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
               newTrack.rotation = [{ time: 0, value: clipBaseState.rotation }]
             }
 
+            const isInOutAnimation = [ 'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in', 'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out' ].includes(clip.template)
+
+            const mergedPosition = isInOutAnimation && preset.position
+              ? preset.position.map(f => {
+                  const v = f.value as unknown as Vec2
+                  return {
+                    ...f,
+                    value: {
+                      x: (clipBaseState.position?.x ?? 0) + (v?.x ?? 0),
+                      y: (clipBaseState.position?.y ?? 0) + (v?.y ?? 0),
+                    },
+                  }
+                })
+              : preset.position
+
+            const mergedScale = isInOutAnimation && preset.scale
+              ? preset.scale // absolute for in/out
+              : preset.scale
+
+            const mergedRotation = isInOutAnimation && preset.rotation
+              ? preset.rotation // absolute for in/out
+              : preset.rotation
+
+            const debugInOutAdd = clip.template === 'slide_in' || clip.template === 'grow_in'
+            if (debugInOutAdd) {
+              console.log(`[${clip.template}][addTemplateClip]`, {
+                start,
+                duration,
+                base: clipBaseState,
+                mergedPosition,
+                mergedScale,
+                mergedRotation,
+                opacityFrames: preset.opacity,
+                trackBefore: newTrack,
+              })
+            }
+
             newTrack = {
               ...newTrack,
-              position: mergeKeyframes(newTrack.position ?? [], preset.position, clipBaseState.position, 'add'),
-              scale: mergeKeyframes(newTrack.scale ?? [], preset.scale, clipBaseState.scale, 'multiply'),
-              rotation: mergeKeyframes(newTrack.rotation ?? [], preset.rotation, clipBaseState.rotation, 'add'),
-              opacity: mergeKeyframes(newTrack.opacity ?? [], preset.opacity, clipBaseState.opacity, [ 'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in', 'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out' ].includes(clip.template) ? 'replace' : 'multiply'),
+              position: mergeKeyframes(newTrack.position ?? [], mergedPosition, clipBaseState.position, isInOutAnimation ? 'replace' : 'add'),
+              scale: mergeKeyframes(newTrack.scale ?? [], mergedScale, clipBaseState.scale, isInOutAnimation ? 'replace' : 'multiply'),
+              rotation: mergeKeyframes(newTrack.rotation ?? [], mergedRotation, clipBaseState.rotation, isInOutAnimation ? 'replace' : 'add'),
+              opacity: mergeKeyframes(newTrack.opacity ?? [], preset.opacity, clipBaseState.opacity, isInOutAnimation ? 'replace' : 'multiply'),
             }
             
            prevClipEnd = end
