@@ -142,7 +142,9 @@ function DashboardContent() {
     if (selectedClipId) {
       console.log('[TEMPLATE APPLY] Updating existing clip parameters:', selectedClipId)
       const clip = templateClips.find(c => c.id === selectedClipId)
-      if (clip) {
+      
+      // Only update if the selected template matches the clip's template
+      if (clip && clip.template === selectedTemplate) {
         // Update the clip's parameters based on the current control values
         const parameters: any = {}
         
@@ -213,22 +215,12 @@ function DashboardContent() {
     const targetTrack = tracks.find((t) => t.layerId === targetLayerId)
     const trackEnd = getTrackEndTime(targetTrack)
 
-    // Start logic: if same template, reuse its start; else append after last template clip or track end; if none, force 0
+    // Start logic: if same template, reuse its start; else append after last template clip
     let startAt = isSameTemplate && lastClipForTemplate
       ? lastClipForTemplate.start
       : hasTemplateClipsForLayer
-        ? Math.max(trackEnd, lastClipEnd)
+        ? lastClipEnd  // Always use lastClipEnd when appending, not trackEnd
         : 0
-        
-    console.log('[START_AT DEBUG]', {
-      selectedTemplate,
-      isSameTemplate,
-      hasTemplateClipsForLayer,
-      trackEnd,
-      lastClipEnd,
-      startAt,
-      clipsForLayer: clipsForLayer.map(c => ({ t: c.template, s: c.start, d: c.duration }))
-    })
 
     // If this layer has no other template clips, force a true zero start for the first clip
     if (clipsForLayer.length === 0) {
@@ -244,17 +236,6 @@ function DashboardContent() {
     const baseSampleTime = startAt
     const sampledState = baseSampleTime > 0 ? sampleTimeline(tracks, baseSampleTime)[targetLayerId] : undefined
 
-    console.log('[TEMPLATE APPLY]', {
-      template: selectedTemplate,
-      startAt,
-      shouldAppend,
-      baseSampleTime,
-      sampledPosition: sampledState?.position,
-      layerStart: targetLayer ? { x: targetLayer.x, y: targetLayer.y } : null,
-      hasTemplateClipsForLayer,
-      lastClipEnd,
-      clips: clipsForLayer.map(c => ({ id: c.id, t: c.template, s: c.start, d: c.duration })),
-    })
 
     // For Roll template, clamp the distance to prevent going off-screen
     // This ensures the animation duration matches the visible motion

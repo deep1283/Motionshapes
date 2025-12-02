@@ -595,10 +595,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
            ) => {
              if (!newFrames) return existing
              
-             // For adjacent clips (no gap), skip the first keyframe of the new clip
-             // because the previous clip already has a keyframe at that time
-             const isAdjacentClip = index > 0 && start === prevClipEnd
-             const framesToProcess = isAdjacentClip ? newFrames.slice(1) : newFrames
+             // Process all frames - deduplication will handle any overlaps
+             const framesToProcess = newFrames
              
              const shiftedNew = framesToProcess.map(f => {
                let value = f.value
@@ -638,6 +636,20 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
            }
 
            
+           // If track is empty for a property, initialize it with baseValue at time 0
+           // This ensures we have a starting point for the animation
+           if ((newTrack.position?.length ?? 0) === 0 && clipBaseState.position) {
+             newTrack.position = [{ time: 0, value: clipBaseState.position }]
+           }
+           if ((newTrack.scale?.length ?? 0) === 0 && clipBaseState.scale !== undefined) {
+             newTrack.scale = [{ time: 0, value: clipBaseState.scale }]
+           }
+           if ((newTrack.rotation?.length ?? 0) === 0 && clipBaseState.rotation !== undefined) {
+             newTrack.rotation = [{ time: 0, value: clipBaseState.rotation }]
+           }
+           // Opacity is special - we might want it to be 0 for fade_in, so don't force it here
+           // But for other properties, we need a base to add to.
+
            newTrack = {
              ...newTrack,
              position: mergeKeyframes(newTrack.position ?? [], preset.position, clipBaseState.position, 'add'),
@@ -1123,17 +1135,46 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
            
            const sampleTime = index === 0 ? 0 : prevClipEnd
           const previousClip = layerClips[index - 1]
-          const cameFromPop = previousClip?.template === 'pop'
-          const popCollapsed = previousClip?.parameters?.popCollapse ?? prev.popCollapse
-          const popShouldReappear = previousClip?.parameters?.popReappear ?? prev.popReappear ?? true
-          const shouldRestoreFromPop = cameFromPop && popCollapsed && popShouldReappear
+          
+           let clipBaseState
+           if (index === 0) {
+             // First clip: sample from original track
+             const sampledFromOriginal = sampleLayerTracks(track, sampleTime, DEFAULT_LAYER_STATE)
+             clipBaseState = sampledFromOriginal
+           } else {
+             // Subsequent clips: sample from the newly built track to get the actual end state
+             const sampledFromNew = sampleLayerTracks(newTrack, sampleTime, DEFAULT_LAYER_STATE)
+             
+             // If newTrack doesn't have keyframes for a property, it means previous clips didn't animate it.
+             // In that case, we should fallback to the original track's state at that time.
+             const fallbackState = sampleLayerTracks(track, sampleTime, DEFAULT_LAYER_STATE)
+             
+             if ((newTrack.position?.length ?? 0) === 0) sampledFromNew.position = fallbackState.position
+             if ((newTrack.scale?.length ?? 0) === 0) sampledFromNew.scale = fallbackState.scale
+             if ((newTrack.rotation?.length ?? 0) === 0) sampledFromNew.rotation = fallbackState.rotation
+             if ((newTrack.opacity?.length ?? 0) === 0) sampledFromNew.opacity = fallbackState.opacity
 
-          const sampledState = sampleLayerTracks(track, sampleTime, DEFAULT_LAYER_STATE)
-           const clipBaseState = {
-             position: sampledState.position,
-             scale: shouldRestoreFromPop && lastPopStartState ? lastPopStartState.scale : sampledState.scale,
-             rotation: sampledState.rotation,
-             opacity: shouldRestoreFromPop && lastPopStartState ? lastPopStartState.opacity : sampledState.opacity
+             // Preserve the sampled state by default; only force a reset after a collapsing Pop
+             const previousClip = layerClips[index - 1]
+             const cameFromPop = previousClip?.template === 'pop'
+             const popCollapsed = previousClip?.parameters?.popCollapse ?? prev.popCollapse
+             const popShouldReappear = previousClip?.parameters?.popReappear ?? prev.popReappear ?? true
+             const shouldRestoreFromPop = cameFromPop && popCollapsed && popShouldReappear
+             const restoredScale = shouldRestoreFromPop && lastPopStartState ? lastPopStartState.scale : sampledFromNew.scale
+             const restoredOpacity = shouldRestoreFromPop && lastPopStartState ? lastPopStartState.opacity : sampledFromNew.opacity
+
+             clipBaseState = {
+               position: sampledFromNew.position,
+               scale: restoredScale,
+               rotation: sampledFromNew.rotation,
+               opacity: restoredOpacity
+             }
+             
+             // If we need to restore after Pop, add explicit keyframes at the start of this clip
+             if (shouldRestoreFromPop) {
+               newTrack.scale = upsertKeyframe(newTrack.scale ?? [], { time: start, value: restoredScale })
+               newTrack.opacity = upsertKeyframe(newTrack.opacity ?? [], { time: start, value: restoredOpacity })
+             }
            }
 
            let preset
@@ -1194,11 +1235,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
 
           if (!preset) return
 
-          // If we need to restore after Pop, add explicit keyframes at the start of this clip
-          if (shouldRestoreFromPop) {
-            newTrack.scale = upsertKeyframe(newTrack.scale ?? [], { time: start, value: clipBaseState.scale })
-            newTrack.opacity = upsertKeyframe(newTrack.opacity ?? [], { time: start, value: clipBaseState.opacity })
-          }
+
 
           // clipBaseState was calculated above
                       if (index > 0 && start > prevClipEnd) {
@@ -1240,6 +1277,18 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
              
              return [...existing, ...shiftedNew].sort((a, b) => a.time - b.time)
            }
+
+            // If track is empty for a property, initialize it with baseValue at time 0
+            // This ensures we have a starting point for the animation
+            if ((newTrack.position?.length ?? 0) === 0 && clipBaseState.position) {
+              newTrack.position = [{ time: 0, value: clipBaseState.position }]
+            }
+            if ((newTrack.scale?.length ?? 0) === 0 && clipBaseState.scale !== undefined) {
+              newTrack.scale = [{ time: 0, value: clipBaseState.scale }]
+            }
+            if ((newTrack.rotation?.length ?? 0) === 0 && clipBaseState.rotation !== undefined) {
+              newTrack.rotation = [{ time: 0, value: clipBaseState.rotation }]
+            }
 
             newTrack = {
               ...newTrack,
