@@ -733,7 +733,7 @@ export default function DashboardLayout({
         </div>
 
         {/* Center Navigation Tabs */}
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-4 bg-white/5 p-1 rounded-lg border border-white/5">
+        <div className="hidden md:flex items-center justify-evenly w-[300px] lg:w-[400px] mx-auto bg-white/5 p-1 rounded-lg border border-white/5">
             <button
               onClick={() => setActiveTab('templates')}
               className={cn(
@@ -844,7 +844,10 @@ export default function DashboardLayout({
               <h2 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-neutral-600 px-2">
                 Effects
               </h2>
-              <div className="grid grid-cols-2 gap-2">
+              <div className={cn(
+                "grid gap-2",
+                sidebarWidth < 240 ? "grid-cols-1" : "grid-cols-2"
+              )}>
                 {availableEffects.map((effect) => {
                   const isEnabled = layerEffects.some(e => e.type === effect.id && e.isEnabled)
                   const isActive = activeEffectId === effect.id
