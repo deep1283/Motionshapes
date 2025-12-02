@@ -59,7 +59,7 @@ interface MotionCanvasProps {
   onCanvasBackgroundClick?: () => void
 }
 
-export default function MotionCanvas({ template, templateVersion, layers = [], onUpdateLayerPosition, onTemplateComplete, isDrawingPath = false, pathPoints = [], onAddPathPoint, onFinishPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint, background, offsetX = 0, offsetY = 0, popReappear = false, onCanvasBackgroundClick }: MotionCanvasProps) {
+export default function MotionCanvas({ template, templateVersion, layers = [], onUpdateLayerPosition, onTemplateComplete, isDrawingPath = false, pathPoints = [], onAddPathPoint, onFinishPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint, background: _background, offsetX = 0, offsetY = 0, popReappear = false, onCanvasBackgroundClick }: MotionCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<PIXI.Application | null>(null)
   const [isReady, setIsReady] = useState(false)
@@ -93,26 +93,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
     return track?.paths?.[0] ?? null
   }, [timelineTracks, selectedLayerId])
 
-  const resolvedBackground = useMemo(() => {
-    const defaults = {
-      mode: 'solid' as const,
-      solid: '#0f0f0f',
-      from: '#0f172a',
-      to: '#0b1223',
-      opacity: 1,
-    }
-    return { ...defaults, ...(background ?? {}) }
-  }, [background])
   const [canvasBounds, setCanvasBounds] = useState({ width: 1, height: 1, left: 0, top: 0 })
-  const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
-  const toHexNumber = (value: string) => {
-    const normalized = (value || '').trim()
-    const hex = normalized.startsWith('#') ? normalized.slice(1) : normalized
-    const six = hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex.padEnd(6, '0').slice(0, 6)
-    const parsed = Number.parseInt(six, 16)
-    return Number.isNaN(parsed) ? 0x0f0f0f : parsed
-  }
-
   // Keep layers ref updated
   useEffect(() => {
     layersRef.current = layers
@@ -434,7 +415,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
     // keep Pixi canvas transparent; CSS layers handle the color/opacity
     app.renderer.background.alpha = 0
     app.render()
-  }, [resolvedBackground.mode, resolvedBackground.solid, resolvedBackground.from, resolvedBackground.opacity])
+  }, [isReady])
 
   // Debug: log raw DOM pointer events on the canvas to ensure we receive them
   useEffect(() => {
@@ -1119,28 +1100,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
 
   return (
     <div className="relative h-full w-full overflow-visible rounded-lg" onPointerDown={handleCanvasPointerDown}>
-      <div
-        className="absolute inset-0"
-        aria-hidden="true"
-        style={{
-          ...(resolvedBackground.mode === 'gradient'
-            ? { backgroundImage: `linear-gradient(135deg, ${resolvedBackground.from}, ${resolvedBackground.to})` }
-            : { backgroundColor: resolvedBackground.solid }),
-          opacity: clamp01(resolvedBackground.opacity ?? 1),
-          zIndex: 0,
-          transition: 'background 150ms ease, opacity 150ms ease',
-        }}
-      />
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          backgroundImage:
-            'linear-gradient(to right, rgba(255,255,255,0.12) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.12) 1px, transparent 1px)',
-          backgroundSize: '32px 32px',
-          opacity: 0.6,
-          zIndex: 1,
-        }}
-      />
       <div ref={containerRef} className="relative z-10 h-full w-full" />
       {/* Path draw overlay */}
       {isDrawingPath && (

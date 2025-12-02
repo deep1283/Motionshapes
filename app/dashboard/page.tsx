@@ -487,7 +487,7 @@ function DashboardContent() {
   const shapeDefaults: Record<ShapeKind, { width: number; height: number }> = {
     circle: { width: 120, height: 120 },
     square: { width: 120, height: 120 },
-    heart: { width: 120, height: 110 },
+    heart: { width: 120, height: 120 },
     star: { width: 130, height: 130 },
     triangle: { width: 140, height: 120 },
     pill: { width: 160, height: 80 },

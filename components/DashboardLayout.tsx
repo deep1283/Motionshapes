@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useRef } from 'react'
+import Image from 'next/image'
 import type { SVGProps } from 'react'
 import { useRouter } from 'next/navigation'
 import { 
@@ -19,7 +20,6 @@ import {
   Activity,
   Circle,
   Square,
-  Heart,
   MessageCircle,
   Send,
   ThumbsUp,
@@ -1067,7 +1067,13 @@ export default function DashboardLayout({
                     Square
                   </Button>
                   <Button onClick={() => onAddShape?.('heart')} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
-                    <Heart className="mr-2 h-4 w-4 text-neutral-500" />
+                    <Image
+                      src="/icons/heart.svg"
+                      alt="Heart"
+                      width={16}
+                      height={16}
+                      className="mr-2 h-4 w-4"
+                    />
                     Heart
                   </Button>
                   <Button onClick={() => onAddShape?.('star')} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
@@ -1242,6 +1248,40 @@ export default function DashboardLayout({
                 className="absolute inset-0"
                 onPointerDown={handleBackgroundClick}
               >
+                {/* Viewport-scoped background */}
+                <div
+                  className="absolute pointer-events-none"
+                  style={{
+                    width: canvasWidth,
+                    height: canvasHeight,
+                    left: `calc(50% + ${canvasX}px)`,
+                    top: `calc(50% + ${canvasY}px)`,
+                    transform: 'translate(-50%, -50%)',
+                    ...(background.mode === 'gradient'
+                      ? { backgroundImage: `linear-gradient(135deg, ${background.from}, ${background.to})` }
+                      : { backgroundColor: background.solid }),
+                    opacity: Math.max(0, Math.min(1, background.opacity ?? 1)),
+                    zIndex: 0,
+                  }}
+                />
+
+                {/* Viewport grid */}
+                <div
+                  className="absolute pointer-events-none"
+                  style={{
+                    width: canvasWidth,
+                    height: canvasHeight,
+                    left: `calc(50% + ${canvasX}px)`,
+                    top: `calc(50% + ${canvasY}px)`,
+                    transform: 'translate(-50%, -50%)',
+                    backgroundImage:
+                      'linear-gradient(to right, rgba(255,255,255,0.12) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.12) 1px, transparent 1px)',
+                    backgroundSize: '32px 32px',
+                    opacity: 0.6,
+                    zIndex: 1,
+                  }}
+                />
+
                {React.Children.map(children, child => {
                  if (React.isValidElement(child)) {
                    // @ts-ignore - We know MotionCanvas accepts these props
@@ -1372,6 +1412,25 @@ export default function DashboardLayout({
               <SlidersHorizontal className="h-3.5 w-3.5" />
               Controls
             </div>
+            
+            {/* Duration Control - Always show if a clip is selected */}
+            {selectedClipDuration !== undefined && (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] font-semibold text-neutral-200">Duration</span>
+                  <span className="text-[10px] text-neutral-400">{(selectedClipDuration / 1000).toFixed(2)}s</span>
+                </div>
+                <input
+                  type="range"
+                  min={100}
+                  max={5000}
+                  step={100}
+                  value={selectedClipDuration}
+                  onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
+                  className="w-full accent-emerald-500"
+                />
+              </div>
+            )}
             {selectedTemplate === 'roll' && (
               <>
                 <div>
