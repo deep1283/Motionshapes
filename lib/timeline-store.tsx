@@ -470,25 +470,14 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
            
            const sampleTime = index === 0 ? 0 : prevClipEnd
             let clipBaseState
-            if (index === 0) {
-              // First clip: check if this is the very first animation (no other clips)
-              const isFirstAnimation = layerClips.length === 1
-              
-              if (isFirstAnimation) {
-                // This is the very first animation, use default state with provided layer scale
-                clipBaseState = {
-                  ...DEFAULT_LAYER_STATE,
-                  scale: baseScale
-                }
-              } else {
-                // Has other clips, sample from track
-                const sampledFromOriginal = sampleLayerTracks(track, sampleTime, DEFAULT_LAYER_STATE)
-                clipBaseState = {
-                  ...sampledFromOriginal,
-                  scale: Math.abs(sampledFromOriginal.scale), // Prevent negative scales
-                }
-              }
-             } else {
+          if (index === 0) {
+             // First clip: sample from the track at start (honors layer-position keyframes if present)
+             const sampledFromOriginal = sampleLayerTracks(track, sampleTime, DEFAULT_LAYER_STATE)
+             clipBaseState = {
+               ...sampledFromOriginal,
+               scale: Math.abs(sampledFromOriginal.scale), // Prevent negative scales
+             }
+          } else {
               // Subsequent clips: sample from the newly built track to get the actual end state
               const sampledFromNew = sampleLayerTracks(newTrack, sampleTime, DEFAULT_LAYER_STATE)
           
