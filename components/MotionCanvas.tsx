@@ -35,6 +35,7 @@ interface MotionCanvasProps {
   onUpdateLayerPosition?: (id: string, x: number, y: number) => void
   onTemplateComplete?: () => void
   isDrawingPath?: boolean
+  isDrawingLine?: boolean
   pathPoints?: Array<{ x: number; y: number }>
   onAddPathPoint?: (x: number, y: number) => void
   onFinishPath?: () => void
@@ -58,9 +59,10 @@ interface MotionCanvasProps {
   offsetY?: number
   popReappear?: boolean
   onCanvasBackgroundClick?: () => void
+  isDrawingLine?: boolean
 }
 
-export default function MotionCanvas({ template, templateVersion, layers = [], onUpdateLayerPosition, onTemplateComplete, isDrawingPath = false, pathPoints = [], onAddPathPoint, onFinishPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint, background: _background, offsetX = 0, offsetY = 0, popReappear = false, onCanvasBackgroundClick }: MotionCanvasProps) {
+export default function MotionCanvas({ template, templateVersion, layers = [], onUpdateLayerPosition, onTemplateComplete, isDrawingPath = false, isDrawingLine = false, pathPoints = [], onAddPathPoint, onFinishPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint, background: _background, offsetX = 0, offsetY = 0, popReappear = false, onCanvasBackgroundClick }: MotionCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<PIXI.Application | null>(null)
   const [isReady, setIsReady] = useState(false)
@@ -83,6 +85,10 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
   const layersRef = useRef(layers)
   const pathTraceActiveRef = useRef(false)
   const lastPathPointRef = useRef<{ x: number; y: number } | null>(null)
+  const lineStartRef = useRef<{ x: number; y: number } | null>(null)
+  const lineEndRef = useRef<{ x: number; y: number } | null>(null)
+  const lineHasEndRef = useRef(false)
+  const lineDragActiveRef = useRef(false)
   const templateCompleteCalled = useRef(false)
   const timelineTracks = useTimeline((s) => s.tracks)
   const playhead = useTimeline((s) => s.currentTime)
@@ -1232,6 +1238,105 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
           </svg>
         </div>
       )}
+
+      {/* Line draw overlay (two-point, draggable end) */}
+      {isDrawingLine && (() => {
+        const { width, height } = canvasBounds
+        if (!width || !height) return null
+        const layerBase = layersRef.current.find((l) => l.id === selectedLayerId)
+        const layerPos = layerBase ? { x: layerBase.x, y: layerBase.y } : { x: 0.5, y: 0.5 }
+
+        const currentStart = lineStartRef.current ?? layerPos
+        const currentEnd = lineEndRef.current ?? currentStart
+
+        const toScreen = (pt: { x: number; y: number }) => ({
+          x: pt.x * width + offsetX,
+          y: pt.y * height + offsetY,
+        })
+        const startScreen = toScreen(currentStart)
+        const endScreen = toScreen(currentEnd)
+
+        const handleDown = (e: React.PointerEvent<HTMLDivElement>) => {
+          if (!containerRef.current) return
+          const bounds = containerRef.current.getBoundingClientRect()
+          const x = (e.clientX - bounds.left - offsetX) / bounds.width
+          const y = (e.clientY - bounds.top - offsetY) / bounds.height
+          const clamped = { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) }
+          lineStartRef.current = clamped
+          lineEndRef.current = clamped
+          lineHasEndRef.current = false
+          onClearPath?.()
+          onAddPathPoint?.(clamped.x, clamped.y)
+          lineDragActiveRef.current = true
+        }
+
+        const handleMove = (e: React.PointerEvent<HTMLDivElement>) => {
+          if (!lineDragActiveRef.current || !containerRef.current || !lineStartRef.current) return
+          const bounds = containerRef.current.getBoundingClientRect()
+          const x = (e.clientX - bounds.left - offsetX) / bounds.width
+          const y = (e.clientY - bounds.top - offsetY) / bounds.height
+          const clamped = { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) }
+          lineEndRef.current = clamped
+          if (!lineHasEndRef.current) {
+            onAddPathPoint?.(clamped.x, clamped.y)
+            lineHasEndRef.current = true
+          } else {
+            onUpdateActivePathPoint?.(1, clamped.x, clamped.y)
+          }
+        }
+
+        const handleUp = () => {
+          if (!lineDragActiveRef.current || !lineStartRef.current || !lineEndRef.current) return
+          lineDragActiveRef.current = false
+          const start = lineStartRef.current
+          let end = lineEndRef.current
+          if (Math.hypot(end.x - start.x, end.y - start.y) < 0.001) {
+            // Avoid zero-length lines
+            end = { x: Math.min(1, start.x + 0.05), y: start.y }
+          }
+          onFinishPath?.([start, end])
+          lineStartRef.current = null
+          lineEndRef.current = null
+          lineHasEndRef.current = false
+        }
+
+        return (
+          <div
+            className="absolute inset-0 cursor-crosshair"
+            style={{ zIndex: 24 }}
+            onPointerDown={handleDown}
+            onPointerMove={handleMove}
+            onPointerUp={handleUp}
+          >
+            <svg className="h-full w-full">
+              <line
+                x1={startScreen.x}
+                y1={startScreen.y}
+                x2={endScreen.x}
+                y2={endScreen.y}
+                stroke="#22c55e"
+                strokeWidth={2}
+              />
+              <circle
+                cx={startScreen.x}
+                cy={startScreen.y}
+                r={7}
+                fill="#10b981"
+                stroke="#0f172a"
+                strokeWidth={2}
+              />
+              <circle
+                cx={endScreen.x}
+                cy={endScreen.y}
+                r={8}
+                fill="#ef4444"
+                stroke="#0f172a"
+                strokeWidth={2}
+              />
+            </svg>
+          </div>
+        )
+      })()}
 
       {/* Fallback DOM previews removed; timeline drives all motion */}
     </div>

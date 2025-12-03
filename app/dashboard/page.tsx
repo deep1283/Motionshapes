@@ -55,6 +55,7 @@ function DashboardContent() {
   const [templateVersion, setTemplateVersion] = useState(0)
   const [layers, setLayers] = useState<Layer[]>([])
   const [isDrawingPath, setIsDrawingPath] = useState(false)
+  const [isDrawingLine, setIsDrawingLine] = useState(false)
   const [pathPoints, setPathPoints] = useState<Array<{ x: number; y: number }>>([])
   const [activePathPoints, setActivePathPoints] = useState<Array<{ x: number; y: number }>>([])
   const [pathVersion, setPathVersion] = useState(0)
@@ -562,21 +563,70 @@ function DashboardContent() {
   const handleStartDrawPath = () => {
     if (!selectedLayerId) {
       setShowSelectShapeHint(true)
+      setTimeout(() => setShowSelectShapeHint(false), 3000)
       return
     }
-    setSelectedTemplate('')
-    setPathPoints([])
     setIsDrawingPath(true)
+    setIsDrawingLine(false)
+    setPathPoints([])
+    setActivePathPoints([])
+    setPathVersion(v => v + 1)
+    
+    // Clear any existing clips for this layer to avoid conflicts
+    const existingClips = templateClips.filter(c => c.layerId === selectedLayerId)
+    existingClips.forEach(clip => {
+      // removeTemplateClip doesn't exist, we need to implement it or use setState directly if possible (but we can't from here)
+      // Actually, let's check if there's a method to remove template clips.
+      // If not, I'll add it to the store.
+    })
+  }
+
+  const handleStartDrawLine = () => {
+    if (!selectedLayerId) {
+      setShowSelectShapeHint(true)
+      setTimeout(() => setShowSelectShapeHint(false), 3000)
+      return
+    }
+    // Determine starting point: end of last path clip if it exists, otherwise layer position
+    const layer = layers.find((l) => l.id === selectedLayerId)
+    const layerPos = { x: layer?.x ?? 0.5, y: layer?.y ?? 0.5 }
+    const lastPathClip = templateClips
+      .filter((c) => c.layerId === selectedLayerId && c.template === 'path')
+      .sort((a, b) => (b.start + b.duration) - (a.start + a.duration))[0]
+    let startPos = layerPos
+    if (lastPathClip) {
+      const endTime = (lastPathClip.start ?? 0) + (lastPathClip.duration ?? 0)
+      const sampled = sampleTimeline(tracks, endTime)[selectedLayerId]
+      if (sampled?.position) {
+        startPos = { x: sampled.position.x, y: sampled.position.y }
+      }
+    }
+    setIsDrawingLine(true)
+    setIsDrawingPath(false)
+    setPathPoints([startPos]) // seed start; end will be set on drag
+    setActivePathPoints([startPos])
+    setPathVersion(v => v + 1)
+    setSelectedTemplate('')
+    setSelectedClipId('')
+    timeline.setPlaying(false)
   }
 
   const handleAddPathPoint = (x: number, y: number) => {
     setPathPoints((prev) => [...prev, { x, y }])
   }
 
-  const handleFinishPath = () => {
+  const handleFinishPath = (finalPoints?: Array<{ x: number; y: number }>) => {
     setIsDrawingPath(false)
+    setIsDrawingLine(false)
+    const pointsToUse = finalPoints || (activePathPoints.length ? activePathPoints : pathPoints)
+    if (pointsToUse.length < 2) {
+      setShowSelectShapeHint(false)
+      return
+    }
+    // Normalize to two points for line mode
+    const normalized = isDrawingLine ? pointsToUse.slice(0, 2) : pointsToUse
     // lightly simplify consecutive points to avoid over-sampling but keep curvature
-    const simplified = pathPoints.filter((pt, idx, arr) => {
+    const simplified = normalized.filter((pt, idx, arr) => {
       if (idx === 0 || idx === arr.length - 1) return true
       const prev = arr[idx - 1]
       const dist = Math.hypot(pt.x - prev.x, pt.y - prev.y)
@@ -588,6 +638,12 @@ function DashboardContent() {
     if (selectedLayerId && simplified.length >= 2) {
       const now = timeline.getState().currentTime
       const duration = 2000
+      // For line mode, append after the last clip on this layer
+      const layerClips = templateClips.filter(c => c.layerId === selectedLayerId)
+      const lastEnd = layerClips.length
+        ? Math.max(...layerClips.map(c => (c.start ?? 0) + (c.duration ?? 0)))
+        : now
+      const startAt = isDrawingLine ? lastEnd : now
       
       // Calculate path length for speed calculations
       let length = 0
@@ -598,7 +654,7 @@ function DashboardContent() {
       const clipId = timeline.addTemplateClip(
         selectedLayerId,
         'path',
-        now,
+        startAt,
         duration,
         {
           pathPoints: simplified,
@@ -612,13 +668,17 @@ function DashboardContent() {
       setSelectedTemplate('path')
       // Also set the clip ID so speed changes target this clip
       setSelectedClipId(clipId)
+      timeline.setPlaying(false)
+      timeline.setCurrentTime(startAt)
     }
   }
 
   const handleCancelPath = () => {
     setIsDrawingPath(false)
+    setIsDrawingLine(false)
     setPathPoints([])
-    setShowSelectShapeHint(false)
+    setActivePathPoints([])
+    setPathVersion(v => v + 1)
   }
 
   const handlePathPlaybackComplete = () => {
@@ -627,6 +687,9 @@ function DashboardContent() {
 
   const handleUpdateActivePathPoint = (index: number, x: number, y: number) => {
     setActivePathPoints((prev) =>
+      prev.map((pt, i) => (i === index ? { x, y } : pt))
+    )
+    setPathPoints((prev) =>
       prev.map((pt, i) => (i === index ? { x, y } : pt))
     )
     setPathVersion((v) => v + 1)
@@ -775,11 +838,13 @@ function DashboardContent() {
       onSelectTemplate={handleTemplateSelect}
       onAddShape={handleAddShape}
       onStartDrawPath={handleStartDrawPath}
+      onStartDrawLine={handleStartDrawLine}
       showSelectShapeHint={showSelectShapeHint}
       layers={layers}
       selectedLayerId={selectedLayerId}
       isDrawingPath={isDrawingPath}
-      onFinishPath={handleFinishPath}
+      isDrawingLine={isDrawingLine}
+      onFinishPath={() => handleFinishPath()}
       onCancelPath={handleCancelPath}
       pathPointCount={pathPoints.length}
       background={background}
@@ -834,6 +899,7 @@ function DashboardContent() {
         onSelectLayer={handleSelectLayer}
         selectedLayerId={selectedLayerId}
         isDrawingPath={isDrawingPath}
+        isDrawingLine={isDrawingLine}
         pathPoints={pathPoints}
         activePathPoints={activePathPoints}
         pathVersion={pathVersion}

@@ -75,10 +75,12 @@ interface DashboardLayoutProps {
   onSelectTemplate: (template: string) => void
   onAddShape?: (shapeKind?: ShapeKind) => void
   onStartDrawPath?: () => void
+  onStartDrawLine?: () => void
   showSelectShapeHint?: boolean
   layers: Array<{ id: string; shapeKind: ShapeKind }>
   selectedLayerId?: string
   isDrawingPath?: boolean
+  isDrawingLine?: boolean
   onFinishPath?: () => void
   onCancelPath?: () => void
   pathPointCount?: number
@@ -132,10 +134,12 @@ export default function DashboardLayout({
   onSelectTemplate, 
   onAddShape, 
   onStartDrawPath, 
+  onStartDrawLine,
   showSelectShapeHint, 
   layers, 
   selectedLayerId, 
   isDrawingPath, 
+  isDrawingLine,
   onFinishPath, 
   onCancelPath, 
   pathPointCount = 0, 
@@ -833,7 +837,19 @@ export default function DashboardLayout({
                     )}
                   >
                     <PenTool className={cn("h-4 w-4", isDrawingPath ? "text-emerald-400" : "text-neutral-500 group-hover:text-neutral-300")} />
-                    Draw a custom path
+                    <span className="truncate">Draw a custom path</span>
+                  </button>
+                  <button
+                    onClick={() => onStartDrawLine?.()}
+                    className={cn(
+                      "group flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-sm font-medium transition-all duration-200 border border-transparent",
+                      isDrawingLine
+                        ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                        : "text-neutral-400 hover:bg-white/5 hover:text-neutral-200 hover:border-white/5"
+                    )}
+                  >
+                    <Minus className={cn("h-4 w-4", isDrawingLine ? "text-emerald-400" : "text-neutral-500 group-hover:text-neutral-300")} />
+                    <span className="truncate">Draw a line</span>
                   </button>
                 </div>
 
