@@ -807,7 +807,7 @@ export default function DashboardLayout({
         <aside 
             ref={sidebarRef}
             style={{ width: sidebarWidth }}
-            className="relative border-r border-white/5 bg-[#0a0a0a] p-4 flex flex-col gap-6 z-40 shrink-0 overflow-y-auto"
+            className="relative border-r border-white/5 bg-[#0a0a0a] p-4 flex flex-col gap-6 z-40 shrink-0 overflow-y-auto overscroll-contain min-h-0 max-h-screen pb-24"
         >
           {/* Resize Handle */}
           <div
@@ -817,7 +817,8 @@ export default function DashboardLayout({
 
           {/* Templates Tab Content */}
           {activeTab === 'templates' && (
-            <div className="flex flex-col gap-4">
+            <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+              <div className="flex flex-col gap-4 pb-[150vh]">
                 <div>
                   <h2 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-neutral-600 px-2">
                     Custom
@@ -855,12 +856,14 @@ export default function DashboardLayout({
                       ))}
                     </nav>
                 </div>
+              </div>
             </div>
           )}
 
           {/* Animations Tab Content */}
           {activeTab === 'animations' && (
-            <div className="flex flex-col h-full">
+            <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+              <div className="flex flex-col h-full pb-[150vh]">
               {/* Sub-tabs for IN / OUT */}
               <div className="flex w-full bg-white/5 border-b border-white/5 mb-4">
                 <button
@@ -1018,12 +1021,13 @@ export default function DashboardLayout({
                   </>
                 )}
               </div>
+              </div>
             </div>
           )}
 
           {/* Effects Tab Content */}
           {activeTab === 'effects' && (
-            <div>
+            <div className="flex-1 min-h-0 overflow-y-auto pr-1 pb-[150vh]">
               <h2 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-neutral-600 px-2">
                 Effects
               </h2>
@@ -1053,7 +1057,7 @@ export default function DashboardLayout({
 
           {/* Shapes Tab Content */}
           {activeTab === 'shapes' && (
-            <div>
+            <div className="flex-1 min-h-0 overflow-y-auto pr-1 pb-96">
                 <h2 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-neutral-600 px-2">
                   Shapes
                 </h2>
@@ -1379,7 +1383,7 @@ export default function DashboardLayout({
         <aside 
             ref={rightSidebarRef}
             style={{ width: rightSidebarWidth }}
-            className="relative border-l border-white/5 bg-[#0a0a0a] p-4 space-y-4 overflow-y-auto shrink-0"
+            className="relative border-l border-white/5 bg-[#0a0a0a] p-4 space-y-4 overflow-y-auto overscroll-contain shrink-0 min-h-0 max-h-screen pb-24"
         >
           {/* Resize Handle */}
           <div
