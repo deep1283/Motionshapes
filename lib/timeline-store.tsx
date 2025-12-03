@@ -60,6 +60,12 @@ type TimelineState = {
       spinDirection?: 1 | -1
       pathPoints?: Vec2[]
       pathLength?: number
+      layerBase?: {
+        position?: Vec2
+        scale?: number
+        rotation?: number
+        opacity?: number
+      }
     }
   }>
 }
@@ -959,6 +965,12 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       }
       layerScale?: number;
       layerPosition?: Vec2;
+      layerBase?: {
+        position?: Vec2
+        scale?: number
+        rotation?: number
+        opacity?: number
+      }
     }
   ) => {
     const preset =
@@ -1396,6 +1408,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         currentClips: typeof nextClips,
         currentTracks: LayerTracks[],
         baseScale: number = 1,
+        layerPosition?: Vec2,
         layerBase?: { position?: Vec2; scale?: number; rotation?: number; opacity?: number }
       ) => {
         const layerClips = currentClips
