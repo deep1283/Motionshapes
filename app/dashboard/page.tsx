@@ -60,6 +60,7 @@ function DashboardContent() {
   const [pathVersion, setPathVersion] = useState(0)
   const [selectedLayerId, setSelectedLayerId] = useState('')
   const [selectedClipId, setSelectedClipId] = useState('')
+  const lastLayerBaseRef = useRef<Record<string, { x: number; y: number; scale: number }>>({})
 
   const [activeEffectId, setActiveEffectId] = useState<string>('')
   const [showSelectShapeHint, setShowSelectShapeHint] = useState(false)
@@ -194,6 +195,14 @@ function DashboardContent() {
     
     const targetLayerId = selectedLayerId
     const targetLayer = layers.find((l) => l.id === targetLayerId)
+    
+    console.log('[LAYER DEBUG]', { 
+      layerId: targetLayerId, 
+      layerX: targetLayer?.x, 
+      layerY: targetLayer?.y,
+      layerScale: targetLayer?.scale
+    })
+
 
     const clipsForLayer = templateClips
       .filter(c => c.layerId === targetLayerId)
@@ -363,6 +372,14 @@ function DashboardContent() {
         parameters: clampedRollDistance !== undefined ? { rollDistance: clampedRollDistance } : undefined,
         layerScale: targetLayer?.scale,
         layerPosition: targetLayer ? { x: targetLayer.x, y: targetLayer.y } : undefined,
+        layerBase: targetLayer
+          ? {
+              position: { x: targetLayer.x, y: targetLayer.y },
+              scale: targetLayer.scale,
+              rotation: 0,
+              opacity: 1,
+            }
+          : undefined,
       }
     )
     // Always align playhead to the start of this clip to avoid tiny offsets
@@ -510,6 +527,7 @@ function DashboardContent() {
       rotation: 0,
       opacity: 1,
     })
+    lastLayerBaseRef.current[newLayer.id] = { x: newLayer.x, y: newLayer.y, scale: newLayer.scale }
     setSelectedTemplate('') // prevent auto-applying the last template to the new shape
     setTemplateVersion((v) => v + 1)
   }
@@ -524,6 +542,8 @@ function DashboardContent() {
           : layer
       )
     )
+    const currentScale = layers.find((l) => l.id === id)?.scale ?? 1
+    lastLayerBaseRef.current[id] = { x: nx, y: ny, scale: currentScale }
     timeline.ensureTrack(id)
   }
 
@@ -634,6 +654,12 @@ function DashboardContent() {
     setLayers(prev => prev.map(l => 
       l.id === selectedLayerId ? { ...l, scale: value } : l
     ))
+    const existing = lastLayerBaseRef.current[selectedLayerId] ?? {
+      x: layers.find((l) => l.id === selectedLayerId)?.x ?? 0.5,
+      y: layers.find((l) => l.id === selectedLayerId)?.y ?? 0.5,
+      scale: 1,
+    }
+    lastLayerBaseRef.current[selectedLayerId] = { ...existing, scale: value }
   }
 
   const handleClipClick = (clip: { id: string; template: string }) => {
@@ -693,19 +719,20 @@ function DashboardContent() {
     if (selectedClipId && selectedLayerId) {
       const clip = templateClips.find(c => c.id === selectedClipId)
       if (clip && clip.template === 'roll') {
-        const newDuration = rollDurationForDistance(value, templateSpeed)
-        timeline.updateTemplateClip(
-          selectedLayerId,
-          selectedClipId,
-          {
-            duration: newDuration,
-            parameters: {
-              rollDistance: value,
-              templateSpeed,
-            }
-          },
-          layers.find(l => l.id === selectedLayerId)?.scale ?? 1
-        )
+      const newDuration = rollDurationForDistance(value, templateSpeed)
+      timeline.updateTemplateClip(
+        selectedLayerId,
+        selectedClipId,
+        {
+          duration: newDuration,
+          parameters: {
+            rollDistance: value,
+            templateSpeed,
+            layerBase: lastLayerBaseRef.current[selectedLayerId]
+          }
+        },
+        layers.find(l => l.id === selectedLayerId)?.scale ?? 1
+      )
       }
     }
   }

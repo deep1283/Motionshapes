@@ -442,7 +442,14 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
 
 
       // Helper to rebuild track from clips
-      const rebuildTrackFromClips = (layerId: string, currentClips: typeof updatedClips, currentTracks: LayerTracks[], baseScale: number = 1) => {
+      const rebuildTrackFromClips = (
+        layerId: string, 
+        currentClips: typeof updatedClips, 
+        currentTracks: LayerTracks[], 
+        baseScale: number = 1,
+        layerPosition?: Vec2,
+        layerBase?: { position?: Vec2; scale?: number; rotation?: number; opacity?: number }
+      ) => {
         const layerClips = currentClips
           .filter(c => c.layerId === layerId)
           .sort((a, b) => (a.start ?? 0) - (b.start ?? 0))
@@ -471,11 +478,58 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
            const sampleTime = index === 0 ? 0 : prevClipEnd
             let clipBaseState
           if (index === 0) {
-             // First clip: sample from the track at start (honors layer-position keyframes if present)
-             const sampledFromOriginal = sampleLayerTracks(track, sampleTime, DEFAULT_LAYER_STATE)
-             clipBaseState = {
-               ...sampledFromOriginal,
-               scale: Math.abs(sampledFromOriginal.scale), // Prevent negative scales
+             // Check if this is an In/Out animation
+             const isInOutAnimation = [
+               'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in',
+               'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out'
+             ].includes(clip.template)
+             
+             if (isInOutAnimation) {
+               // For In/Out animations, use authoritative layer base if provided, otherwise fallback
+               const basePosition = layerBase?.position ?? layerPosition ?? DEFAULT_LAYER_STATE.position
+               const baseScaleFromLayer = layerBase?.scale ?? baseScale
+               const baseRotation = layerBase?.rotation ?? DEFAULT_LAYER_STATE.rotation
+               const baseOpacity = layerBase?.opacity ?? DEFAULT_LAYER_STATE.opacity
+               console.log('[REBUILD DEBUG] Using layerPosition for In/Out animation', {
+                 clipTemplate: clip.template,
+                 layerPosition,
+                 layerBase,
+                 basePosition,
+               })
+               clipBaseState = {
+                 position: basePosition,
+                 scale: baseScaleFromLayer,
+                 rotation: baseRotation,
+                 opacity: baseOpacity,
+               }
+             } else {
+               // For other animations, sample from the track at start
+               console.log('[REBUILD DEBUG] Sampling track for first clip', {
+                 layerId,
+                 sampleTime,
+                 'track.position': track.position,
+                 clipTemplate: clip.template,
+               })
+             // For subsequent clips or non In/Out, prefer stored layerBase if present
+             const basePositionOverride = layerBase?.position
+             const baseScaleOverride = layerBase?.scale
+             const baseRotationOverride = layerBase?.rotation
+             const baseOpacityOverride = layerBase?.opacity
+
+             const sampledFromOriginal = sampleLayerTracks(track, sampleTime, {
+               ...DEFAULT_LAYER_STATE,
+               position: basePositionOverride ?? DEFAULT_LAYER_STATE.position,
+               scale: baseScaleOverride ?? DEFAULT_LAYER_STATE.scale,
+               rotation: baseRotationOverride ?? DEFAULT_LAYER_STATE.rotation,
+               opacity: baseOpacityOverride ?? DEFAULT_LAYER_STATE.opacity,
+             })
+               console.log('[REBUILD DEBUG] Sampled result', {
+                 'sampledFromOriginal.position': sampledFromOriginal.position,
+               })
+               clipBaseState = {
+                 ...sampledFromOriginal,
+                 scale: Math.abs(sampledFromOriginal.scale),
+               }
              }
           } else {
               // Subsequent clips: sample from the newly built track to get the actual end state
@@ -671,29 +725,34 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
                 // Check if this keyframe represents "base position" (offset is 0,0)
                 const isBasePosition = (v?.x ?? 0) === 0 && (v?.y ?? 0) === 0
                 
+                // Round clipBaseState position to avoid accumulated floating point errors
+                const baseX = Math.round((clipBaseState.position?.x ?? 0) * 1e6) / 1e6
+                const baseY = Math.round((clipBaseState.position?.y ?? 0) * 1e6) / 1e6
+                
                 let resultX: number, resultY: number
                 
                 if (isInAnimation) {
                   // For IN animations: keyframes with {0,0} should use base position, others add offset
                   if (isBasePosition) {
-                    resultX = clipBaseState.position?.x ?? 0
-                    resultY = clipBaseState.position?.y ?? 0
+                    resultX = baseX
+                    resultY = baseY
                   } else {
-                    resultX = (clipBaseState.position?.x ?? 0) + (v?.x ?? 0)
-                    resultY = (clipBaseState.position?.y ?? 0) + (v?.y ?? 0)
+                    // Round to avoid floating point precision errors (e.g., 0.3 + (-0.2) = 0.09999...)
+                    resultX = Math.round((baseX + (v?.x ?? 0)) * 1e6) / 1e6
+                    resultY = Math.round((baseY + (v?.y ?? 0)) * 1e6) / 1e6
                   }
                 } else if (isOutAnimation) {
                   // For OUT animations: first keyframe uses base, others add offset
                   if (isFirstKeyframe) {
-                    resultX = clipBaseState.position?.x ?? 0
-                    resultY = clipBaseState.position?.y ?? 0
+                    resultX = baseX
+                    resultY = baseY
                   } else {
-                    resultX = (clipBaseState.position?.x ?? 0) + (v?.x ?? 0)
-                    resultY = (clipBaseState.position?.y ?? 0) + (v?.y ?? 0)
+                    resultX = Math.round((baseX + (v?.x ?? 0)) * 1e6) / 1e6
+                    resultY = Math.round((baseY + (v?.y ?? 0)) * 1e6) / 1e6
                   }
                 } else {
-                  resultX = (clipBaseState.position?.x ?? 0) + (v?.x ?? 0)
-                  resultY = (clipBaseState.position?.y ?? 0) + (v?.y ?? 0)
+                  resultX = Math.round((baseX + (v?.x ?? 0)) * 1e6) / 1e6
+                  resultY = Math.round((baseY + (v?.y ?? 0)) * 1e6) / 1e6
                 }
                 
                 const result = {
@@ -702,7 +761,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
                 }
                 
                 if (clip.template === 'slide_in' || clip.template === 'slide_out') {
-                  console.log(`[${clip.template.toUpperCase()} DEBUG]`, {
+                  console.log(`[${clip.template.toUpperCase()} DEBUG AFTER ROUNDING]`, {
                     idx,
                     isFirstKeyframe,
                     isLastKeyframe,
@@ -710,6 +769,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
                     presetValue: v,
                     clipBaseState: clipBaseState.position,
                     resultValue: result.value,
+                    wasRounded: !isBasePosition && !isFirstKeyframe,
                   })
                 }
                 
@@ -825,7 +885,16 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         return currentTracks.map(t => t.layerId === layerId ? newTrack : t)
       }
 
-      const newTracks = rebuildTrackFromClips(layerId, updatedClips, prev.tracks)
+      const targetClip = updatedClips.find(c => c.id === clipId)
+      const layerBaseForRebuild = targetClip?.parameters?.layerBase
+      const newTracks = rebuildTrackFromClips(
+        layerId,
+        updatedClips,
+        prev.tracks,
+        1,
+        layerBaseForRebuild?.position,
+        layerBaseForRebuild
+      )
 
       const getTrackEnd = (track: LayerTracks) => {
         const times: number[] = []
@@ -1026,12 +1095,17 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           trackIsEmpty: !track.position || track.position.length === 0,
         })
         
-        // CRITICAL: Use layerPosition directly if provided, don't rely on sampling
-        const basePosition = base?.position ?? options?.layerPosition ?? baseSample.position
+        // CRITICAL: Use the authoritative layer base if provided; otherwise fall back to sampling
+        const layerBasePosition = options?.layerBase?.position ?? options?.layerPosition
+        const layerBaseScale = options?.layerBase?.scale
+        const layerBaseRotation = options?.layerBase?.rotation
+        const layerBaseOpacity = options?.layerBase?.opacity
+
+        const basePosition = base?.position ?? layerBasePosition ?? baseSample.position
         // Track scale is always a multiplier; base layer scale lives on the layer itself
-        const baseScale = popStartState?.scale ?? baseSample.scale ?? 1
-        const baseRotation = base?.rotation ?? baseSample.rotation
-        const baseOpacity = base?.opacity ?? (popStartState?.opacity ?? baseSample.opacity)
+        const baseScale = layerBaseScale ?? popStartState?.scale ?? baseSample.scale ?? 1
+        const baseRotation = base?.rotation ?? layerBaseRotation ?? baseSample.rotation
+        const baseOpacity = base?.opacity ?? layerBaseOpacity ?? (popStartState?.opacity ?? baseSample.opacity)
 
         console.log('[POSITION FLOW 4] Final basePosition', {
           basePosition,
@@ -1247,6 +1321,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             pulseSpeed: options?.parameters?.pulseSpeed ?? prev.pulseSpeed,
             spinSpeed: options?.parameters?.spinSpeed ?? prev.spinSpeed,
             spinDirection: options?.parameters?.spinDirection ?? prev.spinDirection,
+            layerBase: options?.layerBase ?? existingClip?.parameters?.layerBase,
           },
         },
       ]
@@ -1270,7 +1345,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     start: number,
     duration: number,
     parameters?: TimelineState['templateClips'][number]['parameters'],
-    layerScale?: number
+    layerScale?: number,
+    layerBase?: { position?: Vec2; scale?: number; rotation?: number; opacity?: number }
   ) => {
     const clipId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID()
@@ -1292,13 +1368,14 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           popWobble: prev.popWobble,
           popSpeed: prev.popSpeed,
           popCollapse: prev.popCollapse,
-          popReappear: prev.popReappear,
-          shakeDistance: prev.shakeDistance,
-          pulseScale: prev.pulseScale,
-          pulseSpeed: prev.pulseSpeed,
-          spinSpeed: prev.spinSpeed,
-          spinDirection: prev.spinDirection,
-          ...parameters
+            popReappear: prev.popReappear,
+            shakeDistance: prev.shakeDistance,
+            pulseScale: prev.pulseScale,
+            pulseSpeed: prev.pulseSpeed,
+            spinSpeed: prev.spinSpeed,
+            spinDirection: prev.spinDirection,
+            ...parameters,
+            layerBase,
         }
       }
 
@@ -1314,7 +1391,13 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       
       // Helper to rebuild track from clips (duplicated from updateTemplateClip for now)
       // Ideally this should be a shared function outside setState
-      const rebuildTrackFromClips = (layerId: string, currentClips: typeof nextClips, currentTracks: LayerTracks[], baseScale: number = 1) => {
+      const rebuildTrackFromClips = (
+        layerId: string,
+        currentClips: typeof nextClips,
+        currentTracks: LayerTracks[],
+        baseScale: number = 1,
+        layerBase?: { position?: Vec2; scale?: number; rotation?: number; opacity?: number }
+      ) => {
         const layerClips = currentClips
           .filter(c => c.layerId === layerId)
           .sort((a, b) => (a.start ?? 0) - (b.start ?? 0))
@@ -1349,12 +1432,20 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
               if (isFirstAnimation) {
                 // This is the very first animation, use default state with provided layer scale
                 clipBaseState = {
-                  ...DEFAULT_LAYER_STATE,
-                  scale: baseScale
+                  position: layerBase?.position ?? DEFAULT_LAYER_STATE.position,
+                  scale: layerBase?.scale ?? baseScale,
+                  rotation: layerBase?.rotation ?? DEFAULT_LAYER_STATE.rotation,
+                  opacity: layerBase?.opacity ?? DEFAULT_LAYER_STATE.opacity,
                 }
               } else {
                 // Has other clips, sample from track
-                const sampledFromOriginal = sampleLayerTracks(track, sampleTime, DEFAULT_LAYER_STATE)
+                const sampledFromOriginal = sampleLayerTracks(track, sampleTime, {
+                  ...DEFAULT_LAYER_STATE,
+                  position: layerBase?.position ?? DEFAULT_LAYER_STATE.position,
+                  scale: layerBase?.scale ?? DEFAULT_LAYER_STATE.scale,
+                  rotation: layerBase?.rotation ?? DEFAULT_LAYER_STATE.rotation,
+                  opacity: layerBase?.opacity ?? DEFAULT_LAYER_STATE.opacity,
+                })
                 clipBaseState = {
                   ...sampledFromOriginal,
                   scale: Math.abs(sampledFromOriginal.scale), // Prevent negative scales
@@ -1362,11 +1453,23 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
               }
            } else {
              // Subsequent clips: sample from the newly built track to get the actual end state
-             const sampledFromNew = sampleLayerTracks(newTrack, sampleTime, DEFAULT_LAYER_STATE)
+             const sampledFromNew = sampleLayerTracks(newTrack, sampleTime, {
+               ...DEFAULT_LAYER_STATE,
+               position: layerBase?.position ?? DEFAULT_LAYER_STATE.position,
+               scale: layerBase?.scale ?? DEFAULT_LAYER_STATE.scale,
+               rotation: layerBase?.rotation ?? DEFAULT_LAYER_STATE.rotation,
+               opacity: layerBase?.opacity ?? DEFAULT_LAYER_STATE.opacity,
+             })
              
              // If newTrack doesn't have keyframes for a property, it means previous clips didn't animate it.
              // In that case, we should fallback to the original track's state at that time.
-             const fallbackState = sampleLayerTracks(track, sampleTime, DEFAULT_LAYER_STATE)
+             const fallbackState = sampleLayerTracks(track, sampleTime, {
+               ...DEFAULT_LAYER_STATE,
+               position: layerBase?.position ?? DEFAULT_LAYER_STATE.position,
+               scale: layerBase?.scale ?? DEFAULT_LAYER_STATE.scale,
+               rotation: layerBase?.rotation ?? DEFAULT_LAYER_STATE.rotation,
+               opacity: layerBase?.opacity ?? DEFAULT_LAYER_STATE.opacity,
+             })
              
              if ((newTrack.position?.length ?? 0) === 0) sampledFromNew.position = fallbackState.position
              if ((newTrack.scale?.length ?? 0) === 0) sampledFromNew.scale = fallbackState.scale
@@ -1522,29 +1625,34 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
                   // Check if this keyframe represents "base position" (offset is 0,0)
                   const isBasePosition = (v?.x ?? 0) === 0 && (v?.y ?? 0) === 0
                   
+                  // Round clipBaseState position to avoid accumulated floating point errors
+                  const baseX = Math.round((clipBaseState.position?.x ?? 0) * 1e6) / 1e6
+                  const baseY = Math.round((clipBaseState.position?.y ?? 0) * 1e6) / 1e6
+                  
                   let resultX: number, resultY: number
                   
                   if (isInAnimation) {
                     // For IN animations: keyframes with {0,0} should use base position, others add offset
                     if (isBasePosition) {
-                      resultX = clipBaseState.position?.x ?? 0
-                      resultY = clipBaseState.position?.y ?? 0
+                      resultX = baseX
+                      resultY = baseY
                     } else {
-                      resultX = (clipBaseState.position?.x ?? 0) + (v?.x ?? 0)
-                      resultY = (clipBaseState.position?.y ?? 0) + (v?.y ?? 0)
+                      // Round to avoid floating point precision errors
+                      resultX = Math.round((baseX + (v?.x ?? 0)) * 1e6) / 1e6
+                      resultY = Math.round((baseY + (v?.y ?? 0)) * 1e6) / 1e6
                     }
                   } else if (isOutAnimation) {
                     // For OUT animations: first keyframe uses base, others add offset
                     if (isFirstKeyframe) {
-                      resultX = clipBaseState.position?.x ?? 0
-                      resultY = clipBaseState.position?.y ?? 0
+                      resultX = baseX
+                      resultY = baseY
                     } else {
-                      resultX = (clipBaseState.position?.x ?? 0) + (v?.x ?? 0)
-                      resultY = (clipBaseState.position?.y ?? 0) + (v?.y ?? 0)
+                      resultX = Math.round((baseX + (v?.x ?? 0)) * 1e6) / 1e6
+                      resultY = Math.round((baseY + (v?.y ?? 0)) * 1e6) / 1e6
                     }
                   } else {
-                    resultX = (clipBaseState.position?.x ?? 0) + (v?.x ?? 0)
-                    resultY = (clipBaseState.position?.y ?? 0) + (v?.y ?? 0)
+                    resultX = Math.round((baseX + (v?.x ?? 0)) * 1e6) / 1e6
+                    resultY = Math.round((baseY + (v?.y ?? 0)) * 1e6) / 1e6
                   }
                   
                   return {
@@ -1636,7 +1744,14 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         return currentTracks.map(t => t.layerId === layerId ? newTrack : t)
       }
 
-      const newTracks = rebuildTrackFromClips(layerId, nextClips, prev.tracks)
+      const newTracks = rebuildTrackFromClips(
+        layerId,
+        nextClips,
+        prev.tracks,
+        layerScale ?? 1,
+        parameters?.layerBase?.position,
+        parameters?.layerBase
+      )
       
       // Recalculate duration
       const getMaxPathEnd = (tracks: LayerTracks[]) => {
