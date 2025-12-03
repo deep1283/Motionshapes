@@ -145,7 +145,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       scale: [
         {
           time: 0,
-          value: defaults?.scale ?? DEFAULT_LAYER_STATE.scale,
+          value: DEFAULT_LAYER_STATE.scale,
         },
       ],
       rotation: [
@@ -825,7 +825,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         return currentTracks.map(t => t.layerId === layerId ? newTrack : t)
       }
 
-      const newTracks = rebuildTrackFromClips(layerId, updatedClips, prev.tracks, layerScale ?? 1)
+      const newTracks = rebuildTrackFromClips(layerId, updatedClips, prev.tracks)
 
       const getTrackEnd = (track: LayerTracks) => {
         const times: number[] = []
@@ -1028,7 +1028,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         
         // CRITICAL: Use layerPosition directly if provided, don't rely on sampling
         const basePosition = base?.position ?? options?.layerPosition ?? baseSample.position
-        const baseScale = base?.scale ?? (popStartState?.scale ?? baseSample.scale)
+        // Track scale is always a multiplier; base layer scale lives on the layer itself
+        const baseScale = popStartState?.scale ?? baseSample.scale ?? 1
         const baseRotation = base?.rotation ?? baseSample.rotation
         const baseOpacity = base?.opacity ?? (popStartState?.opacity ?? baseSample.opacity)
 
@@ -1150,7 +1151,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
 
         const mappedScale =
           preset.scale?.map((f: TimelineKeyframe<number>) => ({
-            ...normalizeNumberFrame(f, baseState.scale, false),
+            ...f,
             time: startOffset + scaleTime(f.time),
           })) ?? []
 
@@ -1635,7 +1636,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         return currentTracks.map(t => t.layerId === layerId ? newTrack : t)
       }
 
-      const newTracks = rebuildTrackFromClips(layerId, nextClips, prev.tracks, layerScale ?? 1)
+      const newTracks = rebuildTrackFromClips(layerId, nextClips, prev.tracks)
       
       // Recalculate duration
       const getMaxPathEnd = (tracks: LayerTracks[]) => {

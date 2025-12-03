@@ -525,8 +525,6 @@ function DashboardContent() {
       )
     )
     timeline.ensureTrack(id)
-    const t = timeline.getState().currentTime
-    timeline.setPositionKeyframe(id, { time: t, value: { x: nx, y: ny } })
   }
 
   const handleSelectLayer = (id: string) => {
@@ -636,9 +634,6 @@ function DashboardContent() {
     setLayers(prev => prev.map(l => 
       l.id === selectedLayerId ? { ...l, scale: value } : l
     ))
-    
-    // Update the track's base scale at time 0 to reflect the new layer scale
-    timeline.ensureTrack(selectedLayerId, { scale: value })
   }
 
   const handleClipClick = (clip: { id: string; template: string }) => {

@@ -23,8 +23,6 @@ interface MotionCanvasProps {
     y: number
     width: number
     height: number
-    width: number
-    height: number
     scale?: number
     fillColor: number
     effects?: Array<{
@@ -200,18 +198,29 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
       
       // Check if track has specific animations
       const track = timelineTracks.find(t => t.layerId === id)
-      const hasPositionAnim = (track?.position?.length ?? 0) > 0
-      const hasRotationAnim = (track?.rotation?.length ?? 0) > 0
-      const hasScaleAnim = (track?.scale?.length ?? 0) > 0
-      const hasOpacityAnim = (track?.opacity?.length ?? 0) > 0
+      const baseLayerPos = { x: layer?.x ?? 0.5, y: layer?.y ?? 0.5 }
+      const positionFrames = track?.position ?? []
+      // Treat position as animated only if there is a keyframe beyond time 0,
+      // multiple frames, or an active path.
+      const hasPositionAnim =
+        positionFrames.some((kf) => kf.time > 0) ||
+        positionFrames.length > 1 ||
+        (track?.paths?.length ?? 0) > 0
+      const hasRotationAnim = (track?.rotation?.length ?? 0) > 1
+      const scaleFrames = track?.scale ?? []
+      const hasScaleAnim =
+        scaleFrames.length > 1 ||
+        scaleFrames.some((kf) => kf.time !== 0 || Math.abs(kf.value - 1) > 1e-4)
+      const hasOpacityAnim = (track?.opacity?.length ?? 0) > 1
 
       // Calculate final transform values
       // For scale: always multiply layer.scale by animation scale (which defaults to 1)
       // This allows "Grow In" (0->1) to become (0 -> layerScale)
-      const finalScale = state.scale * layerScale
+      const scaleMultiplier = hasScaleAnim ? state.scale : 1
+      const finalScale = scaleMultiplier * layerScale
       
       // For position: if animated, use timeline value. If not, use layer static position.
-      const rawPos = hasPositionAnim ? state.position : { x: layer?.x ?? 0.5, y: layer?.y ?? 0.5 }
+      const rawPos = hasPositionAnim ? state.position : baseLayerPos
       
       // Allow values up to 4 (400% screen size) to be treated as normalized coordinates
       const posX = rawPos.x <= 4 ? rawPos.x * screenWidth : rawPos.x
