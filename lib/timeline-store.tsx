@@ -176,6 +176,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     frame: TimelineKeyframe<T>
   ) => {
     ensureTrack(layerId)
+
     setState((prev) => ({
       ...prev,
       tracks: prev.tracks.map((track) =>
@@ -265,7 +266,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
   const updateTemplateClip = (
     layerId: string,
     clipId: string,
-    updates: Partial<Pick<TimelineState['templateClips'][number], 'start' | 'duration' | 'parameters'>>
+    updates: Partial<TimelineState['templateClips'][number]>,
+    layerScale?: number
   ) => {
     setState((prev) => {
       const updatedClips = prev.templateClips.map((clip) => {
@@ -440,7 +442,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
 
 
       // Helper to rebuild track from clips
-      const rebuildTrackFromClips = (layerId: string, currentClips: typeof updatedClips, currentTracks: LayerTracks[]) => {
+      const rebuildTrackFromClips = (layerId: string, currentClips: typeof updatedClips, currentTracks: LayerTracks[], baseScale: number = 1) => {
         const layerClips = currentClips
           .filter(c => c.layerId === layerId)
           .sort((a, b) => (a.start ?? 0) - (b.start ?? 0))
@@ -467,13 +469,26 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
            const end = start + duration
            
            const sampleTime = index === 0 ? 0 : prevClipEnd
-           
-           let clipBaseState
-           if (index === 0) {
-             // First clip: sample from original track
-             const sampledFromOriginal = sampleLayerTracks(track, sampleTime, DEFAULT_LAYER_STATE)
-             clipBaseState = sampledFromOriginal
-            } else {
+            let clipBaseState
+            if (index === 0) {
+              // First clip: check if this is the very first animation (no other clips)
+              const isFirstAnimation = layerClips.length === 1
+              
+              if (isFirstAnimation) {
+                // This is the very first animation, use default state with provided layer scale
+                clipBaseState = {
+                  ...DEFAULT_LAYER_STATE,
+                  scale: baseScale
+                }
+              } else {
+                // Has other clips, sample from track
+                const sampledFromOriginal = sampleLayerTracks(track, sampleTime, DEFAULT_LAYER_STATE)
+                clipBaseState = {
+                  ...sampledFromOriginal,
+                  scale: Math.abs(sampledFromOriginal.scale), // Prevent negative scales
+                }
+              }
+             } else {
               // Subsequent clips: sample from the newly built track to get the actual end state
               const sampledFromNew = sampleLayerTracks(newTrack, sampleTime, DEFAULT_LAYER_STATE)
           
@@ -641,9 +656,9 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
            if ((newTrack.position?.length ?? 0) === 0 && clipBaseState.position) {
              newTrack.position = [{ time: 0, value: clipBaseState.position }]
            }
-           if ((newTrack.scale?.length ?? 0) === 0 && clipBaseState.scale !== undefined) {
-             newTrack.scale = [{ time: 0, value: clipBaseState.scale }]
-           }
+          if ((newTrack.scale?.length ?? 0) === 0) {
+            newTrack.scale = [{ time: 0, value: 1 }]
+          }
            if ((newTrack.rotation?.length ?? 0) === 0 && clipBaseState.rotation !== undefined) {
              newTrack.rotation = [{ time: 0, value: clipBaseState.rotation }]
            }
@@ -655,62 +670,116 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out'
           ].includes(clip.template)
 
-          const mergedPosition = isInOutAnimation && preset.position
-            ? preset.position.map(f => {
+          const isInAnimation = ['fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in'].includes(clip.template)
+          const isOutAnimation = ['fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out'].includes(clip.template)
+
+          let mergedPosition = isInOutAnimation && preset.position
+            ? preset.position.map((f: any, idx: number) => {
                 const v = f.value as unknown as Vec2
-                return {
-                  ...f,
-                  value: {
-                    x: (clipBaseState.position?.x ?? 0) + (v?.x ?? 0),
-                    y: (clipBaseState.position?.y ?? 0) + (v?.y ?? 0),
-                  },
+                const isFirstKeyframe = idx === 0
+                const isLastKeyframe = idx === preset.position!.length - 1
+                
+                // Check if this keyframe represents "base position" (offset is 0,0)
+                const isBasePosition = (v?.x ?? 0) === 0 && (v?.y ?? 0) === 0
+                
+                let resultX: number, resultY: number
+                
+                if (isInAnimation) {
+                  // For IN animations: keyframes with {0,0} should use base position, others add offset
+                  if (isBasePosition) {
+                    resultX = clipBaseState.position?.x ?? 0
+                    resultY = clipBaseState.position?.y ?? 0
+                  } else {
+                    resultX = (clipBaseState.position?.x ?? 0) + (v?.x ?? 0)
+                    resultY = (clipBaseState.position?.y ?? 0) + (v?.y ?? 0)
+                  }
+                } else if (isOutAnimation) {
+                  // For OUT animations: first keyframe uses base, others add offset
+                  if (isFirstKeyframe) {
+                    resultX = clipBaseState.position?.x ?? 0
+                    resultY = clipBaseState.position?.y ?? 0
+                  } else {
+                    resultX = (clipBaseState.position?.x ?? 0) + (v?.x ?? 0)
+                    resultY = (clipBaseState.position?.y ?? 0) + (v?.y ?? 0)
+                  }
+                } else {
+                  resultX = (clipBaseState.position?.x ?? 0) + (v?.x ?? 0)
+                  resultY = (clipBaseState.position?.y ?? 0) + (v?.y ?? 0)
                 }
+                
+                const result = {
+                  ...f,
+                  value: { x: resultX, y: resultY },
+                }
+                
+                if (clip.template === 'slide_in' || clip.template === 'slide_out') {
+                  console.log(`[${clip.template.toUpperCase()} DEBUG]`, {
+                    idx,
+                    isFirstKeyframe,
+                    isLastKeyframe,
+                    isBasePosition,
+                    presetValue: v,
+                    clipBaseState: clipBaseState.position,
+                    resultValue: result.value,
+                  })
+                }
+                
+                return result
               })
             : preset.position
 
-          const mergedScale = isInOutAnimation && preset.scale
-            ? preset.scale // treat as absolute for in/out animations
-            : preset.scale
+          const mergedScale = preset.scale // keep multipliers; layer.scale applied at render
 
           const mergedRotation = isInOutAnimation && preset.rotation
-            ? preset.rotation // treat as absolute for in/out animations
-            : preset.rotation
-
-          const debugInOutUpdate = clip.template === 'slide_in' || clip.template === 'grow_in'
-          if (debugInOutUpdate) {
-            console.log(`[${clip.template}][updateTemplateClip]`, {
-              start,
-              duration,
-              base: clipBaseState,
-              mergedPosition,
-              mergedScale,
-              mergedRotation,
-              opacityFrames: preset.opacity,
-              trackBefore: newTrack,
-            })
-          }
-
-            const debugSlide = clip.template === 'slide_in'
-            const debugGrow = clip.template === 'grow_in'
-            if (debugSlide || debugGrow) {
-              console.log(`[${clip.template}][addTemplateClip]`, {
-                start,
-                duration,
-                base: clipBaseState,
-                mergedPosition,
-                mergedScale,
-                mergedRotation,
-                opacityFrames: preset.opacity,
-                trackBefore: newTrack,
+            ? preset.rotation.map((f: any, idx: number) => {
+                const v = f.value as number
+                const isFirstKeyframe = idx === 0
+                
+                // For rotation: value of 0 means "use base rotation"
+                const isBaseRotation = v === 0
+                
+                let resultValue: number
+                
+                if (isInAnimation) {
+                  // For IN animations: rotation of 0 should use base rotation, others add to base
+                  if (isBaseRotation) {
+                    resultValue = clipBaseState.rotation ?? 0
+                  } else {
+                    resultValue = (clipBaseState.rotation ?? 0) + v
+                  }
+                } else if (isOutAnimation) {
+                  // For OUT animations: first keyframe uses base rotation, others add to base
+                  if (isFirstKeyframe) {
+                    resultValue = clipBaseState.rotation ?? 0
+                  } else {
+                    resultValue = (clipBaseState.rotation ?? 0) + v
+                  }
+                } else {
+                  resultValue = v
+                }
+                
+                return { ...f, value: resultValue }
               })
-            }
+            : preset.rotation
 
           newTrack = {
             ...newTrack,
-            position: mergeKeyframes(newTrack.position ?? [], mergedPosition, clipBaseState.position, isInOutAnimation ? 'replace' : 'add'),
-            scale: mergeKeyframes(newTrack.scale ?? [], mergedScale, clipBaseState.scale, isInOutAnimation ? 'replace' : 'multiply'),
-            rotation: mergeKeyframes(newTrack.rotation ?? [], mergedRotation, clipBaseState.rotation, isInOutAnimation ? 'replace' : 'add'),
-            opacity: mergeKeyframes(newTrack.opacity ?? [], preset.opacity, clipBaseState.opacity, isInOutAnimation ? 'replace' : 'multiply'),
+            position: mergeKeyframes(newTrack.position ?? [], mergedPosition, isInOutAnimation ? undefined : clipBaseState.position, isInOutAnimation ? 'replace' : 'add'),
+            scale: mergeKeyframes(newTrack.scale ?? [], mergedScale, undefined, 'replace'),
+            rotation: mergeKeyframes(newTrack.rotation ?? [], mergedRotation, isInOutAnimation ? undefined : clipBaseState.rotation, isInOutAnimation ? 'replace' : 'add'),
+            opacity: mergeKeyframes(newTrack.opacity ?? [], preset.opacity, isInOutAnimation ? undefined : clipBaseState.opacity, isInOutAnimation ? 'replace' : 'multiply'),
+          }
+          
+          if (clip.template === 'grow_in') {
+            console.log('[GROW_IN DEBUG]', {
+              clipBaseState,
+              clipBaseStateScaleAfterAbs: clipBaseState.scale,
+              presetScale: preset.scale,
+              presetRotation: preset.rotation,
+              mergedScale,
+              mergedRotation,
+              trackAfterMerge: newTrack,
+            })
           }
            
            // Update prevClipEnd for next iteration
@@ -760,14 +829,14 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         
         // Fallback: if track is still empty, add defaults
         if ((newTrack.position?.length ?? 0) === 0) newTrack.position = [{ time: 0, value: initialState.position }]
-        if ((newTrack.scale?.length ?? 0) === 0) newTrack.scale = [{ time: 0, value: initialState.scale }]
+            if ((newTrack.scale?.length ?? 0) === 0) newTrack.scale = [{ time: 0, value: 1 }]
         if ((newTrack.rotation?.length ?? 0) === 0) newTrack.rotation = [{ time: 0, value: initialState.rotation }]
         if ((newTrack.opacity?.length ?? 0) === 0) newTrack.opacity = [{ time: 0, value: initialState.opacity }]
 
         return currentTracks.map(t => t.layerId === layerId ? newTrack : t)
       }
 
-      const adjustedTracks = rebuildTrackFromClips(layerId, updatedClips, prev.tracks)
+      const newTracks = rebuildTrackFromClips(layerId, updatedClips, prev.tracks, layerScale ?? 1)
 
       const getTrackEnd = (track: LayerTracks) => {
         const times: number[] = []
@@ -778,9 +847,9 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         return times.length ? Math.max(...times) : 0
       }
 
-      const tracksEnd = adjustedTracks.reduce((max, t) => Math.max(max, getTrackEnd(t)), 0)
+      const tracksEnd = newTracks.reduce((max, t) => Math.max(max, getTrackEnd(t)), 0)
       const clipsEnd = updatedClips.reduce((max, c) => Math.max(max, (c.start ?? 0) + (c.duration ?? 0)), 0)
-      const pathsEnd = getMaxPathEnd(adjustedTracks)
+      const pathsEnd = getMaxPathEnd(newTracks)
       const newDuration = Math.max(tracksEnd, clipsEnd, pathsEnd, 4000)
       
       // If path clip speed was updated, also update global templateSpeed
@@ -789,7 +858,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       return {
         ...prev,
         templateClips: updatedClips,
-        tracks: adjustedTracks,
+        tracks: newTracks,
         duration: newDuration,
         currentTime: clampTime(prev.currentTime, newDuration),
         rollDistance: nextRollDistance,
@@ -830,6 +899,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         spinDirection?: 1 | -1;
         templateSpeed?: number;
       }
+      layerScale?: number;
+      layerPosition?: Vec2;
     }
   ) => {
     const preset =
@@ -862,6 +933,9 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
               : PRESET_BUILDERS.roll(options?.parameters?.rollDistance ?? state.rollDistance, state.templateSpeed)
     if (!preset) return
     ensureTrack(layerId)
+
+    // Note: We'll insert layerPosition/layerScale keyframes in the main setState block below
+    // to avoid race conditions
 
     const getTrackEndTime = (track: LayerTracks): number => {
       const times: number[] = []
@@ -914,14 +988,77 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         const startOffset = typeof options?.startAt === 'number' ? options.startAt : append ? getTrackEndTime(track) : 0
         appliedStartOffset = startOffset
         
+        console.log('[POSITION FLOW 1] Initial state', {
+          template,
+          startOffset,
+          'options.layerPosition': options?.layerPosition,
+          'track.position (before insert)': track.position,
+        })
+        
+        // CRITICAL: If layerPosition is provided and startOffset is 0, insert it at time 0 BEFORE sampling
+        // This ensures the track has the correct position when we sample it
+        let trackWithLayerPosition = track
+        if (options?.layerPosition && startOffset === 0) {
+          trackWithLayerPosition = {
+            ...track,
+            position: upsertKeyframe(track.position ?? [], { time: 0, value: options.layerPosition })
+          }
+          console.log('[POSITION FLOW 2] After inserting layerPosition', {
+            'trackWithLayerPosition.position': trackWithLayerPosition.position,
+          })
+        }
+        
         const trimFrames = <T,>(frames: TimelineKeyframe<T>[] | undefined) =>
           (frames ?? []).filter((f) => f.time < startOffset)
 
-        const baseSample = sampleLayerTracks(track, startOffset, DEFAULT_LAYER_STATE)
-        const basePosition = base?.position ?? baseSample.position
+        const baseSample = sampleLayerTracks(
+          trackWithLayerPosition,
+          startOffset,
+          {
+            ...DEFAULT_LAYER_STATE,
+            // Keep scale sampling independent of layer scale; layer.scale is applied at render time
+            scale: DEFAULT_LAYER_STATE.scale,
+            position: options?.layerPosition ?? DEFAULT_LAYER_STATE.position,
+          }
+        )
+        
+        console.log('[POSITION FLOW 3] After sampling', {
+          'baseSample.position': baseSample.position,
+        })
+        
+        console.log('[POSITION DEBUG] applyPresetToLayer', {
+          template,
+          layerId,
+          startOffset,
+          'options.layerPosition': options?.layerPosition,
+          'base.position': base?.position,
+          'baseSample.position': baseSample.position,
+          'track.position': track.position,
+          trackIsEmpty: !track.position || track.position.length === 0,
+        })
+        
+        // CRITICAL: Use layerPosition directly if provided, don't rely on sampling
+        const basePosition = base?.position ?? options?.layerPosition ?? baseSample.position
         const baseScale = base?.scale ?? (popStartState?.scale ?? baseSample.scale)
         const baseRotation = base?.rotation ?? baseSample.rotation
         const baseOpacity = base?.opacity ?? (popStartState?.opacity ?? baseSample.opacity)
+
+        console.log('[POSITION FLOW 4] Final basePosition', {
+          basePosition,
+          'base.position': base?.position,
+          'options.layerPosition': options?.layerPosition,
+          'baseSample.position': baseSample.position,
+        })
+
+        if (template === 'roll') {
+          console.log('[ROLL DEBUG] base sampling', {
+            startOffset,
+            layerPositionOpt: options?.layerPosition,
+            baseSamplePosition: baseSample.position,
+            basePosition,
+            trackPositionFrames: track.position,
+          })
+        }
         
         const clearedTrack: LayerTracks = {
           ...track,
@@ -985,6 +1122,17 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
               value: baseRotation,
             },
           ]
+          clearedTrack.opacity = [
+            {
+              time: 0,
+              value: baseOpacity,
+            },
+          ]
+          
+          console.log('[POSITION FLOW 5] clearedTrack after reset', {
+            'clearedTrack.position': clearedTrack.position,
+            basePosition,
+          })
           // For In/Out animations, don't set initial opacity - let the animation define it
           clearedTrack.opacity = isInOutAnimation ? [] : [
             {
@@ -995,6 +1143,12 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         }
 
         const baseState = sampleLayerTracks(clearedTrack, startOffset, DEFAULT_LAYER_STATE)
+
+        console.log('[POSITION FLOW 6] baseState for preset mapping', {
+          'baseState.position': baseState.position,
+          'clearedTrack.position': clearedTrack.position,
+          startOffset,
+        })
 
         const mergeFrames = <T,>(existing: TimelineKeyframe<T>[] | undefined, incoming: TimelineKeyframe<T>[]) =>
           incoming.reduce((acc, frame) => upsertKeyframe(acc, frame), existing ?? [])
@@ -1034,9 +1188,17 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
 
         const finalOpacity = mergeFrames(clearedTrack.opacity, mappedOpacity).sort((a, b) => a.time - b.time)
         
+        const finalPosition = mergeFrames(clearedTrack.position, mappedPosition).sort((a, b) => a.time - b.time)
+        
+        console.log('[POSITION FLOW 7] Final merged position', {
+          'mappedPosition': mappedPosition,
+          'clearedTrack.position': clearedTrack.position,
+          'finalPosition': finalPosition,
+        })
+        
         return {
           ...track,
-          position: mergeFrames(clearedTrack.position, mappedPosition).sort((a, b) => a.time - b.time),
+          position: finalPosition,
           scale: mergeFrames(clearedTrack.scale, mappedScale).sort((a, b) => a.time - b.time),
           rotation: mergeFrames(clearedTrack.rotation, mappedRotation).sort((a, b) => a.time - b.time),
           opacity: finalOpacity,
@@ -1117,7 +1279,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     template: TemplateId,
     start: number,
     duration: number,
-    parameters?: TimelineState['templateClips'][number]['parameters']
+    parameters?: TimelineState['templateClips'][number]['parameters'],
+    layerScale?: number
   ) => {
     const clipId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID()
@@ -1161,7 +1324,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       
       // Helper to rebuild track from clips (duplicated from updateTemplateClip for now)
       // Ideally this should be a shared function outside setState
-      const rebuildTrackFromClips = (layerId: string, currentClips: typeof nextClips, currentTracks: LayerTracks[]) => {
+      const rebuildTrackFromClips = (layerId: string, currentClips: typeof nextClips, currentTracks: LayerTracks[], baseScale: number = 1) => {
         const layerClips = currentClips
           .filter(c => c.layerId === layerId)
           .sort((a, b) => (a.start ?? 0) - (b.start ?? 0))
@@ -1190,9 +1353,23 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           
            let clipBaseState
            if (index === 0) {
-             // First clip: sample from original track
-             const sampledFromOriginal = sampleLayerTracks(track, sampleTime, DEFAULT_LAYER_STATE)
-             clipBaseState = sampledFromOriginal
+              // First clip: check if this is the very first animation (no other clips)
+              const isFirstAnimation = layerClips.length === 1
+              
+              if (isFirstAnimation) {
+                // This is the very first animation, use default state with provided layer scale
+                clipBaseState = {
+                  ...DEFAULT_LAYER_STATE,
+                  scale: baseScale
+                }
+              } else {
+                // Has other clips, sample from track
+                const sampledFromOriginal = sampleLayerTracks(track, sampleTime, DEFAULT_LAYER_STATE)
+                clipBaseState = {
+                  ...sampledFromOriginal,
+                  scale: Math.abs(sampledFromOriginal.scale), // Prevent negative scales
+                }
+              }
            } else {
              // Subsequent clips: sample from the newly built track to get the actual end state
              const sampledFromNew = sampleLayerTracks(newTrack, sampleTime, DEFAULT_LAYER_STATE)
@@ -1344,47 +1521,89 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
 
             const isInOutAnimation = [ 'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in', 'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out' ].includes(clip.template)
 
-            const mergedPosition = isInOutAnimation && preset.position
-              ? preset.position.map(f => {
+            const isInAnimation = ['fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in'].includes(clip.template)
+            const isOutAnimation = ['fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out'].includes(clip.template)
+
+            let mergedPosition = isInOutAnimation && preset.position
+              ? preset.position.map((f: any, idx: number) => {
                   const v = f.value as unknown as Vec2
+                  const isFirstKeyframe = idx === 0
+                  
+                  // Check if this keyframe represents "base position" (offset is 0,0)
+                  const isBasePosition = (v?.x ?? 0) === 0 && (v?.y ?? 0) === 0
+                  
+                  let resultX: number, resultY: number
+                  
+                  if (isInAnimation) {
+                    // For IN animations: keyframes with {0,0} should use base position, others add offset
+                    if (isBasePosition) {
+                      resultX = clipBaseState.position?.x ?? 0
+                      resultY = clipBaseState.position?.y ?? 0
+                    } else {
+                      resultX = (clipBaseState.position?.x ?? 0) + (v?.x ?? 0)
+                      resultY = (clipBaseState.position?.y ?? 0) + (v?.y ?? 0)
+                    }
+                  } else if (isOutAnimation) {
+                    // For OUT animations: first keyframe uses base, others add offset
+                    if (isFirstKeyframe) {
+                      resultX = clipBaseState.position?.x ?? 0
+                      resultY = clipBaseState.position?.y ?? 0
+                    } else {
+                      resultX = (clipBaseState.position?.x ?? 0) + (v?.x ?? 0)
+                      resultY = (clipBaseState.position?.y ?? 0) + (v?.y ?? 0)
+                    }
+                  } else {
+                    resultX = (clipBaseState.position?.x ?? 0) + (v?.x ?? 0)
+                    resultY = (clipBaseState.position?.y ?? 0) + (v?.y ?? 0)
+                  }
+                  
                   return {
                     ...f,
-                    value: {
-                      x: (clipBaseState.position?.x ?? 0) + (v?.x ?? 0),
-                      y: (clipBaseState.position?.y ?? 0) + (v?.y ?? 0),
-                    },
+                    value: { x: resultX, y: resultY },
                   }
                 })
               : preset.position
 
-            const mergedScale = isInOutAnimation && preset.scale
-              ? preset.scale // absolute for in/out
-              : preset.scale
+            const mergedScale = preset.scale // keep multipliers; layer.scale applied at render
 
             const mergedRotation = isInOutAnimation && preset.rotation
-              ? preset.rotation // absolute for in/out
+              ? preset.rotation.map((f: any, idx: number) => {
+                  const v = f.value as number
+                  const isFirstKeyframe = idx === 0
+                  
+                  // For rotation: value of 0 means "use base rotation"
+                  const isBaseRotation = v === 0
+                  
+                  let resultValue: number
+                  
+                  if (isInAnimation) {
+                    // For IN animations: rotation of 0 should use base rotation, others add to base
+                    if (isBaseRotation) {
+                      resultValue = clipBaseState.rotation ?? 0
+                    } else {
+                      resultValue = (clipBaseState.rotation ?? 0) + v
+                    }
+                  } else if (isOutAnimation) {
+                    // For OUT animations: first keyframe uses base rotation, others add to base
+                    if (isFirstKeyframe) {
+                      resultValue = clipBaseState.rotation ?? 0
+                    } else {
+                      resultValue = (clipBaseState.rotation ?? 0) + v
+                    }
+                  } else {
+                    resultValue = v
+                  }
+                  
+                  return { ...f, value: resultValue }
+                })
               : preset.rotation
-
-            const debugInOutAdd = clip.template === 'slide_in' || clip.template === 'grow_in'
-            if (debugInOutAdd) {
-              console.log(`[${clip.template}][addTemplateClip]`, {
-                start,
-                duration,
-                base: clipBaseState,
-                mergedPosition,
-                mergedScale,
-                mergedRotation,
-                opacityFrames: preset.opacity,
-                trackBefore: newTrack,
-              })
-            }
 
             newTrack = {
               ...newTrack,
-              position: mergeKeyframes(newTrack.position ?? [], mergedPosition, clipBaseState.position, isInOutAnimation ? 'replace' : 'add'),
-              scale: mergeKeyframes(newTrack.scale ?? [], mergedScale, clipBaseState.scale, isInOutAnimation ? 'replace' : 'multiply'),
-              rotation: mergeKeyframes(newTrack.rotation ?? [], mergedRotation, clipBaseState.rotation, isInOutAnimation ? 'replace' : 'add'),
-              opacity: mergeKeyframes(newTrack.opacity ?? [], preset.opacity, clipBaseState.opacity, isInOutAnimation ? 'replace' : 'multiply'),
+              position: mergeKeyframes(newTrack.position ?? [], mergedPosition, isInOutAnimation ? undefined : clipBaseState.position, isInOutAnimation ? 'replace' : 'add'),
+              scale: mergeKeyframes(newTrack.scale ?? [], mergedScale, undefined, 'replace'),
+              rotation: mergeKeyframes(newTrack.rotation ?? [], mergedRotation, isInOutAnimation ? undefined : clipBaseState.rotation, isInOutAnimation ? 'replace' : 'add'),
+              opacity: mergeKeyframes(newTrack.opacity ?? [], preset.opacity, isInOutAnimation ? undefined : clipBaseState.opacity, isInOutAnimation ? 'replace' : 'multiply'),
             }
             
            prevClipEnd = end
@@ -1420,14 +1639,14 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         newTrack.opacity = ensureStartKeyframes(newTrack.opacity, initialState.opacity)
         
         if ((newTrack.position?.length ?? 0) === 0) newTrack.position = [{ time: 0, value: initialState.position }]
-        if ((newTrack.scale?.length ?? 0) === 0) newTrack.scale = [{ time: 0, value: initialState.scale }]
+            if ((newTrack.scale?.length ?? 0) === 0) newTrack.scale = [{ time: 0, value: 1 }]
         if ((newTrack.rotation?.length ?? 0) === 0) newTrack.rotation = [{ time: 0, value: initialState.rotation }]
         if ((newTrack.opacity?.length ?? 0) === 0) newTrack.opacity = [{ time: 0, value: initialState.opacity }]
 
         return currentTracks.map(t => t.layerId === layerId ? newTrack : t)
       }
 
-      const adjustedTracks = rebuildTrackFromClips(layerId, nextClips, prev.tracks)
+      const newTracks = rebuildTrackFromClips(layerId, nextClips, prev.tracks, layerScale ?? 1)
       
       // Recalculate duration
       const getMaxPathEnd = (tracks: LayerTracks[]) => {
@@ -1446,15 +1665,15 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         return times.length ? Math.max(...times) : 0
       }
 
-      const tracksEnd = adjustedTracks.reduce((max, t) => Math.max(max, getTrackEndTime(t)), 0)
+      const tracksEnd = newTracks.reduce((max, t) => Math.max(max, getTrackEndTime(t)), 0)
       const clipsEnd = nextClips.reduce((max, c) => Math.max(max, (c.start ?? 0) + (c.duration ?? 0)), 0)
-      const pathsEnd = getMaxPathEnd(adjustedTracks)
+      const pathsEnd = getMaxPathEnd(newTracks)
       const newDuration = Math.max(tracksEnd, clipsEnd, pathsEnd, 4000)
 
       return {
         ...prev,
         templateClips: nextClips,
-        tracks: adjustedTracks,
+        tracks: newTracks,
         duration: newDuration,
         currentTime: clampTime(prev.currentTime, newDuration),
       }

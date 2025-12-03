@@ -23,6 +23,9 @@ interface MotionCanvasProps {
     y: number
     width: number
     height: number
+    width: number
+    height: number
+    scale?: number
     fillColor: number
     effects?: Array<{
       id: string
@@ -192,9 +195,27 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
       const halfW = shapeSize?.width ? (shapeSize.width * state.scale) / 2 : 0
       const halfH = shapeSize?.height ? (shapeSize.height * state.scale) / 2 : 0
       
+      const layer = layersRef.current.find(l => l.id === id)
+      const layerScale = layer?.scale ?? 1
+      
+      // Check if track has specific animations
+      const track = timelineTracks.find(t => t.layerId === id)
+      const hasPositionAnim = (track?.position?.length ?? 0) > 0
+      const hasRotationAnim = (track?.rotation?.length ?? 0) > 0
+      const hasScaleAnim = (track?.scale?.length ?? 0) > 0
+      const hasOpacityAnim = (track?.opacity?.length ?? 0) > 0
+
+      // Calculate final transform values
+      // For scale: always multiply layer.scale by animation scale (which defaults to 1)
+      // This allows "Grow In" (0->1) to become (0 -> layerScale)
+      const finalScale = state.scale * layerScale
+      
+      // For position: if animated, use timeline value. If not, use layer static position.
+      const rawPos = hasPositionAnim ? state.position : { x: layer?.x ?? 0.5, y: layer?.y ?? 0.5 }
+      
       // Allow values up to 4 (400% screen size) to be treated as normalized coordinates
-      const posX = state.position.x <= 4 ? state.position.x * screenWidth : state.position.x
-      const posY = state.position.y <= 4 ? state.position.y * screenHeight : state.position.y
+      const posX = rawPos.x <= 4 ? rawPos.x * screenWidth : rawPos.x
+      const posY = rawPos.y <= 4 ? rawPos.y * screenHeight : rawPos.y
       
       // No canvas offset needed - using 1x canvas
       const canvasPosX = posX
@@ -205,9 +226,9 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
       
       if (g && Number.isFinite(canvasPosX)) g.x = canvasPosX
       if (g && Number.isFinite(canvasPosY)) g.y = canvasPosY
-      if (g && g.scale) g.scale.set(state.scale)
-      if (g) g.rotation = state.rotation
-      if (g) g.alpha = state.opacity
+      if (g && g.scale) g.scale.set(finalScale)
+      if (g) g.rotation = hasRotationAnim ? state.rotation : 0 // Default rotation is 0
+      if (g) g.alpha = hasOpacityAnim ? state.opacity : 1 // Default opacity is 1
       
       // Apply filters (Effects + Off-canvas Blur)
       if (g) {
@@ -408,6 +429,11 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
   useEffect(() => {
     updateGraphicsFromTimeline()
   }, [sampledTimeline, isReady])
+
+  // Re-apply transforms when layer props change (e.g., scale/position updates without timeline changes)
+  useEffect(() => {
+    updateGraphicsFromTimeline()
+  }, [layers])
 
   useEffect(() => {
     const app = appRef.current

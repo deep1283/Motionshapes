@@ -247,13 +247,15 @@ const fadeInPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult 
 
 const slideInPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult => ({
   duration,
+  // Shape slides in during first 50%, opacity fades in over full duration
   position: [
-    { time: 0, value: { x: -0.5, y: 0 }, easing: 'easeOutExpo' as any }, // Start off-screen left
-    { time: duration, value: { x: 0, y: 0 }, easing: 'easeOutExpo' as any },
+    { time: 0, value: { x: -0.2, y: 0 }, easing: 'easeOutQuad' as any },
+    { time: duration * 0.5, value: { x: 0, y: 0 }, easing: 'easeOutQuad' as any },
+    { time: duration, value: { x: 0, y: 0 }, easing: 'easeOutQuad' as any },
   ],
   opacity: [
-    { time: 0, value: 0 },
-    { time: duration * 0.2, value: 1 },
+    { time: 0, value: 0, easing: 'easeInOutQuad' as any },
+    { time: duration, value: 1, easing: 'easeInOutQuad' as any },
   ]
 })
 
@@ -300,12 +302,16 @@ const spinInPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult 
 const twistInPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult => ({
   duration,
   rotation: [
-    { time: 0, value: -Math.PI, easing: 'easeOutExpo' as any },
-    { time: duration, value: 0, easing: 'easeOutExpo' as any },
+    { time: 0, value: -Math.PI / 2, easing: 'easeInOutQuad' as any }, // -90deg
+    { time: duration, value: 0, easing: 'easeInOutQuad' as any },
+  ],
+  scale: [
+    { time: 0, value: 0, easing: 'easeInOutQuad' as any },
+    { time: duration, value: 1, easing: 'easeInOutQuad' as any },
   ],
   opacity: [
-    { time: 0, value: 0, easing: 'easeOutQuad' as any },
-    { time: duration, value: 1, easing: 'easeOutQuad' as any },
+    { time: 0, value: 0, easing: 'easeInOutQuad' as any },
+    { time: duration, value: 1, easing: 'easeInOutQuad' as any },
   ]
 })
 
@@ -336,12 +342,15 @@ const fadeOutPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult
 
 const slideOutPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult => ({
   duration,
+  // Shape stays in place for first 50%, then slides out during second half
   position: [
-    { time: 0, value: { x: 0, y: 0 }, easing: 'easeInExpo' as any },
-    { time: duration, value: { x: 0.5, y: 0 }, easing: 'easeInExpo' as any },
+    { time: 0, value: { x: 0, y: 0 }, easing: 'easeInQuad' as any },
+    { time: duration * 0.5, value: { x: 0, y: 0 }, easing: 'easeInQuad' as any },
+    { time: duration, value: { x: 0.2, y: 0 }, easing: 'easeInQuad' as any },
   ],
+  // Opacity fades over the full duration
   opacity: [
-    { time: duration * 0.8, value: 1 },
+    { time: 0, value: 1 },
     { time: duration, value: 0 },
   ]
 })
@@ -389,12 +398,16 @@ const spinOutPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult
 const twistOutPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult => ({
   duration,
   rotation: [
-    { time: 0, value: 0, easing: 'easeInExpo' as any },
-    { time: duration, value: Math.PI, easing: 'easeInExpo' as any },
+    { time: 0, value: 0, easing: 'easeInOutQuad' as any },
+    { time: duration, value: Math.PI / 2, easing: 'easeInOutQuad' as any }, // +90deg
+  ],
+  scale: [
+    { time: 0, value: 1, easing: 'easeInOutQuad' as any },
+    { time: duration, value: 2, easing: 'easeInOutQuad' as any },
   ],
   opacity: [
-    { time: 0, value: 1, easing: 'easeInQuad' as any },
-    { time: duration, value: 0, easing: 'easeInQuad' as any },
+    { time: 0, value: 1, easing: 'easeInOutQuad' as any },
+    { time: duration, value: 0, easing: 'easeInOutQuad' as any },
   ]
 })
 

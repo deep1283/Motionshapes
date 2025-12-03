@@ -35,6 +35,7 @@ interface Layer {
   y: number
   width: number
   height: number
+  scale: number
   fillColor: number
   effects?: Effect[]
 }
@@ -138,7 +139,17 @@ function DashboardContent() {
       return
     }
     
-    // If we have a selected clip, update its parameters instead of re-applying the template
+    // If we have a selected clip, check if it matches the selected template
+    // If it doesn't match, clear it so we create a new clip instead of updating
+    if (selectedClipId) {
+      const clip = templateClips.find(c => c.id === selectedClipId)
+      if (!clip || clip.template !== selectedTemplate) {
+        // Clear selectedClipId if the clip doesn't exist or doesn't match the template
+        setSelectedClipId('')
+      }
+    }
+    
+    // If we have a selected clip that matches the template, update its parameters
     if (selectedClipId) {
       console.log('[TEMPLATE APPLY] Updating existing clip parameters:', selectedClipId)
       const clip = templateClips.find(c => c.id === selectedClipId)
@@ -339,9 +350,8 @@ function DashboardContent() {
       targetLayerId,
       selectedTemplate as TemplateId,
       {
-        // Only use static layer position as base if we are starting at 0.
-        // Otherwise (appending or updating mid-track), let it sample the track.
-        position: sampledState?.position ?? ((startAt === 0 && targetLayer) ? { x: targetLayer.x, y: targetLayer.y } : undefined),
+        // Don't pass base.position here - we're passing layerPosition in options instead
+        // This ensures layerPosition takes precedence for the first animation
         scale: sampledState?.scale,
         rotation: sampledState?.rotation,
         opacity: sampledState?.opacity,
@@ -350,7 +360,9 @@ function DashboardContent() {
         append: shouldAppend, 
         startAt: startAt,
         // Don't set targetDuration - let the preset use its natural duration
-        parameters: clampedRollDistance !== undefined ? { rollDistance: clampedRollDistance } : undefined
+        parameters: clampedRollDistance !== undefined ? { rollDistance: clampedRollDistance } : undefined,
+        layerScale: targetLayer?.scale,
+        layerPosition: targetLayer ? { x: targetLayer.x, y: targetLayer.y } : undefined,
       }
     )
     // Always align playhead to the start of this clip to avoid tiny offsets
@@ -488,12 +500,13 @@ function DashboardContent() {
       y: 0.5,
       width: dimensions.width,
       height: dimensions.height,
+      scale: 1,
       fillColor: 0xffffff,
     }
     setLayers((prev) => [...prev, newLayer])
     timeline.ensureTrack(newLayer.id, {
       position: { x: newLayer.x, y: newLayer.y },
-      scale: 1,
+      scale: newLayer.scale,
       rotation: 0,
       opacity: 1,
     })
@@ -573,7 +586,8 @@ function DashboardContent() {
           pathPoints: simplified,
           pathLength: length,
           templateSpeed: 1 // Default speed
-        }
+        },
+        layers.find(l => l.id === selectedLayerId)?.scale ?? 1 // Pass layer scale
       )
       
       // Set the template to 'path' so the speed control appears
@@ -617,8 +631,14 @@ function DashboardContent() {
 
   const handleScaleChange = (value: number) => {
     if (!selectedLayerId) return
-    timeline.ensureTrack(selectedLayerId)
-    timeline.setScaleKeyframe(selectedLayerId, { time: playhead, value })
+    
+    // Update the static scale of the layer
+    setLayers(prev => prev.map(l => 
+      l.id === selectedLayerId ? { ...l, scale: value } : l
+    ))
+    
+    // Update the track's base scale at time 0 to reflect the new layer scale
+    timeline.ensureTrack(selectedLayerId, { scale: value })
   }
 
   const handleClipClick = (clip: { id: string; template: string }) => {
@@ -649,15 +669,48 @@ function DashboardContent() {
             parameters: {
               templateSpeed: value
             }
-          })
+          }, layers.find(l => l.id === selectedLayerId)?.scale ?? 1)
+        } else if (clip.template === 'roll') {
+          // Recompute roll duration when speed changes
+          const newDuration = rollDurationForDistance(rollDistance, value)
+          timeline.updateTemplateClip(selectedLayerId, selectedClipId, {
+            duration: newDuration,
+            parameters: {
+              templateSpeed: value,
+              rollDistance,
+            }
+          }, layers.find(l => l.id === selectedLayerId)?.scale ?? 1)
         } else {
           // For other templates, just update the speed parameter
           timeline.updateTemplateClip(selectedLayerId, selectedClipId, {
             parameters: {
               templateSpeed: value
             }
-          })
+          }, layers.find(l => l.id === selectedLayerId)?.scale ?? 1)
         }
+      }
+    }
+  }
+
+  const handleRollDistanceChange = (value: number) => {
+    timeline.setRollDistance(value)
+
+    if (selectedClipId && selectedLayerId) {
+      const clip = templateClips.find(c => c.id === selectedClipId)
+      if (clip && clip.template === 'roll') {
+        const newDuration = rollDurationForDistance(value, templateSpeed)
+        timeline.updateTemplateClip(
+          selectedLayerId,
+          selectedClipId,
+          {
+            duration: newDuration,
+            parameters: {
+              rollDistance: value,
+              templateSpeed,
+            }
+          },
+          layers.find(l => l.id === selectedLayerId)?.scale ?? 1
+        )
       }
     }
   }
@@ -722,7 +775,7 @@ function DashboardContent() {
       spinSpeed={spinSpeed}
       spinDirection={spinDirection}
       onTemplateSpeedChange={handleTemplateSpeedChange}
-      onRollDistanceChange={timeline.setRollDistance}
+      onRollDistanceChange={handleRollDistanceChange}
       onJumpHeightChange={timeline.setJumpHeight}
       onJumpVelocityChange={timeline.setJumpVelocity}
       onPopScaleChange={timeline.setPopScale}
@@ -735,7 +788,7 @@ function DashboardContent() {
       onSpinDirectionChange={handleSpinDirectionChange}
       shakeDistance={shakeDistance}
       onShakeDistanceChange={timeline.setShakeDistance}
-      selectedLayerScale={selectedSample?.scale}
+      selectedLayerScale={layers.find(l => l.id === selectedLayerId)?.scale ?? 1}
       onSelectedLayerScaleChange={handleScaleChange}
       selectedClipDuration={selectedClipDuration}
       onClipDurationChange={handleClipDurationChange}
