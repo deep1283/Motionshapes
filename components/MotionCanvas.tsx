@@ -38,6 +38,7 @@ interface MotionCanvasProps {
   isDrawingPath?: boolean
   isDrawingLine?: boolean
   pathPoints?: Array<{ x: number; y: number }>
+  layerOrder?: string[]
   onAddPathPoint?: (x: number, y: number) => void
   onFinishPath?: () => void
   onSelectLayer?: (id: string) => void
@@ -194,7 +195,7 @@ function LineOverlay({
   )
 }
 
-export default function MotionCanvas({ template, templateVersion, layers = [], onUpdateLayerPosition, onTemplateComplete, isDrawingPath = false, isDrawingLine = false, pathPoints = [], onAddPathPoint, onFinishPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint, background: _background, offsetX = 0, offsetY = 0, popReappear = false, onCanvasBackgroundClick }: MotionCanvasProps) {
+export default function MotionCanvas({ template, templateVersion, layers = [], layerOrder = [], onUpdateLayerPosition, onTemplateComplete, isDrawingPath = false, isDrawingLine = false, pathPoints = [], onAddPathPoint, onFinishPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint, background: _background, offsetX = 0, offsetY = 0, popReappear = false, onCanvasBackgroundClick }: MotionCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<PIXI.Application | null>(null)
   const [isReady, setIsReady] = useState(false)
@@ -214,7 +215,21 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
   const filtersByLayerIdRef = useRef<Record<string, PIXI.Filter[]>>({})
   const emittersByLayerIdRef = useRef<Record<string, SimpleParticleEmitter[]>>({})
   const iconTextureCacheRef = useRef<Record<string, PIXI.Texture>>({})
-  const layersRef = useRef(layers)
+  const orderedLayers = useMemo(() => {
+    if (!layers || layers.length === 0) return []
+    if (!layerOrder || layerOrder.length === 0) return layers
+    const orderMap = new Map(layerOrder.map((id, idx) => [id, idx]))
+    return [...layers].sort((a, b) => {
+      const aIdx = orderMap.get(a.id)
+      const bIdx = orderMap.get(b.id)
+      if (aIdx === undefined && bIdx === undefined) return 0
+      if (aIdx === undefined) return 1
+      if (bIdx === undefined) return -1
+      return aIdx - bIdx
+    })
+  }, [layers, layerOrder])
+  const renderLayers = orderedLayers
+  const layersRef = useRef(renderLayers)
   const pathTraceActiveRef = useRef(false)
   const lastPathPointRef = useRef<{ x: number; y: number } | null>(null)
   const lineStartRef = useRef<{ x: number; y: number } | null>(null)
@@ -226,6 +241,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
   const playhead = useTimeline((s) => s.currentTime)
   const sampledTimeline = useMemo(() => sampleTimeline(timelineTracks, playhead), [timelineTracks, playhead])
   const timelineActions = useTimelineActions()
+
   const currentPathClip = useMemo(() => {
     if (!selectedLayerId) return null
     const track = timelineTracks.find((t) => t.layerId === selectedLayerId)
@@ -235,8 +251,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
   const [canvasBounds, setCanvasBounds] = useState({ width: 1, height: 1, left: 0, top: 0 })
   // Keep layers ref updated
   useEffect(() => {
-    layersRef.current = layers
-  }, [layers])
+    layersRef.current = renderLayers
+  }, [renderLayers])
 
   // 1. Initialize Pixi App ONCE
   useEffect(() => {
@@ -324,15 +340,23 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
     const screenWidth = bounds.width || 1
     const screenHeight = bounds.height || 1
     
-    Object.entries(sampledTimeline).forEach(([id, state]) => {
+    renderLayers.forEach((layer, idx) => {
+      const { id } = layer
+      const state = sampledTimeline[id]
+      if (!state) return
       const g = graphicsByIdRef.current[id]
       if (!g) return
+      // Set zIndex: top of timeline (idx=0) = back (low z), bottom of timeline (high idx) = front (high z)
+      g.zIndex = renderLayers.length - idx
+      if (appRef.current?.stage && appRef.current.stage.sortableChildren !== true) {
+        appRef.current.stage.sortableChildren = true
+      }
       const shapeSize = (g as PIXI.Graphics & { __shapeSize?: { width?: number; height?: number } })?.__shapeSize
       const halfW = shapeSize?.width ? (shapeSize.width * state.scale) / 2 : 0
       const halfH = shapeSize?.height ? (shapeSize.height * state.scale) / 2 : 0
       
-      const layer = layersRef.current.find(l => l.id === id)
-      const layerScale = layer?.scale ?? 1
+      const layerData = layersRef.current.find(l => l.id === id)
+      const layerScale = layerData?.scale ?? 1
       
       // Check if track has specific animations
       const track = timelineTracks.find(t => t.layerId === id)
@@ -580,7 +604,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
   // Re-apply transforms when layer props change (e.g., scale/position updates without timeline changes)
   useEffect(() => {
     updateGraphicsFromTimeline()
-  }, [layers])
+  }, [orderedLayers])
 
   useEffect(() => {
     const app = appRef.current
@@ -1377,7 +1401,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
           canvasBounds={canvasBounds}
           offsetX={offsetX}
           offsetY={offsetY}
-          layers={layers}
+          layers={renderLayers}
           selectedLayerId={selectedLayerId}
           activePathPoints={activePathPoints}
           pathPoints={pathPoints}

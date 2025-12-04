@@ -5,6 +5,8 @@ import { sampleTimeline } from '@/lib/timeline'
 
 interface TimelinePanelProps {
   layers: Array<{ id: string; shapeKind: string }>
+  layerOrder?: string[]
+  onReorderLayers?: (order: string[]) => void
   selectedLayerId?: string
   selectedTemplate?: string
   isDrawingPath?: boolean
@@ -23,7 +25,7 @@ const formatTime = (ms: number) => {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}:${String(centiseconds).padStart(2, '0')}`
 }
 
-export default function TimelinePanel({ layers, selectedLayerId, selectedTemplate, isDrawingPath, onFinishPath, onCancelPath, pathPointCount = 0, onClipClick }: TimelinePanelProps) {
+export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers, selectedLayerId, selectedTemplate, isDrawingPath, onFinishPath, onCancelPath, pathPointCount = 0, onClipClick }: TimelinePanelProps) {
   const { currentTime, duration, isPlaying, loop, tracks, templateSpeed, rollDistance, jumpHeight, jumpVelocity, popScale, popWobble, popSpeed, popCollapse, templateClips } = useTimeline((s) => ({
     currentTime: s.currentTime,
     duration: s.duration,
@@ -52,6 +54,7 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
     const saved = localStorage.getItem('timelineHeight')
     return saved ? Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, parseInt(saved))) : DEFAULT_HEIGHT
   })
+  const [draggingLayerId, setDraggingLayerId] = useState<string | null>(null)
   
   const [isResizing, setIsResizing] = useState(false)
   const resizeStartRef = useRef<{ startY: number; startHeight: number } | null>(null)
@@ -99,6 +102,32 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
       window.removeEventListener('pointerup', handleResizeEnd)
     }
   }, [isResizing, MIN_HEIGHT, MAX_HEIGHT])
+
+  const orderedLayers = useMemo(() => {
+    if (!layers || layers.length === 0) return []
+    if (!layerOrder || layerOrder.length === 0) return layers
+    const orderMap = new Map(layerOrder.map((id, idx) => [id, idx]))
+    return [...layers].sort((a, b) => {
+      const aIdx = orderMap.get(a.id)
+      const bIdx = orderMap.get(b.id)
+      if (aIdx === undefined && bIdx === undefined) return 0
+      if (aIdx === undefined) return 1
+      if (bIdx === undefined) return -1
+      return aIdx - bIdx
+    })
+  }, [layers, layerOrder])
+
+  const reorderLayerOrder = (sourceId: string, targetId: string) => {
+    if (!onReorderLayers) return
+    const currentOrder = layerOrder && layerOrder.length ? [...layerOrder] : layers.map((l) => l.id)
+    const sourceIdx = currentOrder.indexOf(sourceId)
+    const targetIdx = currentOrder.indexOf(targetId)
+    if (sourceIdx === -1 || targetIdx === -1 || sourceIdx === targetIdx) return
+    const next = [...currentOrder]
+    next.splice(sourceIdx, 1)
+    next.splice(targetIdx, 0, sourceId)
+    onReorderLayers(next)
+  }
 
   const sampled = useMemo(() => sampleTimeline(tracks, currentTime), [tracks, currentTime])
   const selectedSample = selectedLayerId ? sampled[selectedLayerId] : undefined
@@ -414,7 +443,7 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
                 Add a shape to populate the timeline.
               </div>
             )}
-            {layers.map((layer, idx) => {
+            {orderedLayers.map((layer, idx) => {
               const clips = templateClips.filter((c) => c.layerId === layer.id).sort((a, b) => a.start - b.start)
               const isCollapsed = collapsedLayers[layer.id]
               
@@ -426,17 +455,63 @@ export default function TimelinePanel({ layers, selectedLayerId, selectedTemplat
               const summaryWidth = Math.max(0, (summaryDuration / safeDuration) * 100)
 
               return (
-                <div key={layer.id} className="flex flex-col border-b border-white/5">
+                <div
+                  key={layer.id}
+                  className="flex flex-col border-b border-white/5"
+                >
                   {/* Layer Header */}
                   <div 
-                    className="flex h-8 bg-white/[0.02] hover:bg-white/[0.04] transition-colors cursor-pointer group"
-                    onClick={() => toggleLayer(layer.id)}
+                    className="flex h-8 bg-white/[0.02] hover:bg-white/[0.04] transition-colors group"
                   >
-                    <div className="w-[200px] border-r border-white/5 flex items-center px-4 gap-2">
-                      <div className="text-neutral-500 group-hover:text-neutral-300 transition-colors">
+                    <div 
+                      className="w-[200px] border-r border-white/5 flex items-center px-2 gap-2 cursor-grab active:cursor-grabbing"
+                      draggable
+                      onDragStart={(e) => {
+                        e.stopPropagation()
+                        setDraggingLayerId(layer.id)
+                        // Add drag image offset to center on cursor
+                        const target = e.currentTarget as HTMLElement
+                        target.style.opacity = '0.5'
+                      }}
+                      onDragEnd={(e) => {
+                        setDraggingLayerId(null)
+                        const target = e.currentTarget as HTMLElement
+                        target.style.opacity = '1'
+                      }}
+                      onDragOver={(e) => {
+                        if (!draggingLayerId || draggingLayerId === layer.id) return
+                        e.preventDefault()
+                        e.stopPropagation()
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        if (!draggingLayerId || draggingLayerId === layer.id) return
+                        reorderLayerOrder(draggingLayerId, layer.id)
+                        setDraggingLayerId(null)
+                      }}
+                    >
+                      {/* Drag Handle */}
+                      <div className="text-neutral-600 group-hover:text-neutral-400 transition-colors flex-shrink-0">
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                          <circle cx="3" cy="3" r="1" />
+                          <circle cx="3" cy="6" r="1" />
+                          <circle cx="3" cy="9" r="1" />
+                          <circle cx="6" cy="3" r="1" />
+                          <circle cx="6" cy="6" r="1" />
+                          <circle cx="6" cy="9" r="1" />
+                        </svg>
+                      </div>
+                      <div 
+                        className="text-neutral-500 group-hover:text-neutral-300 transition-colors cursor-pointer flex-shrink-0"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          toggleLayer(layer.id)
+                        }}
+                      >
                         {isCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                       </div>
-                      <span className="text-[11px] font-medium text-neutral-200 truncate select-none">
+                      <span className="text-[11px] font-medium text-neutral-200 truncate select-none flex-1">
                         {layer.shapeKind ? `${layer.shapeKind.charAt(0).toUpperCase()}${layer.shapeKind.slice(1)}` : 'Layer'} {idx + 1}
                       </span>
                     </div>

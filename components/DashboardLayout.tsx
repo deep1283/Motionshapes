@@ -78,6 +78,8 @@ interface DashboardLayoutProps {
   onStartDrawLine?: () => void
   showSelectShapeHint?: boolean
   layers: Array<{ id: string; shapeKind: ShapeKind }>
+  layerOrder?: string[]
+  onReorderLayers?: (order: string[]) => void
   selectedLayerId?: string
   isDrawingPath?: boolean
   isDrawingLine?: boolean
@@ -136,7 +138,9 @@ export default function DashboardLayout({
   onStartDrawPath, 
   onStartDrawLine,
   showSelectShapeHint, 
-  layers, 
+  layers,
+  layerOrder,
+  onReorderLayers,
   selectedLayerId, 
   isDrawingPath, 
   isDrawingLine,
@@ -1131,9 +1135,9 @@ export default function DashboardLayout({
         </aside>
 
         {/* Center Canvas Area */}
-        <main
-          className="relative flex flex-1 flex-col overflow-visible bg-[#050505]"
-        >
+      <main
+        className="relative flex flex-1 flex-col overflow-visible bg-[#050505]"
+      >
             {/* Toolbar */}
             <div className="absolute top-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 rounded-full border border-white/10 bg-[#0a0a0a]/80 px-2 py-1.5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-xl">
                 <Button size="icon" variant="ghost" className="h-8 w-8 rounded-full hover:bg-white/10 text-neutral-400 hover:text-white transition-colors">
@@ -1983,6 +1987,8 @@ export default function DashboardLayout({
       <div className="absolute bottom-0 left-0 right-0 z-50">
         <TimelinePanel
           layers={layers}
+          layerOrder={layerOrder}
+          onReorderLayers={onReorderLayers}
           selectedLayerId={selectedLayerId}
           selectedTemplate={selectedTemplate}
           isDrawingPath={isDrawingPath}

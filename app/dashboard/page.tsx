@@ -61,6 +61,7 @@ function DashboardContent() {
   const [pathVersion, setPathVersion] = useState(0)
   const [selectedLayerId, setSelectedLayerId] = useState('')
   const [selectedClipId, setSelectedClipId] = useState('')
+  const [layerOrder, setLayerOrder] = useState<string[]>([])
   const lastLayerBaseRef = useRef<Record<string, { x: number; y: number; scale: number }>>({})
 
   const [activeEffectId, setActiveEffectId] = useState<string>('')
@@ -529,6 +530,7 @@ function DashboardContent() {
       opacity: 1,
     })
     lastLayerBaseRef.current[newLayer.id] = { x: newLayer.x, y: newLayer.y, scale: newLayer.scale }
+    setLayerOrder((prev) => [...prev, newLayer.id]) // newest on top
     setSelectedTemplate('') // prevent auto-applying the last template to the new shape
     setTemplateVersion((v) => v + 1)
   }
@@ -832,6 +834,10 @@ function DashboardContent() {
     }
   }
 
+  const handleReorderLayers = (nextOrder: string[]) => {
+    setLayerOrder(nextOrder)
+  }
+
   return (
     <DashboardLayout
       selectedTemplate={selectedTemplate}
@@ -841,6 +847,8 @@ function DashboardContent() {
       onStartDrawLine={handleStartDrawLine}
       showSelectShapeHint={showSelectShapeHint}
       layers={layers}
+      layerOrder={layerOrder}
+      onReorderLayers={handleReorderLayers}
       selectedLayerId={selectedLayerId}
       isDrawingPath={isDrawingPath}
       isDrawingLine={isDrawingLine}
