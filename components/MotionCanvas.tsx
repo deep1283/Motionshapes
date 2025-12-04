@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { PointerEvent as ReactPointerEvent } from 'react'
 import * as PIXI from 'pixi.js'
 import 'pixi.js/app' // ensure Application plugins (ticker/resize) are registered
 import 'pixi.js/events' // enable pointer events
@@ -59,7 +60,138 @@ interface MotionCanvasProps {
   offsetY?: number
   popReappear?: boolean
   onCanvasBackgroundClick?: () => void
-  isDrawingLine?: boolean
+}
+
+type LineOverlayProps = {
+  canvasBounds: { width: number; height: number; left: number; top: number }
+  offsetX: number
+  offsetY: number
+  layers: MotionCanvasProps['layers']
+  selectedLayerId?: string
+  activePathPoints: Array<{ x: number; y: number }>
+  pathPoints: Array<{ x: number; y: number }>
+  onClearPath?: () => void
+  onAddPathPoint?: (x: number, y: number) => void
+  onUpdateActivePathPoint?: (index: number, x: number, y: number) => void
+  onFinishPath?: (pts?: Array<{ x: number; y: number }>) => void
+  lineStartRef: React.MutableRefObject<{ x: number; y: number } | null>
+  lineEndRef: React.MutableRefObject<{ x: number; y: number } | null>
+  lineHasEndRef: React.MutableRefObject<boolean>
+  lineDragActiveRef: React.MutableRefObject<boolean>
+}
+
+function LineOverlay({
+  canvasBounds,
+  offsetX,
+  offsetY,
+  layers,
+  selectedLayerId,
+  activePathPoints,
+  pathPoints,
+  onClearPath,
+  onAddPathPoint,
+  onUpdateActivePathPoint,
+  onFinishPath,
+  lineStartRef,
+  lineEndRef,
+  lineHasEndRef,
+  lineDragActiveRef,
+}: LineOverlayProps) {
+  const { width, height } = canvasBounds
+  if (!width || !height) return null
+
+  const layerBase = layers?.find((l) => l.id === selectedLayerId)
+  const layerPos = layerBase ? { x: layerBase.x, y: layerBase.y } : { x: 0.5, y: 0.5 }
+  const points = activePathPoints.length ? activePathPoints : pathPoints
+  const currentStart = lineStartRef.current ?? points[0] ?? layerPos
+  const currentEnd = lineEndRef.current ?? points[1] ?? currentStart
+
+  const toScreen = (pt: { x: number; y: number }) => ({
+    x: pt.x * width + offsetX,
+    y: pt.y * height + offsetY,
+  })
+
+  const normalizePointer = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const x = (e.clientX - canvasBounds.left - offsetX) / width
+    const y = (e.clientY - canvasBounds.top - offsetY) / height
+    return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) }
+  }
+
+  const handleDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const clamped = normalizePointer(e)
+    lineStartRef.current = clamped
+    lineEndRef.current = clamped
+    lineHasEndRef.current = false
+    onClearPath?.()
+    onAddPathPoint?.(clamped.x, clamped.y) // start point
+    lineDragActiveRef.current = true
+  }
+
+  const handleMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!lineDragActiveRef.current || !lineStartRef.current) return
+    const clamped = normalizePointer(e)
+    lineEndRef.current = clamped
+    if (!lineHasEndRef.current) {
+      onAddPathPoint?.(clamped.x, clamped.y) // add end
+      lineHasEndRef.current = true
+    } else {
+      onUpdateActivePathPoint?.(1, clamped.x, clamped.y)
+    }
+  }
+
+  const handleUp = () => {
+    if (!lineDragActiveRef.current || !lineStartRef.current || !lineEndRef.current) return
+    lineDragActiveRef.current = false
+    const start = lineStartRef.current
+    let end = lineEndRef.current
+    if (Math.hypot(end.x - start.x, end.y - start.y) < 0.001) {
+      end = { x: Math.min(1, start.x + 0.05), y: start.y }
+    }
+    onFinishPath?.([start, end])
+    lineStartRef.current = null
+    lineEndRef.current = null
+    lineHasEndRef.current = false
+  }
+
+  const startScreen = toScreen(currentStart)
+  const endScreen = toScreen(currentEnd)
+
+  return (
+    <div
+      className="absolute inset-0 cursor-crosshair"
+      style={{ zIndex: 24 }}
+      onPointerDown={handleDown}
+      onPointerMove={handleMove}
+      onPointerUp={handleUp}
+    >
+      <svg className="h-full w-full">
+        <line
+          x1={startScreen.x}
+          y1={startScreen.y}
+          x2={endScreen.x}
+          y2={endScreen.y}
+          stroke="#22c55e"
+          strokeWidth={2}
+        />
+        <circle
+          cx={startScreen.x}
+          cy={startScreen.y}
+          r={7}
+          fill="#10b981"
+          stroke="#0f172a"
+          strokeWidth={2}
+        />
+        <circle
+          cx={endScreen.x}
+          cy={endScreen.y}
+          r={8}
+          fill="#ef4444"
+          stroke="#0f172a"
+          strokeWidth={2}
+        />
+      </svg>
+    </div>
+  )
 }
 
 export default function MotionCanvas({ template, templateVersion, layers = [], onUpdateLayerPosition, onTemplateComplete, isDrawingPath = false, isDrawingLine = false, pathPoints = [], onAddPathPoint, onFinishPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint, background: _background, offsetX = 0, offsetY = 0, popReappear = false, onCanvasBackgroundClick }: MotionCanvasProps) {
@@ -1240,103 +1372,25 @@ export default function MotionCanvas({ template, templateVersion, layers = [], o
       )}
 
       {/* Line draw overlay (two-point, draggable end) */}
-      {isDrawingLine && (() => {
-        const { width, height } = canvasBounds
-        if (!width || !height) return null
-        const layerBase = layersRef.current.find((l) => l.id === selectedLayerId)
-        const layerPos = layerBase ? { x: layerBase.x, y: layerBase.y } : { x: 0.5, y: 0.5 }
-
-        const currentStart = lineStartRef.current ?? layerPos
-        const currentEnd = lineEndRef.current ?? currentStart
-
-        const toScreen = (pt: { x: number; y: number }) => ({
-          x: pt.x * width + offsetX,
-          y: pt.y * height + offsetY,
-        })
-        const startScreen = toScreen(currentStart)
-        const endScreen = toScreen(currentEnd)
-
-        const handleDown = (e: React.PointerEvent<HTMLDivElement>) => {
-          if (!containerRef.current) return
-          const bounds = containerRef.current.getBoundingClientRect()
-          const x = (e.clientX - bounds.left - offsetX) / bounds.width
-          const y = (e.clientY - bounds.top - offsetY) / bounds.height
-          const clamped = { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) }
-          lineStartRef.current = clamped
-          lineEndRef.current = clamped
-          lineHasEndRef.current = false
-          onClearPath?.()
-          onAddPathPoint?.(clamped.x, clamped.y)
-          lineDragActiveRef.current = true
-        }
-
-        const handleMove = (e: React.PointerEvent<HTMLDivElement>) => {
-          if (!lineDragActiveRef.current || !containerRef.current || !lineStartRef.current) return
-          const bounds = containerRef.current.getBoundingClientRect()
-          const x = (e.clientX - bounds.left - offsetX) / bounds.width
-          const y = (e.clientY - bounds.top - offsetY) / bounds.height
-          const clamped = { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) }
-          lineEndRef.current = clamped
-          if (!lineHasEndRef.current) {
-            onAddPathPoint?.(clamped.x, clamped.y)
-            lineHasEndRef.current = true
-          } else {
-            onUpdateActivePathPoint?.(1, clamped.x, clamped.y)
-          }
-        }
-
-        const handleUp = () => {
-          if (!lineDragActiveRef.current || !lineStartRef.current || !lineEndRef.current) return
-          lineDragActiveRef.current = false
-          const start = lineStartRef.current
-          let end = lineEndRef.current
-          if (Math.hypot(end.x - start.x, end.y - start.y) < 0.001) {
-            // Avoid zero-length lines
-            end = { x: Math.min(1, start.x + 0.05), y: start.y }
-          }
-          onFinishPath?.([start, end])
-          lineStartRef.current = null
-          lineEndRef.current = null
-          lineHasEndRef.current = false
-        }
-
-        return (
-          <div
-            className="absolute inset-0 cursor-crosshair"
-            style={{ zIndex: 24 }}
-            onPointerDown={handleDown}
-            onPointerMove={handleMove}
-            onPointerUp={handleUp}
-          >
-            <svg className="h-full w-full">
-              <line
-                x1={startScreen.x}
-                y1={startScreen.y}
-                x2={endScreen.x}
-                y2={endScreen.y}
-                stroke="#22c55e"
-                strokeWidth={2}
-              />
-              <circle
-                cx={startScreen.x}
-                cy={startScreen.y}
-                r={7}
-                fill="#10b981"
-                stroke="#0f172a"
-                strokeWidth={2}
-              />
-              <circle
-                cx={endScreen.x}
-                cy={endScreen.y}
-                r={8}
-                fill="#ef4444"
-                stroke="#0f172a"
-                strokeWidth={2}
-              />
-            </svg>
-          </div>
-        )
-      })()}
+      {isDrawingLine && (
+        <LineOverlay
+          canvasBounds={canvasBounds}
+          offsetX={offsetX}
+          offsetY={offsetY}
+          layers={layers}
+          selectedLayerId={selectedLayerId}
+          activePathPoints={activePathPoints}
+          pathPoints={pathPoints}
+          onClearPath={onClearPath}
+          onAddPathPoint={onAddPathPoint}
+          onUpdateActivePathPoint={onUpdateActivePathPoint}
+          onFinishPath={onFinishPath}
+          lineStartRef={lineStartRef}
+          lineEndRef={lineEndRef}
+          lineHasEndRef={lineHasEndRef}
+          lineDragActiveRef={lineDragActiveRef}
+        />
+      )}
 
       {/* Fallback DOM previews removed; timeline drives all motion */}
     </div>
