@@ -72,7 +72,11 @@ type TimelineState = {
 
 export type TimelineStore = ReturnType<typeof createTimelineStore>
 
-const clampTime = (time: number, duration: number) => Math.max(0, Math.min(time, duration))
+const clampTime = (time: number, duration: number) => {
+  const safeTime = Number.isFinite(time) ? time : 0
+  const safeDuration = Number.isFinite(duration) ? duration : 0
+  return Math.max(0, Math.min(safeTime, safeDuration))
+}
 
 const defaultState: TimelineState = {
   tracks: [],
@@ -496,12 +500,6 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
                const baseScaleFromLayer = layerBase?.scale ?? baseScale
                const baseRotation = layerBase?.rotation ?? DEFAULT_LAYER_STATE.rotation
                const baseOpacity = layerBase?.opacity ?? DEFAULT_LAYER_STATE.opacity
-               console.log('[REBUILD DEBUG] Using layerPosition for In/Out animation', {
-                 clipTemplate: clip.template,
-                 layerPosition,
-                 layerBase,
-                 basePosition,
-               })
                clipBaseState = {
                  position: basePosition,
                  scale: baseScaleFromLayer,
@@ -510,12 +508,6 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
                }
              } else {
                // For other animations, sample from the track at start
-               console.log('[REBUILD DEBUG] Sampling track for first clip', {
-                 layerId,
-                 sampleTime,
-                 'track.position': track.position,
-                 clipTemplate: clip.template,
-               })
              // For subsequent clips or non In/Out, prefer stored layerBase if present
              const basePositionOverride = layerBase?.position
              const baseScaleOverride = layerBase?.scale
@@ -529,9 +521,6 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
                rotation: baseRotationOverride ?? DEFAULT_LAYER_STATE.rotation,
                opacity: baseOpacityOverride ?? DEFAULT_LAYER_STATE.opacity,
              })
-               console.log('[REBUILD DEBUG] Sampled result', {
-                 'sampledFromOriginal.position': sampledFromOriginal.position,
-               })
                clipBaseState = {
                  ...sampledFromOriginal,
                  scale: Math.abs(sampledFromOriginal.scale),
@@ -766,19 +755,6 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
                   value: { x: resultX, y: resultY },
                 }
                 
-                if (clip.template === 'slide_in' || clip.template === 'slide_out') {
-                  console.log(`[${clip.template.toUpperCase()} DEBUG AFTER ROUNDING]`, {
-                    idx,
-                    isFirstKeyframe,
-                    isLastKeyframe,
-                    isBasePosition,
-                    presetValue: v,
-                    clipBaseState: clipBaseState.position,
-                    resultValue: result.value,
-                    wasRounded: !isBasePosition && !isFirstKeyframe,
-                  })
-                }
-                
                 return result
               })
             : preset.position
@@ -825,18 +801,6 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             opacity: mergeKeyframes(newTrack.opacity ?? [], preset.opacity, isInOutAnimation ? undefined : clipBaseState.opacity, isInOutAnimation ? 'replace' : 'multiply'),
           }
           
-          if (clip.template === 'grow_in') {
-            console.log('[GROW_IN DEBUG]', {
-              clipBaseState,
-              clipBaseStateScaleAfterAbs: clipBaseState.scale,
-              presetScale: preset.scale,
-              presetRotation: preset.rotation,
-              mergedScale,
-              mergedRotation,
-              trackAfterMerge: newTrack,
-            })
-          }
-           
            // Update prevClipEnd for next iteration
            prevClipEnd = end
          })
@@ -1051,19 +1015,34 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         ? sampleLayerTracks(targetTrackBefore, priorClipForLayer.start ?? 0, DEFAULT_LAYER_STATE)
         : null
 
+      // Check if we're replacing an existing clip BEFORE mapping tracks
+      // We need these variables accessible both inside and outside the map
+      let existingClip = prev.templateClips.find(
+        (c) => c.layerId === layerId && Math.abs(c.start - (options?.startAt ?? 0)) < 1 && c.template === template
+      )
+      
+      // If no clip found at target position, check if we're updating an existing clip's parameters
+      if (!existingClip && !options?.append) {
+        const clipsForTemplate = prev.templateClips
+          .filter((c) => c.layerId === layerId && c.template === template)
+          .sort((a, b) => b.start - a.start)
+        
+        if (clipsForTemplate.length > 0 && Math.abs(clipsForTemplate[0].start - (options?.startAt ?? 0)) < 100) {
+          existingClip = clipsForTemplate[0]
+        }
+      }
+
+      // Generate clipId after finding existingClip
+      const newClipId = existingClip ? existingClip.id : (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `clip-${Date.now()}-${Math.random()}`)
+
       const tracks = prev.tracks.map((track) => {
         if (track.layerId !== layerId) return track
 
         const append = options?.append ?? false
         const startOffset = typeof options?.startAt === 'number' ? options.startAt : append ? getTrackEndTime(track) : 0
         appliedStartOffset = startOffset
-        
-        console.log('[POSITION FLOW 1] Initial state', {
-          template,
-          startOffset,
-          'options.layerPosition': options?.layerPosition,
-          'track.position (before insert)': track.position,
-        })
         
         // CRITICAL: If layerPosition is provided and startOffset is 0, insert it at time 0 BEFORE sampling
         // This ensures the track has the correct position when we sample it
@@ -1073,9 +1052,6 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             ...track,
             position: upsertKeyframe(track.position ?? [], { time: 0, value: options.layerPosition })
           }
-          console.log('[POSITION FLOW 2] After inserting layerPosition', {
-            'trackWithLayerPosition.position': trackWithLayerPosition.position,
-          })
         }
         
         const trimFrames = <T,>(frames: TimelineKeyframe<T>[] | undefined) =>
@@ -1092,21 +1068,6 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           }
         )
         
-        console.log('[POSITION FLOW 3] After sampling', {
-          'baseSample.position': baseSample.position,
-        })
-        
-        console.log('[POSITION DEBUG] applyPresetToLayer', {
-          template,
-          layerId,
-          startOffset,
-          'options.layerPosition': options?.layerPosition,
-          'base.position': base?.position,
-          'baseSample.position': baseSample.position,
-          'track.position': track.position,
-          trackIsEmpty: !track.position || track.position.length === 0,
-        })
-        
         // CRITICAL: Use the authoritative layer base if provided; otherwise fall back to sampling
         const layerBasePosition = options?.layerBase?.position ?? options?.layerPosition
         const layerBaseScale = options?.layerBase?.scale
@@ -1119,23 +1080,6 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         const baseRotation = base?.rotation ?? layerBaseRotation ?? baseSample.rotation
         const baseOpacity = base?.opacity ?? layerBaseOpacity ?? (popStartState?.opacity ?? baseSample.opacity)
 
-        console.log('[POSITION FLOW 4] Final basePosition', {
-          basePosition,
-          'base.position': base?.position,
-          'options.layerPosition': options?.layerPosition,
-          'baseSample.position': baseSample.position,
-        })
-
-        if (template === 'roll') {
-          console.log('[ROLL DEBUG] base sampling', {
-            startOffset,
-            layerPositionOpt: options?.layerPosition,
-            baseSamplePosition: baseSample.position,
-            basePosition,
-            trackPositionFrames: track.position,
-          })
-        }
-        
         const clearedTrack: LayerTracks = {
           ...track,
           position: trimFrames(track.position),
@@ -1144,6 +1088,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           opacity: trimFrames(track.opacity),
         }
         
+        // When appending, add a keyframe at startOffset with the sampled state to ensure continuity
         // When appending, add a keyframe at startOffset with the sampled state to ensure continuity
         if (append && startOffset > 0) {
           clearedTrack.position = [
@@ -1204,11 +1149,6 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
               value: baseOpacity,
             },
           ]
-          
-          console.log('[POSITION FLOW 5] clearedTrack after reset', {
-            'clearedTrack.position': clearedTrack.position,
-            basePosition,
-          })
           // For In/Out animations, don't set initial opacity - let the animation define it
           clearedTrack.opacity = isInOutAnimation ? [] : [
             {
@@ -1220,12 +1160,6 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
 
         const baseState = sampleLayerTracks(clearedTrack, startOffset, DEFAULT_LAYER_STATE)
 
-        console.log('[POSITION FLOW 6] baseState for preset mapping', {
-          'baseState.position': baseState.position,
-          'clearedTrack.position': clearedTrack.position,
-          startOffset,
-        })
-
         const mergeFrames = <T,>(existing: TimelineKeyframe<T>[] | undefined, incoming: TimelineKeyframe<T>[]) =>
           incoming.reduce((acc, frame) => upsertKeyframe(acc, frame), existing ?? [])
 
@@ -1233,18 +1167,21 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           preset.position?.map((frame: TimelineKeyframe<Vec2>) => ({
             ...normalizePositionFrame(frame, baseState.position),
             time: startOffset + scaleTime(frame.time),
+            clipId: newClipId, // Tag with clip ID for deletion
           })) ?? []
 
         const mappedScale =
           preset.scale?.map((f: TimelineKeyframe<number>) => ({
             ...f,
             time: startOffset + scaleTime(f.time),
+            clipId: newClipId, // Tag with clip ID for deletion
           })) ?? []
 
         const mappedRotation =
           preset.rotation?.map((f: TimelineKeyframe<number>) => ({
             ...normalizeNumberFrame(f, baseState.rotation, true),
             time: startOffset + scaleTime(f.time),
+            clipId: newClipId, // Tag with clip ID for deletion
           })) ?? []
 
         const isInOutAnimation = [
@@ -1256,21 +1193,17 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           ? preset.opacity?.map((f: TimelineKeyframe<number>) => ({
               ...f,
               time: startOffset + scaleTime(f.time),
+              clipId: newClipId, // Tag with clip ID for deletion
             })) ?? []
           : preset.opacity?.map((f: TimelineKeyframe<number>) => ({
               ...normalizeNumberFrame(f, baseState.opacity, false),
               time: startOffset + scaleTime(f.time),
+              clipId: newClipId, // Tag with clip ID for deletion
             })) ?? []
 
         const finalOpacity = mergeFrames(clearedTrack.opacity, mappedOpacity).sort((a, b) => a.time - b.time)
         
         const finalPosition = mergeFrames(clearedTrack.position, mappedPosition).sort((a, b) => a.time - b.time)
-        
-        console.log('[POSITION FLOW 7] Final merged position', {
-          'mappedPosition': mappedPosition,
-          'clearedTrack.position': clearedTrack.position,
-          'finalPosition': finalPosition,
-        })
         
         return {
           ...track,
@@ -1284,37 +1217,13 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       const contentEnd = tracks.reduce((max, t) => Math.max(max, getTrackEndTime(t)), 0)
       const pathsEnd = getMaxPathEnd(tracks)
       const segmentDuration = scaleTime(preset.duration ?? 0)
-      
-      // Check if we're replacing an existing clip
-      // Priority 1: Find clip at the exact target position (for re-applying at same position)
-      // Priority 2: Find the most recent clip for this template (for parameter updates)
-      let existingClip = prev.templateClips.find(
-        (c) => c.layerId === layerId && Math.abs(c.start - appliedStartOffset) < 1 && c.template === template
-      )
-      
-      // If no clip found at target position, check if we're updating an existing clip's parameters
-      // This handles the case where user changes template controls (e.g., Jump Height)
-      // IMPORTANT: Only do this for the SAME template to avoid replacing different templates
-      if (!existingClip && !options?.append) {
-        const clipsForTemplate = prev.templateClips
-          .filter((c) => c.layerId === layerId && c.template === template)
-          .sort((a, b) => b.start - a.start) // Sort by start time, descending
-        
-        // Only use the most recent clip if it's at a similar position (within 100ms)
-        // This prevents replacing clips when switching templates
-        if (clipsForTemplate.length > 0 && Math.abs(clipsForTemplate[0].start - appliedStartOffset) < 100) {
-          existingClip = clipsForTemplate[0]
-        }
-      }
 
-      const clipId = existingClip ? existingClip.id : (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-        ? crypto.randomUUID()
-        : `clip-${Date.now()}-${Math.random()}`)
+      // newClipId already generated above (before tracks.map) for tagging keyframes
 
       const nextClips = [
-        ...prev.templateClips.filter((c) => c.id !== clipId),
+        ...prev.templateClips.filter((c) => c.id !== newClipId),
         {
-          id: clipId,
+          id: newClipId,
           layerId,
           template,
           start: appliedStartOffset,
@@ -1800,36 +1709,80 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     return clipId
   }
 
-  const removeTemplateClip = (clipId: string) => {
+  const removeTemplateClip = (
+    clipId: string,
+    layerBase?: { position?: Vec2; scale?: number; rotation?: number; opacity?: number }
+  ) => {
     setState((prev) => {
+      const clipToRemove = prev.templateClips.find((c) => c.id === clipId)
+      if (!clipToRemove) return prev
+      
+      // Remove the clip from templateClips
       const nextClips = prev.templateClips.filter((c) => c.id !== clipId)
       
-      // Also need to rebuild tracks for the affected layer
-      const clipToRemove = prev.templateClips.find(c => c.id === clipId)
-      let nextTracks = prev.tracks
-      
-      if (clipToRemove) {
-        // Rebuild tracks for this layer without the removed clip
-        // We can reuse rebuildTrackFromClips logic if we extract it, 
-        // but for now let's just clear the track if no clips remain, 
-        // or we'd need to fully rebuild.
-        // Simplest approach: if no clips remain for layer, clear track.
-        const remainingLayerClips = nextClips.filter(c => c.layerId === clipToRemove.layerId)
-        if (remainingLayerClips.length === 0) {
-           nextTracks = prev.tracks.map(t => t.layerId === clipToRemove.layerId ? { ...t, position: [], scale: [], rotation: [], opacity: [] } : t)
-        } else {
-           // If clips remain, we should ideally rebuild. 
-           // For now, let's just leave the track as is (it might be slightly stale but acceptable for removal context)
-           // OR better: trigger a rebuild.
-           // Since we don't have easy access to rebuildTrackFromClips here without duplicating code,
-           // let's just filter out the clip.
+      // Filter keyframes by clipId - remove all keyframes belonging to this clip
+      const nextTracks = prev.tracks.map((track) => {
+        if (track.layerId !== clipToRemove.layerId) return track
+        
+        const clipStart = clipToRemove.start ?? 0
+        const clipEnd = clipStart + (clipToRemove.duration ?? 0)
+        
+        // Filter out keyframes with matching clipId OR within the clip's time range
+        // This handles both new keyframes (with clipId) and old keyframes (without clipId)
+        const filterKeyframes = <T,>(frames: TimelineKeyframe<T>[] | undefined) => {
+          return (frames ?? []).filter((f) => {
+            // Always keep base keyframes at time=0
+            if (f.time === 0) return true
+            
+            // If keyframe has clipId, check if it matches the deleted clip
+            if (f.clipId) {
+              return f.clipId !== clipId
+            }
+            
+            // For old keyframes without clipId, filter by time range
+            // Keep keyframes outside the deleted clip's time range
+            // IMPORTANT: Use <= for start to keep keyframes at exactly clipStart
+            // Those keyframes belong to the PREVIOUS clip's end, not this clip's start
+            return f.time <= clipStart || f.time >= clipEnd
+          })
         }
-      }
+        
+        return {
+          ...track,
+          position: filterKeyframes(track.position),
+          scale: filterKeyframes(track.scale),
+          rotation: filterKeyframes(track.rotation),
+          opacity: filterKeyframes(track.opacity),
+          // Paths don't have clipId, keep them as is for now
+          paths: track.paths,
+        }
+      })
+      
+      // Recompute duration
+      const clipsEnd = nextClips.reduce((max, c) => {
+        const start = Number.isFinite(c.start) ? (c.start as number) : 0
+        const dur = Number.isFinite(c.duration) ? (c.duration as number) : 0
+        return Math.max(max, start + dur)
+      }, 0)
+      
+      const tracksEnd = nextTracks.reduce((max, t) => {
+        const times: number[] = []
+        if (t.position?.length) times.push(t.position[t.position.length - 1].time)
+        if (t.scale?.length) times.push(t.scale[t.scale.length - 1].time)
+        if (t.rotation?.length) times.push(t.rotation[t.rotation.length - 1].time)
+        if (t.opacity?.length) times.push(t.opacity[t.opacity.length - 1].time)
+        const filtered = times.filter(Number.isFinite)
+        return Math.max(max, filtered.length ? Math.max(...filtered) : 0)
+      }, 0)
+      
+      const newDuration = Math.max(clipsEnd, tracksEnd, 4000)
 
       return {
         ...prev,
         templateClips: nextClips,
-        tracks: nextTracks
+        tracks: nextTracks,
+        duration: newDuration,
+        currentTime: clampTime(prev.currentTime, newDuration),
       }
     })
   }

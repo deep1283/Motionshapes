@@ -592,7 +592,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     
     app.ticker.add(update)
     return () => {
-      app.ticker.remove(update)
+      app.ticker?.remove(update)
     }
   }, [isReady])
 
@@ -1033,7 +1033,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             totalLen += len
             segments.push({ a, b, len })
           }
-          console.log('[path] start', { id: layer.id, pts, totalLen, segments: segments.length })
           const durationMs = 2000
           let elapsed = 0
           const cb = (ticker?: PIXI.Ticker) => {
@@ -1068,7 +1067,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
               notifyComplete()
               onPathPlaybackComplete?.()
               app.ticker.remove(cb)
-              console.log('[path] end', { id: layer.id, x: g.x, y: g.y })
             }
           }
           app.ticker.add(cb)

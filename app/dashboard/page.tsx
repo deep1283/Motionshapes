@@ -1,13 +1,15 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import DashboardLayout, { BackgroundSettings, Effect, EffectType } from '@/components/DashboardLayout'
 import dynamic from 'next/dynamic'
 import { TimelineProvider, useTimeline, useTimelineActions } from '@/lib/timeline-store'
 import { sampleTimeline } from '@/lib/timeline'
-import { TemplateId, rollDurationForDistance, jumpHeightForDuration } from '@/lib/presets'
+import type { TemplateId } from '@/lib/presets'
+import { rollDurationForDistance, jumpHeightForDuration } from '@/lib/presets'
+import ConfirmDialog from '@/components/ConfirmDialog'
 
 // Dynamically import MotionCanvas to avoid SSR issues with Pixi.js
 const MotionCanvas = dynamic(() => import('@/components/MotionCanvas'), { 
@@ -63,6 +65,10 @@ function DashboardContent() {
   const [selectedClipId, setSelectedClipId] = useState('')
   const [layerOrder, setLayerOrder] = useState<string[]>([])
   const lastLayerBaseRef = useRef<Record<string, { x: number; y: number; scale: number }>>({})
+  
+  // Delete confirmation dialog state
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<{ type: 'clip' | 'layer'; id: string; name?: string } | null>(null)
 
   const [activeEffectId, setActiveEffectId] = useState<string>('')
   const [showSelectShapeHint, setShowSelectShapeHint] = useState(false)
@@ -154,7 +160,6 @@ function DashboardContent() {
     
     // If we have a selected clip that matches the template, update its parameters
     if (selectedClipId) {
-      console.log('[TEMPLATE APPLY] Updating existing clip parameters:', selectedClipId)
       const clip = templateClips.find(c => c.id === selectedClipId)
       
       // Only update if the selected template matches the clip's template
@@ -198,14 +203,6 @@ function DashboardContent() {
     const targetLayerId = selectedLayerId
     const targetLayer = layers.find((l) => l.id === targetLayerId)
     
-    console.log('[LAYER DEBUG]', { 
-      layerId: targetLayerId, 
-      layerX: targetLayer?.x, 
-      layerY: targetLayer?.y,
-      layerScale: targetLayer?.scale
-    })
-
-
     const clipsForLayer = templateClips
       .filter(c => c.layerId === targetLayerId)
       .sort((a, b) => b.start - a.start)
@@ -281,18 +278,6 @@ function DashboardContent() {
       // 2. Clips exist but parameters have changed (user adjusted controls)
       
       const clipsExistForSelectedTemplate = existingClipsForTemplate.length > 0
-      
-      console.log('[DRAG DEBUG] useEffect fired:', {
-        selectedTemplate,
-        clipsExistForSelectedTemplate,
-        existingClipsCount: existingClipsForTemplate.length,
-        existingClips: existingClipsForTemplate.map(c => ({
-          template: c.template,
-          start: c.start,
-          duration: c.duration
-        }))
-      })
-      
       if (clipsExistForSelectedTemplate) {
         // Clips already exist for this template
         // Check if parameters match - if they do, this is just a drag/move operation
@@ -300,52 +285,27 @@ function DashboardContent() {
           if (c.template === 'roll') {
             const expectedDuration = rollDurationForDistance(rollDistance, templateSpeed)
             const matches = Math.abs(c.duration - expectedDuration) < 10
-            console.log('[DRAG DEBUG] Roll parameter check:', {
-              clipDuration: c.duration,
-              expectedDuration,
-              diff: Math.abs(c.duration - expectedDuration),
-              matches
-            })
             return matches
           } else if (c.template === 'jump') {
             const calculatedHeight = jumpHeightForDuration(c.duration, jumpVelocity)
             const matches = Math.abs(calculatedHeight - jumpHeight) < 0.05
-            console.log('[DRAG DEBUG] Jump parameter check:', {
-              clipDuration: c.duration,
-              calculatedHeight,
-              currentHeight: jumpHeight,
-              diff: Math.abs(calculatedHeight - jumpHeight),
-              matches
-            })
             return matches
           } else if (c.template === 'pop') {
             const expectedDuration = 1000 / Math.max(0.05, popSpeed)
             const matches = Math.abs(c.duration - expectedDuration) < 20
-            console.log('[DRAG DEBUG] Pop parameter check:', {
-              clipDuration: c.duration,
-              expectedDuration,
-              diff: Math.abs(c.duration - expectedDuration),
-              matches
-            })
             return matches
           }
           return false
         })
-        
-        console.log('[DRAG DEBUG] Parameters match result:', parametersMatch)
-        
+
         if (parametersMatch) {
           // Parameters match, so this is just a drag/position change
           // Skip applying preset to avoid duplicates
-          console.log('[DRAG DEBUG] SKIPPING - parameters match, this is a drag operation')
           return
         }
-        
-        console.log('[DRAG DEBUG] PROCEEDING - parameters changed, updating clip')
+
         // Parameters don't match, so user changed controls
         // Proceed with applying preset to update the clip
-      } else {
-        console.log('[DRAG DEBUG] PROCEEDING - no clips exist for this template yet')
       }
       
       const maxDistanceRight = 1.0 - startPosition // Distance to right edge from actual start position
@@ -399,10 +359,6 @@ function DashboardContent() {
     // They should only update existing clips via dedicated handlers (handleTemplateSpeedChange, etc.)
     // not by re-triggering this effect
   ])
-
-  if (isLoading) {
-    return <div className="flex h-screen w-screen items-center justify-center bg-[#0a0a0a] text-white">Loading...</div>
-  }
 
   const handleTemplateSelect = (templateId: string) => {
     setSelectedTemplate((prev) => (prev === templateId ? '' : templateId))
@@ -838,90 +794,215 @@ function DashboardContent() {
     setLayerOrder(nextOrder)
   }
 
-  return (
-    <DashboardLayout
-      selectedTemplate={selectedTemplate}
-      onSelectTemplate={handleTemplateSelect}
-      onAddShape={handleAddShape}
-      onStartDrawPath={handleStartDrawPath}
-      onStartDrawLine={handleStartDrawLine}
-      showSelectShapeHint={showSelectShapeHint}
-      layers={layers}
-      layerOrder={layerOrder}
-      onReorderLayers={handleReorderLayers}
-      selectedLayerId={selectedLayerId}
-      isDrawingPath={isDrawingPath}
-      isDrawingLine={isDrawingLine}
-      onFinishPath={() => handleFinishPath()}
-      onCancelPath={handleCancelPath}
-      pathPointCount={pathPoints.length}
-      background={background}
-      onBackgroundChange={setBackground}
-      templateSpeed={templateSpeed}
-      rollDistance={rollDistance}
-      jumpHeight={jumpHeight}
-      jumpVelocity={jumpVelocity}
-      popScale={popScale}
-      popSpeed={popSpeed}
-      popCollapse={popCollapse}
-      popReappear={popReappear}
-      pulseScale={pulseScale}
-      pulseSpeed={pulseSpeed}
-      spinSpeed={spinSpeed}
-      spinDirection={spinDirection}
-      onTemplateSpeedChange={handleTemplateSpeedChange}
-      onRollDistanceChange={handleRollDistanceChange}
-      onJumpHeightChange={timeline.setJumpHeight}
-      onJumpVelocityChange={timeline.setJumpVelocity}
-      onPopScaleChange={timeline.setPopScale}
-      onPopSpeedChange={timeline.setPopSpeed}
-      onPopCollapseChange={timeline.setPopCollapse}
-      onPopReappearChange={timeline.setPopReappear}
-      onPulseScaleChange={handlePulseScaleChange}
-      onPulseSpeedChange={handlePulseSpeedChange}
-      onSpinSpeedChange={handleSpinSpeedChange}
-      onSpinDirectionChange={handleSpinDirectionChange}
-      shakeDistance={shakeDistance}
-      onShakeDistanceChange={timeline.setShakeDistance}
-      selectedLayerScale={layers.find(l => l.id === selectedLayerId)?.scale ?? 1}
-      onSelectedLayerScaleChange={handleScaleChange}
-      selectedClipDuration={selectedClipDuration}
-      onClipDurationChange={handleClipDurationChange}
-      onClipClick={(clip) => {
-        setSelectedClipId(clip.id)
-        setSelectedTemplate(clip.template)
-      }}
-      onDeselectShape={handleDeselectShape}
-      activeEffectId={activeEffectId}
-      onSelectEffect={handleSelectEffect}
-      onUpdateEffect={handleUpdateEffect}
-      onToggleEffect={handleToggleEffect}
-      layerEffects={layers.find(l => l.id === selectedLayerId)?.effects}
-    >
-      <MotionCanvas 
-        template={selectedTemplate} 
-        templateVersion={templateVersion} 
-        layers={layers} 
-        onUpdateLayerPosition={handleUpdateLayerPosition}
-        onTemplateComplete={handleTemplateComplete}
-        onSelectLayer={handleSelectLayer}
+  const handleDeleteClip = useCallback((clipId: string) => {
+    const layer = layers.find((l) => l.id === selectedLayerId)
+    const layerBase = layer
+      ? {
+          position: { x: layer.x, y: layer.y },
+          scale: layer.scale,
+          rotation: 0,
+          opacity: 1,
+        }
+      : undefined
+
+    timeline.removeTemplateClip(clipId, layerBase)
+    setSelectedClipId('')
+    setSelectedTemplate('')
+    timeline.selectClip?.(clipId) // deselect in store if supported
+    setIsDeleteDialogOpen(false)
+    setDeleteTarget(null)
+  }, [layers, selectedLayerId, timeline])
+
+  const handleDeleteLayer = useCallback((layerId: string) => {
+    // Remove all clips for this layer
+    const layerClips = templateClips.filter(c => c.layerId === layerId)
+    layerClips.forEach(clip => timeline.removeTemplateClip(clip.id))
+    
+    // Remove layer from state
+    setLayers(prev => prev.filter(l => l.id !== layerId))
+    
+    // Remove from layer order
+    setLayerOrder(prev => prev.filter(id => id !== layerId))
+    
+    // Remove from lastLayerBaseRef
+    delete lastLayerBaseRef.current[layerId]
+    
+    // Deselect
+    setSelectedLayerId('')
+    setSelectedClipId('')
+    setIsDeleteDialogOpen(false)
+    setDeleteTarget(null)
+  }, [templateClips, timeline])
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if user is typing in an input field
+      const target = e.target as HTMLElement
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return
+      }
+
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault()
+        
+        // Get current state values
+        const currentSelectedClipId = selectedClipId
+        const currentSelectedLayerId = selectedLayerId
+        
+        if (currentSelectedClipId) {
+          const clip = templateClips.find(c => c.id === currentSelectedClipId)
+          const layer = layers.find((l) => l.id === clip?.layerId)
+          
+          const layerBase = layer
+            ? {
+                position: { x: layer.x, y: layer.y },
+                scale: layer.scale,
+                rotation: 0,
+                opacity: 1,
+              }
+            : undefined
+
+          timeline.removeTemplateClip(currentSelectedClipId, layerBase)
+          setSelectedClipId('')
+          setSelectedTemplate('')
+          timeline.selectClip?.(currentSelectedClipId)
+          setIsDeleteDialogOpen(false)
+          setDeleteTarget(null)
+        } else if (currentSelectedLayerId) {
+          // Show confirmation for layer deletion
+          const layer = layers.find(l => l.id === currentSelectedLayerId)
+          const layerName = layer ? `${layer.shapeKind.charAt(0).toUpperCase()}${layer.shapeKind.slice(1)}` : 'Layer'
+          const clipCount = templateClips.filter(c => c.layerId === currentSelectedLayerId).length
+          
+          setDeleteTarget({ 
+            type: 'layer', 
+            id: currentSelectedLayerId, 
+            name: `${layerName} (${clipCount} clip${clipCount !== 1 ? 's' : ''})` 
+          })
+          setIsDeleteDialogOpen(true)
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selectedClipId, selectedLayerId, layers, templateClips, timeline])
+
+  const dashboard = (
+    <>
+      <DashboardLayout
+        selectedTemplate={selectedTemplate}
+        onSelectTemplate={handleTemplateSelect}
+        onAddShape={handleAddShape}
+        onStartDrawPath={handleStartDrawPath}
+        onStartDrawLine={handleStartDrawLine}
+        showSelectShapeHint={showSelectShapeHint}
+        layers={layers}
+        layerOrder={layerOrder}
+        onReorderLayers={handleReorderLayers}
         selectedLayerId={selectedLayerId}
         isDrawingPath={isDrawingPath}
         isDrawingLine={isDrawingLine}
-        pathPoints={pathPoints}
-        activePathPoints={activePathPoints}
-        pathVersion={pathVersion}
-        pathLayerId={selectedLayerId}
-        onAddPathPoint={handleAddPathPoint}
-        onFinishPath={handleFinishPath}
-        onPathPlaybackComplete={handlePathPlaybackComplete}
-        onUpdateActivePathPoint={handleUpdateActivePathPoint}
-        onClearPath={handleClearPath}
-        onInsertPathPoint={handleInsertPathPoint}
+        onFinishPath={() => handleFinishPath()}
+        onCancelPath={handleCancelPath}
+        pathPointCount={pathPoints.length}
         background={background}
+        onBackgroundChange={setBackground}
+        templateSpeed={templateSpeed}
+        rollDistance={rollDistance}
+        jumpHeight={jumpHeight}
+        jumpVelocity={jumpVelocity}
+        popScale={popScale}
+        popSpeed={popSpeed}
+        popCollapse={popCollapse}
         popReappear={popReappear}
-        onCanvasBackgroundClick={handleDeselectShape}
+        pulseScale={pulseScale}
+        pulseSpeed={pulseSpeed}
+        spinSpeed={spinSpeed}
+        spinDirection={spinDirection}
+        onTemplateSpeedChange={handleTemplateSpeedChange}
+        onRollDistanceChange={handleRollDistanceChange}
+        onJumpHeightChange={timeline.setJumpHeight}
+        onJumpVelocityChange={timeline.setJumpVelocity}
+        onPopScaleChange={timeline.setPopScale}
+        onPopSpeedChange={timeline.setPopSpeed}
+        onPopCollapseChange={timeline.setPopCollapse}
+        onPopReappearChange={timeline.setPopReappear}
+        onPulseScaleChange={handlePulseScaleChange}
+        onPulseSpeedChange={handlePulseSpeedChange}
+        onSpinSpeedChange={handleSpinSpeedChange}
+        onSpinDirectionChange={handleSpinDirectionChange}
+        shakeDistance={shakeDistance}
+        onShakeDistanceChange={timeline.setShakeDistance}
+        selectedLayerScale={layers.find(l => l.id === selectedLayerId)?.scale ?? 1}
+        onSelectedLayerScaleChange={handleScaleChange}
+        selectedClipDuration={selectedClipDuration}
+        onClipDurationChange={handleClipDurationChange}
+        onClipClick={(clip) => {
+          setSelectedClipId(clip.id)
+          setSelectedTemplate(clip.template)
+          timeline.selectClip(clip.id)
+        }}
+        selectedClipId={selectedClipId}
+        onDeselectShape={handleDeselectShape}
+        activeEffectId={activeEffectId}
+        onSelectEffect={handleSelectEffect}
+        onUpdateEffect={handleUpdateEffect}
+        onToggleEffect={handleToggleEffect}
+        layerEffects={layers.find(l => l.id === selectedLayerId)?.effects}
+      >
+        <MotionCanvas 
+          template={selectedTemplate} 
+          templateVersion={templateVersion} 
+          layers={layers} 
+          onUpdateLayerPosition={handleUpdateLayerPosition}
+          onTemplateComplete={handleTemplateComplete}
+          onSelectLayer={handleSelectLayer}
+          selectedLayerId={selectedLayerId}
+          isDrawingPath={isDrawingPath}
+          isDrawingLine={isDrawingLine}
+          pathPoints={pathPoints}
+          activePathPoints={activePathPoints}
+          pathVersion={pathVersion}
+          pathLayerId={selectedLayerId}
+          onAddPathPoint={handleAddPathPoint}
+          onFinishPath={handleFinishPath}
+          onPathPlaybackComplete={handlePathPlaybackComplete}
+          onUpdateActivePathPoint={handleUpdateActivePathPoint}
+          onClearPath={handleClearPath}
+          onInsertPathPoint={handleInsertPathPoint}
+          background={background}
+          popReappear={popReappear}
+          onCanvasBackgroundClick={handleDeselectShape}
+        />
+      </DashboardLayout>
+
+      <ConfirmDialog
+        isOpen={isDeleteDialogOpen}
+        title="Delete Layer"
+        message={`Are you sure you want to delete ${deleteTarget?.name || 'this layer'}? This will remove the layer and all its animations. This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+        onConfirm={() => {
+          if (deleteTarget?.type === 'layer') {
+            handleDeleteLayer(deleteTarget.id)
+          } else if (deleteTarget?.type === 'clip') {
+            handleDeleteClip(deleteTarget.id)
+          }
+        }}
+        onCancel={() => {
+          setIsDeleteDialogOpen(false)
+          setDeleteTarget(null)
+        }}
       />
-    </DashboardLayout>
+    </>
   )
+
+  if (isLoading) {
+    return <div className="flex h-screen w-screen items-center justify-center bg-[#0a0a0a] text-white">Loading...</div>
+  }
+
+  return dashboard
 }

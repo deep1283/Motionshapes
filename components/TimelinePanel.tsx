@@ -9,6 +9,7 @@ interface TimelinePanelProps {
   onReorderLayers?: (order: string[]) => void
   selectedLayerId?: string
   selectedTemplate?: string
+  selectedClipId?: string
   isDrawingPath?: boolean
   onFinishPath?: () => void
   onCancelPath?: () => void
@@ -25,7 +26,7 @@ const formatTime = (ms: number) => {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}:${String(centiseconds).padStart(2, '0')}`
 }
 
-export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers, selectedLayerId, selectedTemplate, isDrawingPath, onFinishPath, onCancelPath, pathPointCount = 0, onClipClick }: TimelinePanelProps) {
+export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers, selectedLayerId, selectedTemplate, selectedClipId, isDrawingPath, onFinishPath, onCancelPath, pathPointCount = 0, onClipClick }: TimelinePanelProps) {
   const { currentTime, duration, isPlaying, loop, tracks, templateSpeed, rollDistance, jumpHeight, jumpVelocity, popScale, popWobble, popSpeed, popCollapse, templateClips } = useTimeline((s) => ({
     currentTime: s.currentTime,
     duration: s.duration,
@@ -43,7 +44,7 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
     templateClips: s.templateClips,
   }))
   const timeline = useTimelineActions()
-  const safeDuration = Math.max(1, duration)
+  const safeDuration = Math.max(1, Number.isFinite(duration) ? duration : 4000)
   // Timeline resize state
   const MIN_HEIGHT = 100
   const MAX_HEIGHT = typeof window !== 'undefined' ? window.innerHeight * 0.8 : 600
@@ -545,6 +546,12 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
                     const duration = isOptimistic ? optimisticClip!.duration : clip.duration
                     const left = (start / safeDuration) * 100
                     const width = Math.max(2, (duration / safeDuration) * 100)
+                    const isSelected = clip.id === selectedClipId
+                    const clipClasses = [
+                      'absolute top-1/2 -translate-y-1/2 h-6 rounded-md border px-2 text-[10px] text-white flex items-center gap-1 shadow-lg overflow-hidden transition-all',
+                      'bg-gradient-to-r from-purple-500/40 to-purple-600/40 border-purple-500/50 hover:brightness-110',
+                      isSelected ? 'ring-2 ring-emerald-400 ring-offset-2 ring-offset-black/40' : '',
+                    ]
 
                     return (
                       <div key={clip.id} className="flex h-8 border-t border-white/5 hover:bg-white/[0.02] transition-colors">
@@ -570,14 +577,19 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
                           </div>
 
                           <div
-                            className="absolute top-1/2 -translate-y-1/2 h-6 rounded-md bg-gradient-to-r from-purple-500/40 to-purple-600/40 border border-purple-500/50 px-2 text-[10px] text-white flex items-center gap-1 shadow-lg overflow-hidden hover:brightness-110 transition-all"
+                            className={clipClasses.filter(Boolean).join(' ')}
                             style={{ left: `${left}%`, width: `${width}%` }}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              onClipClick?.({ id: clip.id, template: clip.template as string })
+                            }}
                             onPointerDown={(e) => startMove(e, clip)}
                           >
                             <span className="font-semibold capitalize truncate select-none">{clip.template}</span>
                             <div
                               className="absolute right-0 top-0 h-full w-3 cursor-col-resize bg-white/15 z-10 hover:bg-white/30 transition-colors"
                               onPointerDown={(e) => startResize(e, clip, 'right')}
+                              onClick={(e) => e.stopPropagation()}
                             />
                           </div>
                         </div>

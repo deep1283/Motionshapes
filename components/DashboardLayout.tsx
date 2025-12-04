@@ -128,6 +128,7 @@ interface DashboardLayoutProps {
   onUpdateEffect?: (effectId: string, params: Record<string, any>) => void
   onToggleEffect?: (effectId: string, isEnabled: boolean) => void
   layerEffects?: Effect[]
+  selectedClipId?: string
 }
 
 export default function DashboardLayout({ 
@@ -187,6 +188,7 @@ export default function DashboardLayout({
   onUpdateEffect,
   onToggleEffect,
   layerEffects = [],
+  selectedClipId,
 }: DashboardLayoutProps) {
   const router = useRouter()
   const supabase = createClient()
@@ -1990,6 +1992,7 @@ export default function DashboardLayout({
           layerOrder={layerOrder}
           onReorderLayers={onReorderLayers}
           selectedLayerId={selectedLayerId}
+          selectedClipId={selectedClipId}
           selectedTemplate={selectedTemplate}
           isDrawingPath={isDrawingPath}
           onFinishPath={onFinishPath}

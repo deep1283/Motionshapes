@@ -16,6 +16,7 @@ export interface TimelineKeyframe<T> {
   time: number // milliseconds
   value: T
   easing?: Easing
+  clipId?: string // Track which clip this keyframe belongs to
 }
 
 export interface PathClip {
