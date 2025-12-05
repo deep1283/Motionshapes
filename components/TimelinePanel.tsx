@@ -27,24 +27,24 @@ const formatTime = (ms: number) => {
 }
 
 export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers, selectedLayerId, selectedTemplate, selectedClipId, isDrawingPath, onFinishPath, onCancelPath, pathPointCount = 0, onClipClick }: TimelinePanelProps) {
-  const { currentTime, duration, isPlaying, loop, tracks, templateSpeed, rollDistance, jumpHeight, jumpVelocity, popScale, popWobble, popSpeed, popCollapse, templateClips } = useTimeline((s) => ({
-    currentTime: s.currentTime,
-    duration: s.duration,
-    isPlaying: s.isPlaying,
-    loop: s.loop,
-    tracks: s.tracks,
-    templateSpeed: s.templateSpeed,
-    rollDistance: s.rollDistance,
-    jumpHeight: s.jumpHeight,
-    jumpVelocity: s.jumpVelocity,
-    popScale: s.popScale,
-    popWobble: s.popWobble,
-    popSpeed: s.popSpeed,
-    popCollapse: s.popCollapse,
-    templateClips: s.templateClips,
-  }))
+  // Split selectors to ensure each value change triggers re-render
+  const currentTime = useTimeline((s) => s.currentTime)
+  const duration = useTimeline((s) => s.duration)
+  const isPlaying = useTimeline((s) => s.isPlaying)
+  const loop = useTimeline((s) => s.loop)
+  const tracks = useTimeline((s) => s.tracks)
+  const templateSpeed = useTimeline((s) => s.templateSpeed)
+  const rollDistance = useTimeline((s) => s.rollDistance)
+  const jumpHeight = useTimeline((s) => s.jumpHeight)
+  const jumpVelocity = useTimeline((s) => s.jumpVelocity)
+  const popScale = useTimeline((s) => s.popScale)
+  const popWobble = useTimeline((s) => s.popWobble)
+  const popSpeed = useTimeline((s) => s.popSpeed)
+  const popCollapse = useTimeline((s) => s.popCollapse)
+  const templateClips = useTimeline((s) => s.templateClips)
   const timeline = useTimelineActions()
-  const safeDuration = Math.max(1, Number.isFinite(duration) ? duration : 4000)
+  const MIN_TIMELINE_MS = 4000
+  const safeDuration = Math.max(MIN_TIMELINE_MS, Number.isFinite(duration) ? duration : MIN_TIMELINE_MS)
   // Timeline resize state
   const MIN_HEIGHT = 100
   const MAX_HEIGHT = typeof window !== 'undefined' ? window.innerHeight * 0.8 : 600

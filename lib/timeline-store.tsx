@@ -1743,7 +1743,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             // Keep keyframes outside the deleted clip's time range
             // IMPORTANT: Use <= for start to keep keyframes at exactly clipStart
             // Those keyframes belong to the PREVIOUS clip's end, not this clip's start
-            return f.time <= clipStart || f.time >= clipEnd
+            // Use > (not >=) for clipEnd to exclude keyframes exactly at the clip's end
+            return f.time <= clipStart || f.time > clipEnd
           })
         }
         
@@ -1775,7 +1776,9 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         return Math.max(max, filtered.length ? Math.max(...filtered) : 0)
       }, 0)
       
-      const newDuration = Math.max(clipsEnd, tracksEnd, 4000)
+      // Use actual content duration, or 4000ms minimum if no content
+      const contentDuration = Math.max(clipsEnd, tracksEnd)
+      const newDuration = contentDuration > 0 ? contentDuration : 4000
 
       return {
         ...prev,
@@ -2013,6 +2016,206 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     }))
   }
 
+  // Build tracks from clips, optionally using provided layer base map
+  const buildTracksFromClips = (
+    clipsToRebuild: typeof state.templateClips,
+    layerBaseMap?: Record<
+      string,
+      {
+        position?: Vec2
+        scale?: number
+        rotation?: number
+        opacity?: number
+      }
+    >
+  ) => {
+    const clipsByLayer: Record<string, typeof clipsToRebuild> = {}
+    clipsToRebuild.forEach((clip) => {
+      if (!clipsByLayer[clip.layerId]) clipsByLayer[clip.layerId] = []
+      clipsByLayer[clip.layerId].push(clip)
+    })
+
+    const nextTracks: LayerTracks[] = []
+    let clipsEnd = 0
+
+    Object.entries(clipsByLayer).forEach(([layerId, clips]) => {
+      const sorted = [...clips].sort((a, b) => (a.start ?? 0) - (b.start ?? 0))
+      const baseFromClip = sorted.find((c) => c.parameters?.layerBase)?.parameters?.layerBase
+      const layerBase = layerBaseMap?.[layerId]
+      const basePos = layerBase?.position ?? baseFromClip?.position ?? DEFAULT_LAYER_STATE.position
+      const baseScale = layerBase?.scale ?? baseFromClip?.scale ?? DEFAULT_LAYER_STATE.scale
+      const baseRot = layerBase?.rotation ?? baseFromClip?.rotation ?? DEFAULT_LAYER_STATE.rotation
+      const baseOpacity = layerBase?.opacity ?? baseFromClip?.opacity ?? DEFAULT_LAYER_STATE.opacity
+
+      let track: LayerTracks = {
+        layerId,
+        position: [{ time: 0, value: basePos }],
+        scale: [{ time: 0, value: baseScale }],
+        rotation: [{ time: 0, value: baseRot }],
+        opacity: [{ time: 0, value: baseOpacity }],
+        paths: [],
+      }
+
+      const addFrames = <T,>(arr: TimelineKeyframe<T>[] | undefined, frames: TimelineKeyframe<T>[]) => [
+        ...(arr ?? []),
+        ...(frames ?? []),
+      ]
+
+      sorted.forEach((clip, index) => {
+        // Skip path templates as they're handled separately
+        if (clip.template === 'path') return
+        
+        const start = Number.isFinite(clip.start) ? (clip.start as number) : 0
+        const duration = Number.isFinite(clip.duration) ? (clip.duration as number) : 0
+        
+        // For the first clip, use layerBase from layerBaseMap or clip parameters
+        // For subsequent clips, sample the track at the clip's start time
+        let clipBase: { position?: Vec2; scale?: number; rotation?: number; opacity?: number }
+        
+        if (index === 0) {
+          // First clip: use provided layerBase or clip's stored layerBase
+          clipBase = layerBase ?? clip.parameters?.layerBase ?? {
+            position: basePos,
+            scale: baseScale,
+            rotation: baseRot,
+            opacity: baseOpacity,
+          }
+        } else {
+          // Subsequent clips: sample the track at this clip's start time
+          const sample = sampleLayerTracks(track, start, {
+            position: basePos,
+            scale: baseScale,
+            rotation: baseRot,
+            opacity: baseOpacity,
+          })
+          clipBase = {
+            position: sample.position,
+            scale: sample.scale,
+            rotation: sample.rotation,
+            opacity: sample.opacity,
+          }
+        }
+
+        clipsEnd = Math.max(clipsEnd, start + duration)
+
+        // Call preset with correct parameters based on template type
+        let built: any
+        const params = clip.parameters
+        
+        switch (clip.template) {
+          case 'roll':
+            built = PRESET_BUILDERS.roll(params?.rollDistance, params?.templateSpeed)
+            break
+          case 'jump':
+            built = PRESET_BUILDERS.jump(params?.jumpHeight, params?.jumpVelocity)
+            break
+          case 'pop':
+            built = PRESET_BUILDERS.pop(params?.popScale, params?.popWobble, params?.popSpeed, params?.popCollapse)
+            break
+          case 'shake':
+            built = PRESET_BUILDERS.shake(params?.shakeDistance, params?.templateSpeed, duration)
+            break
+          case 'pulse':
+            built = PRESET_BUILDERS.pulse(params?.pulseScale, params?.pulseSpeed, duration)
+            break
+          case 'spin':
+            built = PRESET_BUILDERS.spin(params?.spinSpeed, params?.spinDirection, duration)
+            break
+          case 'fade_in':
+            built = PRESET_BUILDERS.fade_in(duration)
+            break
+          case 'slide_in':
+            built = PRESET_BUILDERS.slide_in(duration)
+            break
+          case 'grow_in':
+            built = PRESET_BUILDERS.grow_in(duration)
+            break
+          case 'shrink_in':
+            built = PRESET_BUILDERS.shrink_in(duration)
+            break
+          case 'spin_in':
+            built = PRESET_BUILDERS.spin_in(duration)
+            break
+          case 'twist_in':
+            built = PRESET_BUILDERS.twist_in(duration)
+            break
+          case 'move_scale_in':
+            built = PRESET_BUILDERS.move_scale_in(duration)
+            break
+          case 'fade_out':
+            built = PRESET_BUILDERS.fade_out(duration)
+            break
+          case 'slide_out':
+            built = PRESET_BUILDERS.slide_out(duration)
+            break
+          case 'grow_out':
+            built = PRESET_BUILDERS.grow_out(duration)
+            break
+          case 'shrink_out':
+            built = PRESET_BUILDERS.shrink_out(duration)
+            break
+          case 'spin_out':
+            built = PRESET_BUILDERS.spin_out(duration)
+            break
+          case 'twist_out':
+            built = PRESET_BUILDERS.twist_out(duration)
+            break
+          case 'move_scale_out':
+            built = PRESET_BUILDERS.move_scale_out(duration)
+            break
+          default:
+            console.warn(`Unknown template: ${clip.template}`)
+            return
+        }
+
+        const shift = <T,>(frames: TimelineKeyframe<T>[] | undefined) =>
+          (frames ?? []).map((f) => ({
+            ...f,
+            time: start + (Number.isFinite(f.time) ? (f.time as number) : 0),
+          }))
+
+        track = {
+          ...track,
+          position: addFrames(track.position, shift(built.position)),
+          scale: addFrames(track.scale, shift(built.scale)),
+          rotation: addFrames(track.rotation, shift(built.rotation)),
+          opacity: addFrames(track.opacity, shift(built.opacity)),
+          // Paths are not part of PresetResult, they're handled separately
+        }
+      })
+
+      const sortFrames = <T,>(arr: TimelineKeyframe<T>[]) => [...arr].sort((a, b) => a.time - b.time)
+      const ensureZero = <T,>(arr: TimelineKeyframe<T>[], value: T) =>
+        arr.some((f) => f.time === 0) ? arr : [{ time: 0, value }, ...arr]
+
+      track = {
+        ...track,
+        position: sortFrames(ensureZero(track.position ?? [], basePos)),
+        scale: sortFrames(ensureZero(track.scale ?? [], baseScale)),
+        rotation: sortFrames(ensureZero(track.rotation ?? [], baseRot)),
+        opacity: sortFrames(ensureZero(track.opacity ?? [], baseOpacity)),
+      }
+
+      nextTracks.push(track)
+    })
+
+    const pathsEnd = getMaxPathEnd(nextTracks)
+    const nextDuration = Math.max(clipsEnd, pathsEnd, 4000)
+
+    return { tracks: nextTracks, duration: nextDuration }
+  }
+
+  // Undo/Redo: Rebuild all tracks from current templateClips
+  const rebuildAllTracks = (clipsOverride?: typeof state.templateClips, layerBaseMap?: Record<string, { position?: Vec2; scale?: number; rotation?: number; opacity?: number }>) => {
+    const { tracks, duration } = buildTracksFromClips(clipsOverride ?? state.templateClips, layerBaseMap)
+    setState((prev) => ({
+      ...prev,
+      tracks,
+      duration,
+      currentTime: clampTime(prev.currentTime, duration),
+    }))
+  }
+
   return {
     subscribe,
     getState: () => state,
@@ -2057,6 +2260,80 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     applyPresetToLayer,
     clear,
     sampleAt,
+    
+    // Undo/Redo: Get snapshotable state
+    getSnapshot: () => ({
+      templateClips: state.templateClips,
+      templateSpeed: state.templateSpeed,
+      rollDistance: state.rollDistance,
+      jumpHeight: state.jumpHeight,
+      jumpVelocity: state.jumpVelocity,
+      popScale: state.popScale,
+      popWobble: state.popWobble,
+      popSpeed: state.popSpeed,
+      popCollapse: state.popCollapse,
+      popReappear: state.popReappear,
+      shakeDistance: state.shakeDistance,
+      pulseScale: state.pulseScale,
+      pulseSpeed: state.pulseSpeed,
+      spinSpeed: state.spinSpeed,
+      spinDirection: state.spinDirection,
+    }),
+    
+    // Undo/Redo: Restore from snapshot
+    restoreSnapshot: (snapshot: Partial<{
+      templateClips: typeof state.templateClips
+      templateSpeed: number
+      rollDistance: number
+      jumpHeight: number
+      jumpVelocity: number
+      popScale: number
+      popWobble: boolean
+      popSpeed: number
+      popCollapse: boolean
+      popReappear: boolean
+      shakeDistance: number
+      pulseScale: number
+      pulseSpeed: number
+      spinSpeed: number
+      spinDirection: 1 | -1
+      layers: { id: string; x: number; y: number; scale: number; rotation?: number; opacity?: number }[]
+    }>) => {
+      const layerBaseMap: Record<string, { position?: Vec2; scale?: number; rotation?: number; opacity?: number }> = {}
+      snapshot.layers?.forEach((layer) => {
+        layerBaseMap[layer.id] = {
+          position: { x: layer.x, y: layer.y },
+          scale: layer.scale,
+          rotation: layer.rotation ?? 0,
+          opacity: layer.opacity ?? 1,
+        }
+      })
+
+      const clips = snapshot.templateClips ?? state.templateClips
+      const { tracks, duration } = buildTracksFromClips(clips, layerBaseMap)
+
+      setState((prev) => ({
+        ...prev,
+        templateClips: clips,
+        templateSpeed: snapshot.templateSpeed ?? prev.templateSpeed,
+        rollDistance: snapshot.rollDistance ?? prev.rollDistance,
+        jumpHeight: snapshot.jumpHeight ?? prev.jumpHeight,
+        jumpVelocity: snapshot.jumpVelocity ?? prev.jumpVelocity,
+        popScale: snapshot.popScale ?? prev.popScale,
+        popWobble: snapshot.popWobble ?? prev.popWobble,
+        popSpeed: snapshot.popSpeed ?? prev.popSpeed,
+        popCollapse: snapshot.popCollapse ?? prev.popCollapse,
+        popReappear: snapshot.popReappear ?? prev.popReappear,
+        shakeDistance: snapshot.shakeDistance ?? prev.shakeDistance,
+        pulseScale: snapshot.pulseScale ?? prev.pulseScale,
+        pulseSpeed: snapshot.pulseSpeed ?? prev.pulseSpeed,
+        spinSpeed: snapshot.spinSpeed ?? prev.spinSpeed,
+        spinDirection: snapshot.spinDirection ?? prev.spinDirection,
+        tracks,
+        duration,
+        currentTime: clampTime(prev.currentTime, duration),
+      }))
+    },
   }
 }
 

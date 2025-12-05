@@ -31,7 +31,9 @@ import {
   LayoutTemplate,
   Shapes,
   PenTool,
-  Wand2
+  Wand2,
+  Undo,
+  Redo
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
@@ -129,6 +131,11 @@ interface DashboardLayoutProps {
   onToggleEffect?: (effectId: string, isEnabled: boolean) => void
   layerEffects?: Effect[]
   selectedClipId?: string
+  // History
+  canUndo?: boolean
+  canRedo?: boolean
+  onUndo?: () => void
+  onRedo?: () => void
 }
 
 export default function DashboardLayout({ 
@@ -189,6 +196,10 @@ export default function DashboardLayout({
   onToggleEffect,
   layerEffects = [],
   selectedClipId,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
 }: DashboardLayoutProps) {
   const router = useRouter()
   const supabase = createClient()
@@ -800,6 +811,28 @@ export default function DashboardLayout({
         </div>
         
         <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1 mr-2 border-r border-white/10 pr-3">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-neutral-400 hover:text-white hover:bg-white/5 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-neutral-400"
+                onClick={onUndo}
+                disabled={!canUndo}
+                title="Undo (Cmd+Z)"
+              >
+                <Undo className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-neutral-400 hover:text-white hover:bg-white/5 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-neutral-400"
+                onClick={onRedo}
+                disabled={!canRedo}
+                title="Redo (Cmd+Shift+Z)"
+              >
+                <Redo className="h-4 w-4" />
+              </Button>
+            </div>
             <Button 
                 onClick={handleLogout}
                 variant="ghost"

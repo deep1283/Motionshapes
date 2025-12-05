@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import DashboardLayout, { BackgroundSettings, Effect, EffectType } from '@/components/DashboardLayout'
@@ -10,6 +10,8 @@ import { sampleTimeline } from '@/lib/timeline'
 import type { TemplateId } from '@/lib/presets'
 import { rollDurationForDistance, jumpHeightForDuration } from '@/lib/presets'
 import ConfirmDialog from '@/components/ConfirmDialog'
+import { HistoryManager, type HistorySnapshot } from '@/lib/history-manager'
+import { debounce } from '@/lib/utils'
 
 // Dynamically import MotionCanvas to avoid SSR issues with Pixi.js
 const MotionCanvas = dynamic(() => import('@/components/MotionCanvas'), { 
@@ -134,6 +136,160 @@ function DashboardContent() {
 
     checkUser()
   }, [router])
+
+  // History Manager
+  const historyManagerRef = useRef(new HistoryManager())
+  const [canUndo, setCanUndo] = useState(false)
+  const [canRedo, setCanRedo] = useState(false)
+
+  // Helper to create snapshot
+  const createSnapshot = useCallback((): HistorySnapshot => {
+    return {
+      ...timeline.getSnapshot(),
+      layers: [...layers],
+      layerOrder: [...layerOrder],
+      background: { ...background },
+    }
+  }, [timeline, layers, layerOrder, background])
+
+  // Helper to push snapshot
+  const pushSnapshot = useCallback(() => {
+    historyManagerRef.current.pushSnapshot(createSnapshot())
+    setCanUndo(historyManagerRef.current.canUndo())
+    setCanRedo(historyManagerRef.current.canRedo())
+  }, [createSnapshot])
+
+  // Debounced version for parameters
+  const debouncedPushSnapshot = useMemo(
+    () => debounce(pushSnapshot, 500),
+    [pushSnapshot]
+  )
+
+  // Undo handler
+  const handleUndo = useCallback(() => {
+    const snapshot = historyManagerRef.current.undo()
+    if (!snapshot) {
+      return
+    }
+    
+    // Convert layers to simplified format for timeline
+    const simplifiedSnapshot = {
+      ...snapshot,
+      layers: snapshot.layers.map(layer => ({
+        id: layer.id,
+        x: layer.x,
+        y: layer.y,
+        scale: layer.scale,
+        rotation: layer.rotation ?? 0,
+        opacity: layer.opacity ?? 1,
+      }))
+    }
+    
+    // Restore timeline state with simplified layers
+    timeline.restoreSnapshot(simplifiedSnapshot)
+    
+    // Restore dashboard state with full layers
+    setLayers(snapshot.layers)
+    setLayerOrder(snapshot.layerOrder)
+    setBackground(snapshot.background)
+    
+    // Set selectedTemplate to first clip's template to trigger canvas render
+    if (snapshot.templateClips && snapshot.templateClips.length > 0) {
+      const firstClip = snapshot.templateClips[0]
+      setSelectedTemplate(firstClip.template)
+      setSelectedClipId(firstClip.id)
+    }
+    
+    // Force canvas refresh by re-setting current time
+    const currentTime = timeline.getState().currentTime
+    setTimeout(() => timeline.setCurrentTime(currentTime), 0)
+    
+    // Increment templateVersion to force canvas re-render
+    setTemplateVersion(v => v + 1)
+    
+    setCanUndo(historyManagerRef.current.canUndo())
+    setCanRedo(historyManagerRef.current.canRedo())
+  }, [timeline])
+
+  // Redo handler
+  const handleRedo = useCallback(() => {
+    const snapshot = historyManagerRef.current.redo()
+    if (!snapshot) return
+    
+    // Convert layers to simplified format for timeline
+    const simplifiedSnapshot = {
+      ...snapshot,
+      layers: snapshot.layers.map(layer => ({
+        id: layer.id,
+        x: layer.x,
+        y: layer.y,
+        scale: layer.scale,
+        rotation: layer.rotation ?? 0,
+        opacity: layer.opacity ?? 1,
+      }))
+    }
+    
+    // Restore timeline state with simplified layers
+    timeline.restoreSnapshot(simplifiedSnapshot)
+    
+    // Restore dashboard state with full layers
+    setLayers(snapshot.layers)
+    setLayerOrder(snapshot.layerOrder)
+    setBackground(snapshot.background)
+    
+    // Set selectedTemplate to first clip's template to trigger canvas render
+    if (snapshot.templateClips && snapshot.templateClips.length > 0) {
+      const firstClip = snapshot.templateClips[0]
+      setSelectedTemplate(firstClip.template)
+      setSelectedClipId(firstClip.id)
+    }
+    
+    // Force canvas refresh by re-setting current time
+    const currentTime = timeline.getState().currentTime
+    setTimeout(() => timeline.setCurrentTime(currentTime), 0)
+    
+    // Increment templateVersion to force canvas re-render
+    setTemplateVersion(v => v + 1)
+    
+    setCanUndo(historyManagerRef.current.canUndo())
+    setCanRedo(historyManagerRef.current.canRedo())
+  }, [timeline])
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if user is typing in an input field
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return
+      }
+
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
+      const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey
+      
+      // Undo: Cmd+Z / Ctrl+Z
+      if (cmdOrCtrl && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault()
+        handleUndo()
+      }
+      
+      // Redo: Cmd+Shift+Z / Ctrl+Shift+Z
+      if (cmdOrCtrl && e.key === 'z' && e.shiftKey) {
+        e.preventDefault()
+        handleRedo()
+      }
+    }
+    
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [handleUndo, handleRedo])
+
+  // Initial snapshot
+  useEffect(() => {
+    // Capture initial state on mount
+    if (historyManagerRef.current.getHistorySize() === 0) {
+      pushSnapshot()
+    }
+  }, []) // Empty deps = run once on mount
 
   useEffect(() => {
     
@@ -344,10 +500,13 @@ function DashboardContent() {
           : undefined,
       }
     )
+    // Capture history after applying a template
+    setTimeout(() => pushSnapshot(), 0)
     // Always align playhead to the start of this clip to avoid tiny offsets
     timeline.setCurrentTime(startAt)
     // Don't auto-play so user can adjust controls first
     // timeline.setPlaying(true)
+    pushSnapshot()
   }, [
     selectedTemplate,
     selectedLayerId,
@@ -381,6 +540,7 @@ function DashboardContent() {
         timeline.updateTemplateClip(selectedLayerId, selectedClipId, {
           parameters: { pulseScale: value }
         })
+        pushSnapshot()
       }
     }
   }
@@ -393,6 +553,7 @@ function DashboardContent() {
         timeline.updateTemplateClip(selectedLayerId, selectedClipId, {
           parameters: { pulseSpeed: value }
         })
+        pushSnapshot()
       }
     }
   }
@@ -419,6 +580,7 @@ function DashboardContent() {
       }
       return { ...layer, effects: newEffects }
     }))
+    pushSnapshot()
   }
 
   const handleToggleEffect = (effectId: string, isEnabled: boolean) => {
@@ -450,6 +612,7 @@ function DashboardContent() {
       }
       return { ...layer, effects: newEffects }
     }))
+    pushSnapshot()
   }
 
   const shapeDefaults: Record<ShapeKind, { width: number; height: number }> = {
@@ -479,6 +642,8 @@ function DashboardContent() {
       fillColor: 0xffffff,
     }
     setLayers((prev) => [...prev, newLayer])
+    setSelectedLayerId(newLayer.id)
+    pushSnapshot()
     timeline.ensureTrack(newLayer.id, {
       position: { x: newLayer.x, y: newLayer.y },
       scale: newLayer.scale,
@@ -628,6 +793,7 @@ function DashboardContent() {
       setSelectedClipId(clipId)
       timeline.setPlaying(false)
       timeline.setCurrentTime(startAt)
+      pushSnapshot()
     }
   }
 
@@ -681,6 +847,7 @@ function DashboardContent() {
       scale: 1,
     }
     lastLayerBaseRef.current[selectedLayerId] = { ...existing, scale: value }
+    debouncedPushSnapshot()
   }
 
   const handleClipClick = (clip: { id: string; template: string }) => {
@@ -732,6 +899,7 @@ function DashboardContent() {
         }
       }
     }
+    debouncedPushSnapshot()
   }
 
   const handleRollDistanceChange = (value: number) => {
@@ -756,6 +924,53 @@ function DashboardContent() {
       )
       }
     }
+    debouncedPushSnapshot()
+  }
+
+  const handleJumpHeightChange = (value: number) => {
+    timeline.setJumpHeight(value)
+
+    if (selectedClipId && selectedLayerId) {
+      const clip = templateClips.find(c => c.id === selectedClipId)
+      if (clip && clip.template === 'jump') {
+        timeline.updateTemplateClip(
+          selectedLayerId,
+          selectedClipId,
+          {
+            parameters: {
+              jumpHeight: value,
+              jumpVelocity,
+              layerBase: lastLayerBaseRef.current[selectedLayerId]
+            }
+          },
+          layers.find(l => l.id === selectedLayerId)?.scale ?? 1
+        )
+      }
+    }
+    debouncedPushSnapshot()
+  }
+
+  const handleJumpVelocityChange = (value: number) => {
+    timeline.setJumpVelocity(value)
+
+    if (selectedClipId && selectedLayerId) {
+      const clip = templateClips.find(c => c.id === selectedClipId)
+      if (clip && clip.template === 'jump') {
+        timeline.updateTemplateClip(
+          selectedLayerId,
+          selectedClipId,
+          {
+            parameters: {
+              jumpHeight,
+              jumpVelocity: value,
+              layerBase: lastLayerBaseRef.current[selectedLayerId]
+            }
+          },
+          layers.find(l => l.id === selectedLayerId)?.scale ?? 1
+        )
+      }
+    }
+    debouncedPushSnapshot()
   }
 
   const handleSpinSpeedChange = (value: number) => {
@@ -768,6 +983,7 @@ function DashboardContent() {
         })
       }
     }
+    debouncedPushSnapshot()
   }
 
   const handleSpinDirectionChange = (value: 1 | -1) => {
@@ -780,6 +996,7 @@ function DashboardContent() {
         })
       }
     }
+    debouncedPushSnapshot()
   }
   
   const handleClipDurationChange = (value: number) => {
@@ -787,11 +1004,13 @@ function DashboardContent() {
       timeline.updateTemplateClip(selectedLayerId, selectedClipId, {
         duration: value
       })
+      debouncedPushSnapshot()
     }
   }
 
   const handleReorderLayers = (nextOrder: string[]) => {
     setLayerOrder(nextOrder)
+    pushSnapshot()
   }
 
   const handleDeleteClip = useCallback((clipId: string) => {
@@ -806,12 +1025,23 @@ function DashboardContent() {
       : undefined
 
     timeline.removeTemplateClip(clipId, layerBase)
+    
+    // Force a re-render by updating a dummy state
+    // This ensures the TimelinePanel picks up the new duration immediately
     setSelectedClipId('')
     setSelectedTemplate('')
-    timeline.selectClip?.(clipId) // deselect in store if supported
+    
+    // Force React to flush updates synchronously
+    requestAnimationFrame(() => {
+      timeline.selectClip?.(clipId) // deselect in store if supported
+    })
+    
     setIsDeleteDialogOpen(false)
     setDeleteTarget(null)
-  }, [layers, selectedLayerId, timeline])
+    
+    // Defer snapshot to next tick to ensure timeline state updates first
+    setTimeout(() => pushSnapshot(), 0)
+  }, [layers, selectedLayerId, timeline, pushSnapshot])
 
   const handleDeleteLayer = useCallback((layerId: string) => {
     // Remove all clips for this layer
@@ -832,6 +1062,7 @@ function DashboardContent() {
     setSelectedClipId('')
     setIsDeleteDialogOpen(false)
     setDeleteTarget(null)
+    pushSnapshot()
   }, [templateClips, timeline])
 
   // Keyboard shortcuts
@@ -869,6 +1100,8 @@ function DashboardContent() {
           timeline.selectClip?.(currentSelectedClipId)
           setIsDeleteDialogOpen(false)
           setDeleteTarget(null)
+          // Capture snapshot for undo/redo
+          setTimeout(() => pushSnapshot(), 0)
         } else if (currentSelectedLayerId) {
           // Show confirmation for layer deletion
           const layer = layers.find(l => l.id === currentSelectedLayerId)
@@ -923,8 +1156,8 @@ function DashboardContent() {
         spinDirection={spinDirection}
         onTemplateSpeedChange={handleTemplateSpeedChange}
         onRollDistanceChange={handleRollDistanceChange}
-        onJumpHeightChange={timeline.setJumpHeight}
-        onJumpVelocityChange={timeline.setJumpVelocity}
+        onJumpHeightChange={handleJumpHeightChange}
+        onJumpVelocityChange={handleJumpVelocityChange}
         onPopScaleChange={timeline.setPopScale}
         onPopSpeedChange={timeline.setPopSpeed}
         onPopCollapseChange={timeline.setPopCollapse}
