@@ -4,7 +4,7 @@ import { useTimeline, useTimelineActions } from '@/lib/timeline-store'
 import { sampleTimeline } from '@/lib/timeline'
 
 interface TimelinePanelProps {
-  layers: Array<{ id: string; shapeKind: string; type?: 'shape' | 'image' }>
+  layers: Array<{ id: string; shapeKind: string; type?: 'shape' | 'image' | 'svg' }>
   layerOrder?: string[]
   onReorderLayers?: (order: string[]) => void
   selectedLayerId?: string

@@ -42,6 +42,7 @@ import { Button } from '@/components/ui/button'
 import { EffectPreview } from '@/components/EffectPreview'
 import { TemplatePreview } from '@/components/TemplatePreview'
 import TimelinePanel from '@/components/TimelinePanel'
+import { ExploreShapesModal } from '@/components/ExploreShapesModal'
 
 export type BackgroundSettings = {
   mode: 'solid' | 'gradient'
@@ -77,6 +78,7 @@ interface DashboardLayoutProps {
   selectedTemplate: string
   onSelectTemplate: (template: string) => void
   onAddShape?: (shapeKind?: ShapeKind) => void
+  onAddSvg?: (iconName: string, svgUrl: string) => void
   onImportImage?: (file: File) => void
   onStartDrawPath?: () => void
   onStartDrawLine?: () => void
@@ -84,7 +86,7 @@ interface DashboardLayoutProps {
   layers: Array<{ 
     id: string; 
     shapeKind: ShapeKind; 
-    type?: 'shape' | 'image'; 
+    type?: 'shape' | 'image' | 'svg'; 
     x: number; 
     y: number; 
     width: number; 
@@ -158,6 +160,7 @@ export default function DashboardLayout({
   selectedTemplate, 
   onSelectTemplate, 
   onAddShape,
+  onAddSvg,
   onImportImage, 
   onStartDrawPath, 
   onStartDrawLine,
@@ -225,6 +228,7 @@ export default function DashboardLayout({
   const [showBackgroundPanel, setShowBackgroundPanel] = useState(false)
   const [activeTab, setActiveTab] = useState<'templates' | 'shapes' | 'effects' | 'animations'>('shapes')
   const [animationType, setAnimationType] = useState<'in' | 'out'>('in')
+  const [showExploreModal, setShowExploreModal] = useState(false)
 
   /* Buffered Input Component */
   interface BufferedInputProps {
@@ -1214,6 +1218,18 @@ export default function DashboardLayout({
                 <h2 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-neutral-600 px-2">
                   Shapes
                 </h2>
+                
+                {/* Explore Shapes Button */}
+                <div className="mb-4 px-2">
+                  <button
+                    onClick={() => setShowExploreModal(true)}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600/20 to-pink-600/20 border border-purple-500/30 text-purple-300 hover:from-purple-600/30 hover:to-pink-600/30 hover:border-purple-500/50 hover:text-white transition-all duration-300 text-sm font-medium"
+                  >
+                    <Shapes className="h-4 w-4" />
+                    Explore Shapes
+                  </button>
+                </div>
+                
                 <div className="grid grid-cols-1 gap-1">
                   <Button onClick={() => onAddShape?.('circle')} variant="ghost" className="justify-start text-neutral-400 hover:text-white hover:bg-white/5 h-9 px-2">
                     <Circle className="mr-2 h-4 w-4 text-neutral-500" />
@@ -2168,6 +2184,16 @@ export default function DashboardLayout({
           onClipClick={onClipClick}
         />
       </div>
+      
+      {/* Explore Shapes Modal */}
+      <ExploreShapesModal
+        isOpen={showExploreModal}
+        onClose={() => setShowExploreModal(false)}
+        onSelectIcon={(iconName, svgUrl) => {
+          onAddSvg?.(iconName, svgUrl)
+          setShowExploreModal(false)
+        }}
+      />
     </div>
   )
 }

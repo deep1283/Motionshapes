@@ -19,7 +19,7 @@ interface MotionCanvasProps {
   templateVersion: number
   layers?: Array<{
     id: string
-    type?: 'shape' | 'image'
+    type?: 'shape' | 'image' | 'svg'
     shapeKind: 'circle' | 'square' | 'heart' | 'star' | 'triangle' | 'pill' | 'like' | 'comment' | 'share' | 'cursor'
     x: number
     y: number
@@ -28,6 +28,7 @@ interface MotionCanvasProps {
     scale?: number
     fillColor: number
     imageUrl?: string
+    svgUrl?: string
     effects?: Array<{
       id: string
       type: string
@@ -1196,6 +1197,117 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           return // Skip shape rendering code
         }
         
+        // Handle SVG layers (from Iconify)
+        if (layer.type === 'svg' && layer.svgUrl) {
+          try {
+            const texture = await PIXI.Assets.load(layer.svgUrl)
+            const container = new PIXI.Container()
+            const sprite = new PIXI.Sprite(texture)
+            sprite.anchor.set(0.5)
+            sprite.width = layer.width
+            sprite.height = layer.height
+            // Apply fill color as tint
+            sprite.tint = layer.fillColor ?? 0xffffff
+            container.addChild(sprite)
+            
+            const posX = layer.x <= 4 ? layer.x * screenWidth : layer.x
+            const posY = layer.y <= 4 ? layer.y * screenHeight : layer.y
+            container.x = posX
+            container.y = posY
+            container.zIndex = layerIndex
+            container.eventMode = 'static'
+            container.cursor = 'grab'
+            container.hitArea = new PIXI.Rectangle(-layer.width / 2, -layer.height / 2, layer.width, layer.height)
+            
+            // Store references
+            graphicsByIdRef.current[layer.id] = container as any
+            spritesByIdRef.current[layer.id] = sprite
+            
+            // Add outline
+            const outline = new PIXI.Graphics()
+            outline.rect(-layer.width / 2, -layer.height / 2, layer.width, layer.height)
+            outline.stroke({ color: 0x9333ea, width: 2, alpha: 1 })
+            outline.visible = false
+            outline.eventMode = 'none'
+            container.addChild(outline)
+            outlinesByIdRef.current[layer.id] = outline
+            
+            // Add resize handles (4 corners + 4 edges like images)
+            const handleSize = 8
+            const edgeThickness = 2
+            const hitAreaSize = 12
+            const halfW = layer.width / 2
+            const halfH = layer.height / 2
+            
+            const allHandles: Array<{ handle: 'tl' | 'tr' | 'br' | 'bl' | 't' | 'r' | 'b' | 'l', x: number, y: number, w: number, h: number, cursor: string }> = [
+              { handle: 'tl', x: -halfW, y: -halfH, w: handleSize, h: handleSize, cursor: 'nwse-resize' },
+              { handle: 'tr', x: halfW, y: -halfH, w: handleSize, h: handleSize, cursor: 'nesw-resize' },
+              { handle: 'br', x: halfW, y: halfH, w: handleSize, h: handleSize, cursor: 'nwse-resize' },
+              { handle: 'bl', x: -halfW, y: halfH, w: handleSize, h: handleSize, cursor: 'nesw-resize' },
+              { handle: 't', x: 0, y: -halfH, w: layer.width, h: edgeThickness, cursor: 'ns-resize' },
+              { handle: 'b', x: 0, y: halfH, w: layer.width, h: edgeThickness, cursor: 'ns-resize' },
+              { handle: 'l', x: -halfW, y: 0, w: edgeThickness, h: layer.height, cursor: 'ew-resize' },
+              { handle: 'r', x: halfW, y: 0, w: edgeThickness, h: layer.height, cursor: 'ew-resize' },
+            ]
+            const handles: PIXI.Graphics[] = []
+            allHandles.forEach(({ handle: handleType, x, y, w, h, cursor }) => {
+              const handleGfx = new PIXI.Graphics()
+              handleGfx.rect(-w / 2, -h / 2, w, h)
+              handleGfx.fill(0x9333ea)
+              
+              if (['t', 'b'].includes(handleType)) {
+                handleGfx.hitArea = new PIXI.Rectangle(-w / 2, -hitAreaSize / 2, w, hitAreaSize)
+              } else if (['l', 'r'].includes(handleType)) {
+                handleGfx.hitArea = new PIXI.Rectangle(-hitAreaSize / 2, -h / 2, hitAreaSize, h)
+              } else {
+                handleGfx.hitArea = new PIXI.Rectangle(-handleSize, -handleSize, handleSize * 2, handleSize * 2)
+              }
+              
+              handleGfx.x = x
+              handleGfx.y = y
+              handleGfx.eventMode = 'static'
+              handleGfx.cursor = cursor
+              handleGfx.visible = false
+              handleGfx.zIndex = ['tl', 'tr', 'br', 'bl'].includes(handleType) ? 10 : 1
+              handleGfx.on('pointerdown', (e) => {
+                e.stopPropagation()
+                const currentLayer = layersRef.current.find(l => l.id === layer.id)
+                resizeStateRef.current = {
+                  layerId: layer.id,
+                  handle: handleType,
+                  startX: e.global.x,
+                  startY: e.global.y,
+                  startWidth: currentLayer?.width ?? layer.width,
+                  startHeight: currentLayer?.height ?? layer.height,
+                }
+              })
+              container.addChild(handleGfx)
+              handles.push(handleGfx)
+            })
+            resizeHandlesRef.current[layer.id] = handles
+            
+            // If already selected, show handles
+            if (selectedLayerId === layer.id) {
+              outline.visible = true
+              handles.forEach(h => h.visible = true)
+            }
+            
+            // Pointer events
+            container.on('pointerdown', (e) => {
+              e.stopPropagation()
+              onSelectLayer?.(layer.id)
+              dragRef.current = { id: layer.id, offsetX: e.global.x - container.x, offsetY: e.global.y - container.y }
+              stage.cursor = 'grabbing'
+            })
+            
+            stage.addChild(container)
+            stage.sortChildren()
+          } catch (err) {
+            console.error('Failed to load SVG:', layer.svgUrl, err)
+          }
+          return // Skip shape rendering code
+        }
+        
         const g = new PIXI.Graphics()
         // Bottom of timeline (higher index) = higher zIndex = renders on top
         g.zIndex = layerIndex
@@ -1707,8 +1819,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         sprite.height = layer.height
       }
       
-      // For shapes, redraw the graphics
-      if (layer.shapeKind && layer.type !== 'image') {
+      // For shapes only (not images or SVGs which use sprites), redraw the graphics
+      if (layer.shapeKind && layer.type !== 'image' && layer.type !== 'svg') {
         g.clear()
         const fillColor = layer.fillColor ?? 0xffffff
         switch (layer.shapeKind) {

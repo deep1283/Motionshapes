@@ -33,7 +33,7 @@ type ShapeKind =
 
 interface Layer {
   id: string
-  type: 'shape' | 'image'
+  type: 'shape' | 'image' | 'svg'
   shapeKind: ShapeKind
   x: number
   y: number
@@ -44,6 +44,8 @@ interface Layer {
   fillColor: number
   effects?: Effect[]
   imageUrl?: string  // Base64 data URL for imported images
+  svgUrl?: string    // URL to SVG (from Iconify or local)
+  iconName?: string  // Iconify icon name (e.g. "mdi:home")
 }
 
 export default function DashboardPage() {
@@ -728,6 +730,43 @@ function DashboardContent() {
     reader.readAsDataURL(file)
   }
 
+  // Handle adding SVG from Iconify
+  const handleAddSvg = (iconName: string, svgUrl: string) => {
+    // Request larger SVG (256px) with white color for crisp rendering on dark background
+    const highResUrl = svgUrl.includes('?') 
+      ? `${svgUrl}&color=%23ffffff&width=256&height=256` 
+      : `${svgUrl}?color=%23ffffff&width=256&height=256`
+    
+    const newLayer: Layer = {
+      id: crypto.randomUUID(),
+      type: 'svg',
+      shapeKind: 'circle', // Placeholder, not used for SVGs
+      x: 0.5,
+      y: 0.5,
+      width: 100,
+      height: 100,
+      scale: 1,
+      fillColor: 0xffffff,
+      rotation: 0,
+      svgUrl: highResUrl, // Store the SVG URL with white color and high res
+      iconName, // Store icon name for reference
+    }
+
+    setLayers((prev) => [...prev, newLayer])
+    setSelectedLayerId(newLayer.id)
+    pushSnapshot()
+    timeline.ensureTrack(newLayer.id, {
+      position: { x: newLayer.x, y: newLayer.y },
+      scale: newLayer.scale,
+      rotation: 0,
+      opacity: 1,
+    })
+    lastLayerBaseRef.current[newLayer.id] = { x: newLayer.x, y: newLayer.y, scale: newLayer.scale }
+    setLayerOrder((prev) => [...prev, newLayer.id])
+    setSelectedTemplate('')
+    setTemplateVersion((v) => v + 1)
+  }
+
   const handleUpdateLayerPosition = (id: string, x: number, y: number) => {
     const nx = Math.max(0, Math.min(1, x))
     const ny = Math.max(0, Math.min(1, y))
@@ -1240,6 +1279,7 @@ function DashboardContent() {
         selectedTemplate={selectedTemplate}
         onSelectTemplate={handleTemplateSelect}
         onAddShape={handleAddShape}
+        onAddSvg={handleAddSvg}
         onImportImage={handleImportImage}
         onStartDrawPath={handleStartDrawPath}
         onStartDrawLine={handleStartDrawLine}
