@@ -24,7 +24,7 @@ export type ShapeKind =
 // Layer type (from dashboard)
 export interface Layer {
   id: string
-  type: 'shape'
+  type: 'shape' | 'image'
   shapeKind: ShapeKind
   x: number
   y: number
@@ -35,6 +35,7 @@ export interface Layer {
   opacity?: number
   fillColor: number
   effects?: any[] // Simplified for now to avoid import issues
+  imageUrl?: string  // Base64 data URL for imported images
 }
 
 // Template clip type (from timeline store)

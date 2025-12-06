@@ -19,6 +19,7 @@ interface MotionCanvasProps {
   templateVersion: number
   layers?: Array<{
     id: string
+    type?: 'shape' | 'image'
     shapeKind: 'circle' | 'square' | 'heart' | 'star' | 'triangle' | 'pill' | 'like' | 'comment' | 'share' | 'cursor'
     x: number
     y: number
@@ -26,6 +27,7 @@ interface MotionCanvasProps {
     height: number
     scale?: number
     fillColor: number
+    imageUrl?: string
     effects?: Array<{
       id: string
       type: string
@@ -61,6 +63,8 @@ interface MotionCanvasProps {
   offsetY?: number
   popReappear?: boolean
   onCanvasBackgroundClick?: () => void
+  onUpdateLayerScale?: (id: string, scale: number) => void
+  onUpdateLayerSize?: (id: string, width: number, height: number) => void
 }
 
 type LineOverlayProps = {
@@ -215,6 +219,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   const filtersByLayerIdRef = useRef<Record<string, PIXI.Filter[]>>({})
   const emittersByLayerIdRef = useRef<Record<string, SimpleParticleEmitter[]>>({})
   const iconTextureCacheRef = useRef<Record<string, PIXI.Texture>>({})
+  const spritesByIdRef = useRef<Record<string, PIXI.Sprite>>({})
   const orderedLayers = useMemo(() => {
     if (!layers || layers.length === 0) return []
     if (!layerOrder || layerOrder.length === 0) return layers
@@ -346,8 +351,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       if (!state) return
       const g = graphicsByIdRef.current[id]
       if (!g) return
-      // Set zIndex: top of timeline (idx=0) = back (low z), bottom of timeline (high idx) = front (high z)
-      g.zIndex = renderLayers.length - idx
+      // Set zIndex: top of timeline (idx=0) = back (low z), bottom (high idx) = front (high z)
+      g.zIndex = idx
       if (appRef.current?.stage && appRef.current.stage.sortableChildren !== true) {
         appRef.current.stage.sortableChildren = true
       }
@@ -691,6 +696,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     stage.eventMode = 'static'
     stage.hitArea = new PIXI.Rectangle(0, 0, screenWidth, screenHeight)
     stage.cursor = 'default'
+    stage.sortableChildren = true // Enable automatic z-order sorting by zIndex
     
     // Cleanup previous scene
     stage.removeChildren()
@@ -892,8 +898,72 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         return container
       }
 
-      layers.forEach(async (layer) => {
+      // Use layerIndex to set zIndex for proper z-ordering
+      // Timeline displays top-to-bottom, but we want bottom to appear ON TOP on canvas
+      // So we invert: first in renderLayers (top of timeline) gets lowest zIndex
+      // Last in renderLayers (bottom of timeline) gets highest zIndex = rendered on top
+      const totalLayers = renderLayers.length
+      
+      console.log('=== Z-ORDER DEBUG ===')
+      console.log('layerOrder prop:', layerOrder)
+      console.log('renderLayers (sorted):', renderLayers.map(l => `${l.shapeKind}`))
+      console.log('stage.sortableChildren:', stage.sortableChildren)
+      
+      renderLayers.forEach(async (layer, layerIndex) => {
+        // Handle image layers
+        if (layer.type === 'image' && layer.imageUrl) {
+          try {
+            const texture = await PIXI.Assets.load(layer.imageUrl)
+            const container = new PIXI.Container()
+            const sprite = new PIXI.Sprite(texture)
+            sprite.anchor.set(0.5)
+            sprite.width = layer.width
+            sprite.height = layer.height
+            container.addChild(sprite)
+            
+            const posX = layer.x <= 4 ? layer.x * screenWidth : layer.x
+            const posY = layer.y <= 4 ? layer.y * screenHeight : layer.y
+            container.x = posX
+            container.y = posY
+            container.zIndex = layerIndex
+            container.eventMode = 'static'
+            container.cursor = 'grab'
+            container.hitArea = new PIXI.Rectangle(-layer.width / 2, -layer.height / 2, layer.width, layer.height)
+            
+            // Store references
+            graphicsByIdRef.current[layer.id] = container as any
+            spritesByIdRef.current[layer.id] = sprite
+            
+            // Add outline
+            const outline = new PIXI.Graphics()
+            outline.rect(-layer.width / 2, -layer.height / 2, layer.width, layer.height)
+            outline.stroke({ color: 0x9333ea, width: 2, alpha: 1 })
+            outline.visible = false
+            outline.eventMode = 'none'
+            container.addChild(outline)
+            outlinesByIdRef.current[layer.id] = outline
+            
+            // Pointer events
+            container.on('pointerdown', (e) => {
+              e.stopPropagation()
+              onSelectLayer?.(layer.id)
+              dragRef.current = { id: layer.id, offsetX: e.global.x - container.x, offsetY: e.global.y - container.y }
+              stage.cursor = 'grabbing'
+            })
+            
+            stage.addChild(container)
+            stage.sortChildren()
+          } catch (err) {
+            console.error('Failed to load image:', layer.imageUrl, err)
+          }
+          return // Skip shape rendering code
+        }
+        
         const g = new PIXI.Graphics()
+        // Bottom of timeline (higher index) = higher zIndex = renders on top
+        g.zIndex = layerIndex
+        
+        console.log(`Layer ${layer.shapeKind}: index=${layerIndex}, zIndex=${g.zIndex}`)
         
         // Check if this shape uses an SVG icon
         const usesIcon = ['like', 'comment', 'share', 'cursor'].includes(layer.shapeKind)
@@ -1005,6 +1075,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         
         graphicsByIdRef.current[layer.id] = g
         stage.addChild(g)
+        stage.sortChildren() // Force sort by zIndex after each layer
 
         const shouldAnimateTemplate = selectedLayerId ? layer.id === selectedLayerId : true
 
@@ -1267,7 +1338,16 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     }
 
     // render first frame immediately so users see instant feedback on template switch
+    stage.sortChildren() // Force sort by zIndex
     app.render()
+    
+    // Also sort after a delay to catch async-loaded layers
+    setTimeout(() => {
+      stage.sortChildren()
+      console.log('=== AFTER SORT ===')
+      console.log('Stage children order:', stage.children.map((c: any) => `zIndex=${c.zIndex}`))
+      app.render()
+    }, 100)
 
     // Cleanup function for this effect
     return () => {

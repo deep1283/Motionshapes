@@ -14,6 +14,7 @@ import {
   Play,
   Share2,
   Download,
+  Upload,
   MousePointer2,
   Layers,
   Zap,
@@ -76,10 +77,21 @@ interface DashboardLayoutProps {
   selectedTemplate: string
   onSelectTemplate: (template: string) => void
   onAddShape?: (shapeKind?: ShapeKind) => void
+  onImportImage?: (file: File) => void
   onStartDrawPath?: () => void
   onStartDrawLine?: () => void
   showSelectShapeHint?: boolean
-  layers: Array<{ id: string; shapeKind: ShapeKind }>
+  layers: Array<{ 
+    id: string; 
+    shapeKind: ShapeKind; 
+    type?: 'shape' | 'image'; 
+    x: number; 
+    y: number; 
+    width: number; 
+    height: number; 
+    scale: number; 
+    rotation?: number 
+  }>
   layerOrder?: string[]
   onReorderLayers?: (order: string[]) => void
   selectedLayerId?: string
@@ -135,6 +147,9 @@ interface DashboardLayoutProps {
   canUndo?: boolean
   canRedo?: boolean
   onUndo?: () => void
+  onUpdateLayerPosition?: (id: string, x: number, y: number) => void
+  onUpdateLayerRotation?: (id: string, rotation: number) => void
+  onUpdateLayerSize?: (id: string, width: number, height: number) => void
   onRedo?: () => void
 }
 
@@ -142,7 +157,8 @@ export default function DashboardLayout({
   children, 
   selectedTemplate, 
   onSelectTemplate, 
-  onAddShape, 
+  onAddShape,
+  onImportImage, 
   onStartDrawPath, 
   onStartDrawLine,
   showSelectShapeHint, 
@@ -200,6 +216,9 @@ export default function DashboardLayout({
   canRedo,
   onUndo,
   onRedo,
+  onUpdateLayerPosition,
+  onUpdateLayerRotation,
+  onUpdateLayerSize,
 }: DashboardLayoutProps) {
   const router = useRouter()
   const supabase = createClient()
@@ -293,6 +312,7 @@ export default function DashboardLayout({
   }, [])
 
   const canvasContainerRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Handle mouse wheel for panning or zooming (pinch)
   // Attached via ref to support non-passive listener
@@ -833,6 +853,30 @@ export default function DashboardLayout({
                 <Redo className="h-4 w-4" />
               </Button>
             </div>
+            {/* Hidden file input for image import */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file && onImportImage) {
+                  onImportImage(file)
+                }
+                // Reset input so the same file can be selected again
+                e.target.value = ''
+              }}
+            />
+            <Button 
+                onClick={() => fileInputRef.current?.click()}
+                variant="ghost"
+                size="sm"
+                className="h-8 gap-2 text-neutral-400 hover:text-white hover:bg-white/5 text-xs"
+            >
+                <Upload className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Import</span>
+            </Button>
             <Button 
                 onClick={handleLogout}
                 variant="ghost"
@@ -1173,8 +1217,8 @@ export default function DashboardLayout({
       <main
         className="relative flex flex-1 flex-col overflow-visible bg-[#050505]"
       >
-            {/* Toolbar */}
-            <div className="absolute top-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 rounded-full border border-white/10 bg-[#0a0a0a]/80 px-2 py-1.5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-xl">
+            {/* Toolbar - commented out for later refinement */}
+            {/* <div className="absolute top-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 rounded-full border border-white/10 bg-[#0a0a0a]/80 px-2 py-1.5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-xl">
                 <Button size="icon" variant="ghost" className="h-8 w-8 rounded-full hover:bg-white/10 text-neutral-400 hover:text-white transition-colors">
                     <MousePointer2 className="h-4 w-4" />
                 </Button>
@@ -1195,7 +1239,7 @@ export default function DashboardLayout({
                 <Button size="icon" variant="ghost" className="h-8 w-8 rounded-full hover:bg-white/10 text-neutral-400 hover:text-white transition-colors">
                     <Zap className="h-4 w-4" />
                 </Button>
-            </div>
+            </div> */}
 
             {showBackgroundPanel && (
               <div className="absolute top-16 left-1/2 z-40 w-[360px] -translate-x-1/2 rounded-xl border border-white/10 bg-[#0a0a0a]/95 p-4 shadow-[0_12px_45px_rgba(0,0,0,0.45)] backdrop-blur-md">
@@ -1449,20 +1493,102 @@ export default function DashboardLayout({
 
 
           {selectedLayerId && (
-            <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3 shadow-inner">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] font-semibold text-neutral-200">Size</span>
-                <span className="text-[10px] text-neutral-400">Scale: {selectedLayerScale.toFixed(2)}</span>
+            <div className="mb-6 space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-neutral-400">Transform</span>
               </div>
-              <input
-                type="range"
-                min={0.2}
-                max={3}
-                step={0.01}
-                value={selectedLayerScale}
-                onChange={(e) => onSelectedLayerScaleChange?.(Number(e.target.value))}
-                className="w-full accent-emerald-500"
-              />
+              
+              <div className="grid grid-cols-2 gap-4">
+
+                {/* Size */}
+                <div className="space-y-2">
+                  <span className="text-[10px] uppercase text-neutral-500">Size</span>
+                  <div className="flex gap-2">
+                    <div className="relative">
+                      <input
+                        key={`w-${selectedLayerId}-${layers.find(l => l.id === selectedLayerId)?.width ?? 100}`}
+                        type="text"
+                        inputMode="numeric"
+                        defaultValue={String(layers.find(l => l.id === selectedLayerId)?.width ?? 100)}
+                        style={{ 
+                          width: '50px',
+                          padding: '6px 6px 6px 24px',
+                          color: '#ffffff',
+                          backgroundColor: '#333',
+                          border: 'none',
+                          borderRadius: '4px',
+                          fontSize: '12px'
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            if (!selectedLayerId) return
+                            const layer = layers.find(l => l.id === selectedLayerId)
+                            const rawVal = e.currentTarget.value.replace(/[^0-9]/g, '')
+                            const val = rawVal === '' ? 100 : Math.max(1, parseInt(rawVal))
+                            onUpdateLayerSize?.(selectedLayerId, val, layer?.height ?? 100)
+                            e.currentTarget.blur()
+                          }
+                        }}
+                      />
+                      <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '10px', color: '#888', fontWeight: 'bold' }}>W</span>
+                    </div>
+                    <div className="relative">
+                      <input
+                        key={`h-${selectedLayerId}-${layers.find(l => l.id === selectedLayerId)?.height ?? 100}`}
+                        type="text"
+                        inputMode="numeric"
+                        defaultValue={String(layers.find(l => l.id === selectedLayerId)?.height ?? 100)}
+                        style={{ 
+                          width: '50px',
+                          padding: '6px 6px 6px 24px',
+                          color: '#ffffff',
+                          backgroundColor: '#333',
+                          border: 'none',
+                          borderRadius: '4px',
+                          fontSize: '12px'
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            if (!selectedLayerId) return
+                            const layer = layers.find(l => l.id === selectedLayerId)
+                            const rawVal = e.currentTarget.value.replace(/[^0-9]/g, '')
+                            const val = rawVal === '' ? 100 : Math.max(1, parseInt(rawVal))
+                            onUpdateLayerSize?.(selectedLayerId, layer?.width ?? 100, val)
+                            e.currentTarget.blur()
+                          }
+                        }}
+                      />
+                      <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '10px', color: '#888', fontWeight: 'bold' }}>H</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Angle */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                   <span className="text-[10px] uppercase text-neutral-500">Angle</span>
+                </div>
+                <div className="flex items-center gap-2">
+                   <div className="relative flex-1">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="-?[0-9]*"
+                        value={String(layers.find(l => l.id === selectedLayerId)?.rotation ?? 0)}
+                        className="w-full rounded bg-neutral-800 pl-8 pr-2 py-1.5 text-left text-xs text-white placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                        onChange={(e) => {
+                          if (!selectedLayerId) return
+                          // Allow empty string during editing, parse as 0
+                          const rawVal = e.currentTarget.value.replace(/[^0-9-]/g, '')
+                          const val = rawVal === '' || rawVal === '-' ? 0 : parseInt(rawVal)
+                          onUpdateLayerRotation?.(selectedLayerId, val)
+                        }}
+                      />
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-neutral-500 font-bold">°</span>
+                   </div>
+                </div>
+              </div>
             </div>
           )}
 

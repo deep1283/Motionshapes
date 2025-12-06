@@ -33,15 +33,17 @@ type ShapeKind =
 
 interface Layer {
   id: string
-  type: 'shape'
+  type: 'shape' | 'image'
   shapeKind: ShapeKind
   x: number
   y: number
   width: number
   height: number
   scale: number
+  rotation?: number
   fillColor: number
   effects?: Effect[]
+  imageUrl?: string  // Base64 data URL for imported images
 }
 
 export default function DashboardPage() {
@@ -494,7 +496,7 @@ function DashboardContent() {
           ? {
               position: { x: targetLayer.x, y: targetLayer.y },
               scale: targetLayer.scale,
-              rotation: 0,
+              rotation: (targetLayer.rotation || 0) * (Math.PI / 180), // Use layer's rotation in radians
               opacity: 1,
             }
           : undefined,
@@ -616,16 +618,16 @@ function DashboardContent() {
   }
 
   const shapeDefaults: Record<ShapeKind, { width: number; height: number }> = {
-    circle: { width: 120, height: 120 },
-    square: { width: 120, height: 120 },
-    heart: { width: 120, height: 120 },
-    star: { width: 130, height: 130 },
-    triangle: { width: 140, height: 120 },
-    pill: { width: 160, height: 80 },
-    like: { width: 120, height: 120 },
-    comment: { width: 120, height: 120 },
-    share: { width: 120, height: 120 },
-    cursor: { width: 120, height: 120 },
+    circle: { width: 100, height: 100 },
+    square: { width: 100, height: 100 },
+    heart: { width: 100, height: 100 },
+    star: { width: 100, height: 100 },
+    triangle: { width: 100, height: 100 },
+    pill: { width: 100, height: 100 },
+    like: { width: 100, height: 100 },
+    comment: { width: 100, height: 100 },
+    share: { width: 100, height: 100 },
+    cursor: { width: 100, height: 100 },
   }
 
   const handleAddShape = (shapeKind: ShapeKind = 'circle') => {
@@ -640,6 +642,7 @@ function DashboardContent() {
       height: dimensions.height,
       scale: 1,
       fillColor: 0xffffff,
+      rotation: 0,
     }
     setLayers((prev) => [...prev, newLayer])
     setSelectedLayerId(newLayer.id)
@@ -656,6 +659,75 @@ function DashboardContent() {
     setTemplateVersion((v) => v + 1)
   }
 
+  const handleImportImage = async (file: File) => {
+    // Validate file type
+    const validTypes = ['image/png', 'image/jpeg', 'image/webp']
+    if (!validTypes.includes(file.type)) {
+      alert('Please select a valid image file (PNG, JPG, or WebP)')
+      return
+    }
+
+    // Validate file size (<10MB)
+    const maxSizeBytes = 10 * 1024 * 1024 // 10MB
+    if (file.size >= maxSizeBytes) {
+      alert('Image must be less than 10MB')
+      return
+    }
+
+    // Read file as base64
+    const reader = new FileReader()
+    reader.onload = async (e) => {
+      const imageUrl = e.target?.result as string
+      if (!imageUrl) return
+
+      // Get image dimensions
+      const img = new Image()
+      img.onload = () => {
+        // Downscale if larger than 4096px for WebGL compatibility
+        let width = img.width
+        let height = img.height
+        const maxDimension = 4096
+        if (width > maxDimension || height > maxDimension) {
+          const ratio = Math.min(maxDimension / width, maxDimension / height)
+          width = Math.round(width * ratio)
+          height = Math.round(height * ratio)
+        }
+
+        // Create image layer with default 300x300 size to fit canvas
+        // User can resize afterwards
+        const newLayer: Layer = {
+          id: crypto.randomUUID(),
+          type: 'image',
+          shapeKind: 'circle', // Placeholder, not used for images
+          x: 0.5,
+          y: 0.5,
+          width: 300,
+          height: 300,
+          scale: 1, // Use scale=1 for direct width/height control
+          fillColor: 0xffffff,
+          rotation: 0,
+          imageUrl,
+        }
+
+        setLayers((prev) => [...prev, newLayer])
+        setSelectedLayerId(newLayer.id)
+        pushSnapshot()
+        timeline.ensureTrack(newLayer.id, {
+          position: { x: newLayer.x, y: newLayer.y },
+          scale: newLayer.scale,
+          rotation: 0,
+          opacity: 1,
+        })
+        lastLayerBaseRef.current[newLayer.id] = { x: newLayer.x, y: newLayer.y, scale: newLayer.scale }
+        setLayerOrder((prev) => [...prev, newLayer.id])
+        setSelectedTemplate('')
+        setTemplateVersion((v) => v + 1)
+      }
+      img.src = imageUrl
+    }
+    reader.readAsDataURL(file)
+  }
+
   const handleUpdateLayerPosition = (id: string, x: number, y: number) => {
     const nx = Math.max(0, Math.min(1, x))
     const ny = Math.max(0, Math.min(1, y))
@@ -668,6 +740,46 @@ function DashboardContent() {
     )
     const currentScale = layers.find((l) => l.id === id)?.scale ?? 1
     lastLayerBaseRef.current[id] = { x: nx, y: ny, scale: currentScale }
+    timeline.ensureTrack(id)
+  }
+
+  const handleUpdateLayerScale = (id: string, scale: number) => {
+    setLayers((prev) =>
+      prev.map((layer) =>
+        layer.id === id
+          ? { ...layer, scale }
+          : layer
+      )
+    )
+    const layer = layers.find((l) => l.id === id)
+    if (layer) {
+       lastLayerBaseRef.current[id] = { x: layer.x, y: layer.y, scale }
+       timeline.ensureTrack(id)
+    }
+  }
+
+  const handleUpdateLayerRotation = (id: string, rotation: number) => {
+    setLayers((prev) =>
+      prev.map((layer) =>
+        layer.id === id
+          ? { ...layer, rotation }
+          : layer
+      )
+    )
+    // We don't currently track rotation in lastLayerBaseRef for dragging, 
+    // but we might need to if we add rotation handles.
+    // For now just update state.
+    timeline.ensureTrack(id)
+  }
+
+  const handleUpdateLayerSize = (id: string, width: number, height: number) => {
+    setLayers((prev) =>
+      prev.map((layer) =>
+        layer.id === id
+          ? { ...layer, width, height }
+          : layer
+      )
+    )
     timeline.ensureTrack(id)
   }
 
@@ -1019,7 +1131,7 @@ function DashboardContent() {
       ? {
           position: { x: layer.x, y: layer.y },
           scale: layer.scale,
-          rotation: 0,
+          rotation: (layer.rotation || 0) * (Math.PI / 180), // Use layer's rotation in radians
           opacity: 1,
         }
       : undefined
@@ -1089,7 +1201,7 @@ function DashboardContent() {
             ? {
                 position: { x: layer.x, y: layer.y },
                 scale: layer.scale,
-                rotation: 0,
+                rotation: (layer.rotation || 0) * (Math.PI / 180), // Use layer's rotation in radians
                 opacity: 1,
               }
             : undefined
@@ -1128,6 +1240,7 @@ function DashboardContent() {
         selectedTemplate={selectedTemplate}
         onSelectTemplate={handleTemplateSelect}
         onAddShape={handleAddShape}
+        onImportImage={handleImportImage}
         onStartDrawPath={handleStartDrawPath}
         onStartDrawLine={handleStartDrawLine}
         showSelectShapeHint={showSelectShapeHint}
@@ -1170,6 +1283,9 @@ function DashboardContent() {
         onShakeDistanceChange={timeline.setShakeDistance}
         selectedLayerScale={layers.find(l => l.id === selectedLayerId)?.scale ?? 1}
         onSelectedLayerScaleChange={handleScaleChange}
+        onUpdateLayerPosition={handleUpdateLayerPosition}
+        onUpdateLayerRotation={handleUpdateLayerRotation}
+        onUpdateLayerSize={handleUpdateLayerSize}
         selectedClipDuration={selectedClipDuration}
         onClipDurationChange={handleClipDurationChange}
         onClipClick={(clip) => {
@@ -1188,8 +1304,11 @@ function DashboardContent() {
         <MotionCanvas 
           template={selectedTemplate} 
           templateVersion={templateVersion} 
-          layers={layers} 
+          layers={layers}
+          layerOrder={layerOrder}
           onUpdateLayerPosition={handleUpdateLayerPosition}
+          onUpdateLayerScale={handleUpdateLayerScale}
+          onUpdateLayerSize={handleUpdateLayerSize}
           onTemplateComplete={handleTemplateComplete}
           onSelectLayer={handleSelectLayer}
           selectedLayerId={selectedLayerId}
