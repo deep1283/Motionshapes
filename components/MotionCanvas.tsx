@@ -227,6 +227,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   const iconTextureCacheRef = useRef<Record<string, PIXI.Texture>>({})
   const spritesByIdRef = useRef<Record<string, PIXI.Sprite>>({})
   const resizeHandlesRef = useRef<Record<string, PIXI.Graphics[]>>({})
+  const handlesByIdRef = useRef<Record<string, PIXI.Graphics[]>>({}) // For text layer resize handles
   // Track layer dimensions to detect changes from control panel
   const layerDimensionsRef = useRef<Record<string, { width: number; height: number }>>({})
   const resizeStateRef = useRef<{
@@ -1317,6 +1318,9 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         if (layer.type === 'text' && layer.text) {
           const container = new PIXI.Container()
           
+          // Use layer.width as the text box width (wordWrapWidth)
+          const textBoxWidth = layer.width || 400
+          
           // Create text style
           const textStyle = new PIXI.TextStyle({
             fontFamily: layer.fontFamily || 'Inter',
@@ -1325,15 +1329,16 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             fill: layer.fillColor ?? 0xffffff,
             align: 'center',
             wordWrap: true,
-            wordWrapWidth: layer.width * 2, // Allow word wrap if text is long
+            wordWrapWidth: textBoxWidth,
           })
           
           const text = new PIXI.Text({ text: layer.text, style: textStyle })
           text.anchor.set(0.5)
           container.addChild(text)
           
-          // Update layer dimensions based on text bounds
-          const textBounds = text.getBounds()
+          // Use text's intrinsic width/height (local dimensions, not global bounds)
+          const boxWidth = Math.max(textBoxWidth, text.width)
+          const boxHeight = text.height
           
           const posX = layer.x <= 4 ? layer.x * screenWidth : layer.x
           const posY = layer.y <= 4 ? layer.y * screenHeight : layer.y
@@ -1342,26 +1347,84 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           container.zIndex = layerIndex
           container.eventMode = 'static'
           container.cursor = 'grab'
-          container.hitArea = new PIXI.Rectangle(-textBounds.width / 2, -textBounds.height / 2, textBounds.width, textBounds.height)
+          container.hitArea = new PIXI.Rectangle(-boxWidth / 2, -boxHeight / 2, boxWidth, boxHeight)
           
           // Store references
           graphicsByIdRef.current[layer.id] = container as any
           
           // Add outline
           const outline = new PIXI.Graphics()
-          outline.rect(-textBounds.width / 2, -textBounds.height / 2, textBounds.width, textBounds.height)
-          outline.stroke({ color: 0x9333ea, width: 2, alpha: 1 })
+          outline.rect(-boxWidth / 2, -boxHeight / 2, boxWidth, boxHeight)
+          outline.stroke({ color: 0xA855F7, width: 2, alpha: 1 })
           outline.visible = false
           outline.eventMode = 'none'
           container.addChild(outline)
           outlinesByIdRef.current[layer.id] = outline
           
-          // No resize handles for text - use control panel for font size
-          // Can be added later if needed
+          // Add bounding box resize handles (4 corners + 4 edges) - same as shapes
+          const handleSize = 8
+          const edgeThickness = 2
+          const hitAreaSize = 12
+          const halfW = boxWidth / 2
+          const halfH = boxHeight / 2
           
-          // If already selected, show outline
+          const allHandles: Array<{ handle: 'tl' | 'tr' | 'br' | 'bl' | 't' | 'r' | 'b' | 'l', x: number, y: number, w: number, h: number, cursor: string }> = [
+            // 4 corner squares
+            { handle: 'tl', x: -halfW, y: -halfH, w: handleSize, h: handleSize, cursor: 'nwse-resize' },
+            { handle: 'tr', x: halfW, y: -halfH, w: handleSize, h: handleSize, cursor: 'nesw-resize' },
+            { handle: 'br', x: halfW, y: halfH, w: handleSize, h: handleSize, cursor: 'nwse-resize' },
+            { handle: 'bl', x: -halfW, y: halfH, w: handleSize, h: handleSize, cursor: 'nesw-resize' },
+            // 4 edge lines (at midpoints)
+            { handle: 't', x: 0, y: -halfH, w: boxWidth, h: edgeThickness, cursor: 'ns-resize' },
+            { handle: 'b', x: 0, y: halfH, w: boxWidth, h: edgeThickness, cursor: 'ns-resize' },
+            { handle: 'l', x: -halfW, y: 0, w: edgeThickness, h: boxHeight, cursor: 'ew-resize' },
+            { handle: 'r', x: halfW, y: 0, w: edgeThickness, h: boxHeight, cursor: 'ew-resize' },
+          ]
+          const handles: PIXI.Graphics[] = []
+          allHandles.forEach(({ handle: handleType, x, y, w, h, cursor }) => {
+            const handleGfx = new PIXI.Graphics()
+            handleGfx.rect(-w / 2, -h / 2, w, h)
+            handleGfx.fill(0xA855F7)
+            
+            // Set larger hit area for easier grabbing
+            if (['t', 'b'].includes(handleType)) {
+              handleGfx.hitArea = new PIXI.Rectangle(-w / 2, -hitAreaSize / 2, w, hitAreaSize)
+            } else if (['l', 'r'].includes(handleType)) {
+              handleGfx.hitArea = new PIXI.Rectangle(-hitAreaSize / 2, -h / 2, hitAreaSize, h)
+            } else {
+              // Corners
+              handleGfx.hitArea = new PIXI.Rectangle(-handleSize, -handleSize, handleSize * 2, handleSize * 2)
+            }
+            
+            handleGfx.x = x
+            handleGfx.y = y
+            handleGfx.eventMode = 'static'
+            handleGfx.cursor = cursor
+            handleGfx.visible = false
+            // Corners (first 4) have higher priority than edges
+            handleGfx.zIndex = ['tl', 'tr', 'br', 'bl'].includes(handleType) ? 10 : 1
+            handleGfx.on('pointerdown', (e) => {
+              e.stopPropagation()
+              // Get CURRENT dimensions from layer state (not stale render-time values)
+              const currentLayer = layersRef.current.find(l => l.id === layer.id)
+              resizeStateRef.current = {
+                layerId: layer.id,
+                handle: handleType,
+                startX: e.global.x,
+                startY: e.global.y,
+                startWidth: currentLayer?.width ?? layer.width,
+                startHeight: currentLayer?.height ?? layer.height,
+              }
+            })
+            container.addChild(handleGfx)
+            handles.push(handleGfx)
+          })
+          resizeHandlesRef.current[layer.id] = handles
+          
+          // If already selected, show outline and handles
           if (selectedLayerId === layer.id) {
             outline.visible = true
+            handles.forEach(h => h.visible = true)
           }
           
           // Pointer events
@@ -1872,7 +1935,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       const g = graphicsByIdRef.current[layer.id]
       if (!g) return
       
-      // For text layers, ALWAYS check for text/fontSize changes
+      // For text layers, ALWAYS check for text/fontSize/width changes
       if (layer.type === 'text') {
         const container = g
         if (container && container.children && container.children.length > 0) {
@@ -1903,25 +1966,73 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
               textChanged = true
               needsRender = true
             }
+            // Update wordWrapWidth (text box width)
+            if (layer.width !== undefined && textObj.style && textObj.style.wordWrapWidth !== layer.width) {
+              textObj.style.wordWrapWidth = layer.width
+              textChanged = true
+              needsRender = true
+            }
             
-            // If text properties changed, update outline and hit area
+            // If text properties changed, update outline, hit area, and handles
             if (textChanged) {
-              // Give PIXI time to recalculate text bounds
-              const newBounds = textObj.getBounds()
-              const newWidth = newBounds.width
-              const newHeight = newBounds.height
+              // Use text's intrinsic width/height (local dimensions, not global bounds)
+              const boxWidth = Math.max(layer.width || 400, textObj.width)
+              const boxHeight = textObj.height
+              const halfW = boxWidth / 2
+              const halfH = boxHeight / 2
               
               // Update hit area
-              container.hitArea = new PIXI.Rectangle(-newWidth / 2, -newHeight / 2, newWidth, newHeight)
+              container.hitArea = new PIXI.Rectangle(-halfW, -halfH, boxWidth, boxHeight)
               
               // Find and update the outline graphics (child index 1)
               if (container.children.length > 1) {
                 const outline = container.children[1] as PIXI.Graphics
                 if (outline && 'clear' in outline) {
                   outline.clear()
-                  outline.rect(-newWidth / 2 - 4, -newHeight / 2 - 4, newWidth + 8, newHeight + 8)
+                  outline.rect(-halfW, -halfH, boxWidth, boxHeight)
                   outline.stroke({ width: 2, color: 0xA855F7 })
                 }
+              }
+              
+              // Update all 8 resize handles (same as shapes)
+              const handles = resizeHandlesRef.current[layer.id]
+              if (handles && handles.length === 8) {
+                const handleSize = 8
+                const edgeThickness = 2
+                const hitAreaSize = 12
+                
+                // Handle positions: tl, tr, br, bl, t, b, l, r
+                const handleData = [
+                  { x: -halfW, y: -halfH, w: handleSize, h: handleSize },
+                  { x: halfW, y: -halfH, w: handleSize, h: handleSize },
+                  { x: halfW, y: halfH, w: handleSize, h: handleSize },
+                  { x: -halfW, y: halfH, w: handleSize, h: handleSize },
+                  { x: 0, y: -halfH, w: boxWidth, h: edgeThickness },
+                  { x: 0, y: halfH, w: boxWidth, h: edgeThickness },
+                  { x: -halfW, y: 0, w: edgeThickness, h: boxHeight },
+                  { x: halfW, y: 0, w: edgeThickness, h: boxHeight },
+                ]
+                
+                handles.forEach((handle, idx) => {
+                  const data = handleData[idx]
+                  handle.clear()
+                  handle.rect(-data.w / 2, -data.h / 2, data.w, data.h)
+                  handle.fill(0xA855F7)
+                  handle.x = data.x
+                  handle.y = data.y
+                  
+                  // Update hit areas
+                  if (idx < 4) {
+                    // Corners
+                    handle.hitArea = new PIXI.Rectangle(-handleSize, -handleSize, handleSize * 2, handleSize * 2)
+                  } else if (idx === 4 || idx === 5) {
+                    // Top/Bottom edges
+                    handle.hitArea = new PIXI.Rectangle(-data.w / 2, -hitAreaSize / 2, data.w, hitAreaSize)
+                  } else {
+                    // Left/Right edges
+                    handle.hitArea = new PIXI.Rectangle(-hitAreaSize / 2, -data.h / 2, hitAreaSize, data.h)
+                  }
+                })
               }
             }
           }
