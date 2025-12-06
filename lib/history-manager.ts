@@ -24,7 +24,7 @@ export type ShapeKind =
 // Layer type (from dashboard)
 export interface Layer {
   id: string
-  type: 'shape' | 'image' | 'svg'
+  type: 'shape' | 'image' | 'svg' | 'text'
   shapeKind: ShapeKind
   x: number
   y: number
@@ -38,6 +38,11 @@ export interface Layer {
   imageUrl?: string  // Base64 data URL for imported images
   svgUrl?: string    // URL to SVG (from Iconify or local)
   iconName?: string  // Iconify icon name (e.g. "mdi:home")
+  // Text layer properties
+  text?: string           // Text content
+  fontFamily?: string     // Font family name (e.g. "Inter")
+  fontSize?: number       // Font size in pixels
+  fontWeight?: number     // Font weight (400, 500, 600, 700)
 }
 
 // Template clip type (from timeline store)

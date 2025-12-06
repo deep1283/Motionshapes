@@ -33,7 +33,7 @@ type ShapeKind =
 
 interface Layer {
   id: string
-  type: 'shape' | 'image' | 'svg'
+  type: 'shape' | 'image' | 'svg' | 'text'
   shapeKind: ShapeKind
   x: number
   y: number
@@ -46,6 +46,11 @@ interface Layer {
   imageUrl?: string  // Base64 data URL for imported images
   svgUrl?: string    // URL to SVG (from Iconify or local)
   iconName?: string  // Iconify icon name (e.g. "mdi:home")
+  // Text layer properties
+  text?: string           // Text content
+  fontFamily?: string     // Font family name (e.g. "Inter")
+  fontSize?: number       // Font size in pixels
+  fontWeight?: number     // Font weight (400, 500, 600, 700)
 }
 
 export default function DashboardPage() {
@@ -767,6 +772,40 @@ function DashboardContent() {
     setTemplateVersion((v) => v + 1)
   }
 
+  // Handle adding Text layer
+  const handleAddText = () => {
+    const newLayer: Layer = {
+      id: crypto.randomUUID(),
+      type: 'text',
+      shapeKind: 'circle', // Placeholder, not used for text
+      x: 0.5,
+      y: 0.5,
+      width: 200,
+      height: 60,
+      scale: 1,
+      fillColor: 0xffffff, // White text
+      rotation: 0,
+      text: 'Your Text',
+      fontFamily: 'Inter',
+      fontSize: 48,
+      fontWeight: 600,
+    }
+
+    setLayers((prev) => [...prev, newLayer])
+    setSelectedLayerId(newLayer.id)
+    pushSnapshot()
+    timeline.ensureTrack(newLayer.id, {
+      position: { x: newLayer.x, y: newLayer.y },
+      scale: newLayer.scale,
+      rotation: 0,
+      opacity: 1,
+    })
+    lastLayerBaseRef.current[newLayer.id] = { x: newLayer.x, y: newLayer.y, scale: newLayer.scale }
+    setLayerOrder((prev) => [...prev, newLayer.id])
+    setSelectedTemplate('')
+    setTemplateVersion((v) => v + 1)
+  }
+
   const handleUpdateLayerPosition = (id: string, x: number, y: number) => {
     const nx = Math.max(0, Math.min(1, x))
     const ny = Math.max(0, Math.min(1, y))
@@ -820,6 +859,36 @@ function DashboardContent() {
       )
     )
     timeline.ensureTrack(id)
+  }
+
+  const handleUpdateLayerText = (id: string, text: string) => {
+    setLayers((prev) =>
+      prev.map((layer) =>
+        layer.id === id
+          ? { ...layer, text }
+          : layer
+      )
+    )
+  }
+
+  const handleUpdateLayerFontSize = (id: string, fontSize: number) => {
+    setLayers((prev) =>
+      prev.map((layer) =>
+        layer.id === id
+          ? { ...layer, fontSize }
+          : layer
+      )
+    )
+  }
+
+  const handleUpdateLayerColor = (id: string, color: number) => {
+    setLayers((prev) =>
+      prev.map((layer) =>
+        layer.id === id
+          ? { ...layer, fillColor: color }
+          : layer
+      )
+    )
   }
 
   const handleSelectLayer = (id: string) => {
@@ -1280,6 +1349,7 @@ function DashboardContent() {
         onSelectTemplate={handleTemplateSelect}
         onAddShape={handleAddShape}
         onAddSvg={handleAddSvg}
+        onAddText={handleAddText}
         onImportImage={handleImportImage}
         onStartDrawPath={handleStartDrawPath}
         onStartDrawLine={handleStartDrawLine}
@@ -1326,6 +1396,9 @@ function DashboardContent() {
         onUpdateLayerPosition={handleUpdateLayerPosition}
         onUpdateLayerRotation={handleUpdateLayerRotation}
         onUpdateLayerSize={handleUpdateLayerSize}
+        onUpdateLayerText={handleUpdateLayerText}
+        onUpdateLayerFontSize={handleUpdateLayerFontSize}
+        onUpdateLayerColor={handleUpdateLayerColor}
         selectedClipDuration={selectedClipDuration}
         onClipDurationChange={handleClipDurationChange}
         onClipClick={(clip) => {

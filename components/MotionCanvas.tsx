@@ -19,7 +19,7 @@ interface MotionCanvasProps {
   templateVersion: number
   layers?: Array<{
     id: string
-    type?: 'shape' | 'image' | 'svg'
+    type?: 'shape' | 'image' | 'svg' | 'text'
     shapeKind: 'circle' | 'square' | 'heart' | 'star' | 'triangle' | 'pill' | 'like' | 'comment' | 'share' | 'cursor'
     x: number
     y: number
@@ -29,6 +29,11 @@ interface MotionCanvasProps {
     fillColor: number
     imageUrl?: string
     svgUrl?: string
+    // Text properties
+    text?: string
+    fontFamily?: string
+    fontSize?: number
+    fontWeight?: number
     effects?: Array<{
       id: string
       type: string
@@ -1308,6 +1313,70 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           return // Skip shape rendering code
         }
         
+        // Handle Text layers
+        if (layer.type === 'text' && layer.text) {
+          const container = new PIXI.Container()
+          
+          // Create text style
+          const textStyle = new PIXI.TextStyle({
+            fontFamily: layer.fontFamily || 'Inter',
+            fontSize: layer.fontSize || 48,
+            fontWeight: String(layer.fontWeight || 600) as PIXI.TextStyleFontWeight,
+            fill: layer.fillColor ?? 0xffffff,
+            align: 'center',
+            wordWrap: true,
+            wordWrapWidth: layer.width * 2, // Allow word wrap if text is long
+          })
+          
+          const text = new PIXI.Text({ text: layer.text, style: textStyle })
+          text.anchor.set(0.5)
+          container.addChild(text)
+          
+          // Update layer dimensions based on text bounds
+          const textBounds = text.getBounds()
+          
+          const posX = layer.x <= 4 ? layer.x * screenWidth : layer.x
+          const posY = layer.y <= 4 ? layer.y * screenHeight : layer.y
+          container.x = posX
+          container.y = posY
+          container.zIndex = layerIndex
+          container.eventMode = 'static'
+          container.cursor = 'grab'
+          container.hitArea = new PIXI.Rectangle(-textBounds.width / 2, -textBounds.height / 2, textBounds.width, textBounds.height)
+          
+          // Store references
+          graphicsByIdRef.current[layer.id] = container as any
+          
+          // Add outline
+          const outline = new PIXI.Graphics()
+          outline.rect(-textBounds.width / 2, -textBounds.height / 2, textBounds.width, textBounds.height)
+          outline.stroke({ color: 0x9333ea, width: 2, alpha: 1 })
+          outline.visible = false
+          outline.eventMode = 'none'
+          container.addChild(outline)
+          outlinesByIdRef.current[layer.id] = outline
+          
+          // No resize handles for text - use control panel for font size
+          // Can be added later if needed
+          
+          // If already selected, show outline
+          if (selectedLayerId === layer.id) {
+            outline.visible = true
+          }
+          
+          // Pointer events
+          container.on('pointerdown', (e) => {
+            e.stopPropagation()
+            onSelectLayer?.(layer.id)
+            dragRef.current = { id: layer.id, offsetX: e.global.x - container.x, offsetY: e.global.y - container.y }
+            stage.cursor = 'grabbing'
+          })
+          
+          stage.addChild(container)
+          stage.sortChildren()
+          return // Skip shape rendering code
+        }
+        
         const g = new PIXI.Graphics()
         // Bottom of timeline (higher index) = higher zIndex = renders on top
         g.zIndex = layerIndex
@@ -1800,6 +1869,34 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     let needsRender = false
     
     renderLayers.forEach(layer => {
+      const g = graphicsByIdRef.current[layer.id]
+      if (!g) return
+      
+      // For text layers, ALWAYS check for text/fontSize changes
+      if (layer.type === 'text') {
+        const container = g
+        if (container && container.children && container.children.length > 0) {
+          const textObj = container.children[0] as PIXI.Text
+          if (textObj && 'text' in textObj) {
+            // Update text content
+            if (layer.text !== undefined && textObj.text !== layer.text) {
+              textObj.text = layer.text
+              needsRender = true
+            }
+            // Update font size
+            if (layer.fontSize !== undefined && textObj.style && textObj.style.fontSize !== layer.fontSize) {
+              textObj.style.fontSize = layer.fontSize
+              needsRender = true
+            }
+            // Update fill color
+            if (layer.fillColor !== undefined && textObj.style) {
+              textObj.style.fill = layer.fillColor
+            }
+          }
+        }
+        return // Skip the rest for text layers
+      }
+      
       const prevDims = layerDimensionsRef.current[layer.id]
       const hasChanged = !prevDims || prevDims.width !== layer.width || prevDims.height !== layer.height
       
@@ -1809,9 +1906,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       layerDimensionsRef.current[layer.id] = { width: layer.width, height: layer.height }
       needsRender = true
       
-      const g = graphicsByIdRef.current[layer.id]
-      if (!g) return
-      
       // For images, update sprite dimensions
       const sprite = spritesByIdRef.current[layer.id]
       if (sprite) {
@@ -1819,7 +1913,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         sprite.height = layer.height
       }
       
-      // For shapes only (not images or SVGs which use sprites), redraw the graphics
+      // For shapes only (not images or SVGs which use containers), redraw the graphics
       if (layer.shapeKind && layer.type !== 'image' && layer.type !== 'svg') {
         g.clear()
         const fillColor = layer.fillColor ?? 0xffffff
