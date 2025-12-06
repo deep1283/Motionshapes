@@ -152,6 +152,8 @@ interface DashboardLayoutProps {
   onToggleEffect?: (effectId: string, isEnabled: boolean) => void
   layerEffects?: Effect[]
   selectedClipId?: string
+  // Click animation
+  onAddClickMarker?: (layerId: string) => void
   // History
   canUndo?: boolean
   canRedo?: boolean
@@ -227,6 +229,7 @@ export default function DashboardLayout({
   onToggleEffect,
   layerEffects = [],
   selectedClipId,
+  onAddClickMarker,
   canUndo,
   canRedo,
   onUndo,
@@ -243,7 +246,7 @@ export default function DashboardLayout({
   const supabase = createClient()
   const [showBackgroundPanel, setShowBackgroundPanel] = useState(false)
   const [activeTab, setActiveTab] = useState<'templates' | 'shapes' | 'effects' | 'animations'>('shapes')
-  const [animationType, setAnimationType] = useState<'in' | 'out'>('in')
+  const [animationType, setAnimationType] = useState<'in' | 'out' | 'custom'>('in')
   const [showExploreModal, setShowExploreModal] = useState(false)
   const [showTextColorPicker, setShowTextColorPicker] = useState(false)
 
@@ -1063,7 +1066,13 @@ export default function DashboardLayout({
                   Out
                 </button>
                 <button
-                   className="flex-1 py-3 text-[11px] font-bold tracking-wider uppercase text-neutral-400 hover:text-neutral-200 hover:bg-white/5 transition-colors"
+                  onClick={() => setAnimationType('custom')}
+                  className={cn(
+                    "flex-1 py-3 text-[11px] font-bold tracking-wider uppercase transition-colors",
+                    animationType === 'custom'
+                      ? "bg-[#8b5cf6] text-white"
+                      : "text-neutral-400 hover:text-neutral-200 hover:bg-white/5"
+                  )}
                 >
                   Custom
                 </button>
@@ -1073,7 +1082,7 @@ export default function DashboardLayout({
                 "grid gap-2",
                 sidebarWidth < 240 ? "grid-cols-1" : "grid-cols-2"
               )}>
-                {animationType === 'in' ? (
+                {animationType === 'in' && (
                   <>
                     <div className="col-span-full mb-1 mt-2">
                       <h3 className="text-[11px] font-semibold text-neutral-300">Fade</h3>
@@ -1133,7 +1142,8 @@ export default function DashboardLayout({
                       onClick={() => onSelectTemplate('move_scale_in')}
                     />
                   </>
-                ) : (
+                )}
+                {animationType === 'out' && (
                   <>
                     <div className="col-span-full mb-1 mt-2">
                       <h3 className="text-[11px] font-semibold text-neutral-300">Fade</h3>
@@ -1192,6 +1202,28 @@ export default function DashboardLayout({
                       isSelected={selectedTemplate === 'move_scale_out'}
                       onClick={() => onSelectTemplate('move_scale_out')}
                     />
+                  </>
+                )}
+                {animationType === 'custom' && (
+                  <>
+                    <div className="col-span-full mb-1 mt-2">
+                      <h3 className="text-[11px] font-semibold text-neutral-300">Interactive</h3>
+                    </div>
+                    <button
+                      onClick={() => onAddClickMarker?.(selectedLayerId || '')}
+                      disabled={!selectedLayerId}
+                      className={cn(
+                        "flex flex-col items-center justify-center gap-2 p-4 rounded-lg border transition-all",
+                        selectedLayerId
+                          ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/50 cursor-pointer"
+                          : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
+                      )}
+                    >
+                      <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
+                        <div className="w-3 h-3 rounded-full bg-purple-500" />
+                      </div>
+                      <span className="text-[11px] font-medium text-neutral-300">Click</span>
+                    </button>
                   </>
                 )}
               </div>

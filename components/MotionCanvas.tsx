@@ -262,8 +262,21 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   const templateCompleteCalled = useRef(false)
   const timelineTracks = useTimeline((s) => s.tracks)
   const playhead = useTimeline((s) => s.currentTime)
+  const clickMarkers = useTimeline((s) => s.clickMarkers)
   const sampledTimeline = useMemo(() => sampleTimeline(timelineTracks, playhead), [timelineTracks, playhead])
   const timelineActions = useTimelineActions()
+  
+  // Track which click markers have been triggered (to avoid re-triggering)
+  const triggeredMarkersRef = useRef<Set<string>>(new Set())
+  // Active ripple effects
+  const [activeRipples, setActiveRipples] = useState<Array<{
+    id: string
+    layerId: string
+    startTime: number
+    x: number
+    y: number
+  }>>([])
+  const rippleGraphicsRef = useRef<Map<string, PIXI.Graphics>>(new Map())
 
   const currentPathClip = useMemo(() => {
     if (!selectedLayerId) return null
@@ -276,6 +289,113 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   useEffect(() => {
     layersRef.current = renderLayers
   }, [renderLayers])
+
+  // Detect click marker crossings and trigger ripples
+  const lastPlayheadRef = useRef(playhead)
+  useEffect(() => {
+    const prevTime = lastPlayheadRef.current
+    const currentTime = playhead
+    lastPlayheadRef.current = currentTime
+    
+    // Check if playhead crossed any click markers
+    clickMarkers.forEach((marker) => {
+      const crossed = (prevTime <= marker.time && currentTime >= marker.time) ||
+                      (prevTime >= marker.time && currentTime <= marker.time && currentTime < 100) // Reset case
+      
+      if (crossed && !triggeredMarkersRef.current.has(marker.id)) {
+        triggeredMarkersRef.current.add(marker.id)
+        
+        // Get the layer's position
+        const layer = renderLayers.find((l) => l.id === marker.layerId)
+        if (layer) {
+          const x = layer.x <= 4 ? layer.x * canvasBounds.width : layer.x
+          const y = layer.y <= 4 ? layer.y * canvasBounds.height : layer.y
+          
+          setActiveRipples((prev) => [...prev, {
+            id: `ripple-${marker.id}-${Date.now()}`,
+            layerId: marker.layerId,
+            startTime: Date.now(),
+            x,
+            y
+          }])
+        }
+        
+        // Reset trigger after animation completes
+        setTimeout(() => {
+          triggeredMarkersRef.current.delete(marker.id)
+        }, 600)
+      }
+    })
+    
+    // Reset all markers when playhead goes back to start
+    if (currentTime < 50 && prevTime > 100) {
+      triggeredMarkersRef.current.clear()
+    }
+  }, [playhead, clickMarkers, renderLayers, canvasBounds])
+
+  // Animate ripples on the canvas
+  useEffect(() => {
+    if (activeRipples.length === 0) return
+    
+    const app = appRef.current
+    if (!app) return
+    
+    const RIPPLE_DURATION = 500 // ms
+    const MAX_RADIUS = 80
+    
+    // Create graphics for new ripples
+    activeRipples.forEach((ripple) => {
+      if (!rippleGraphicsRef.current.has(ripple.id)) {
+        const graphics = new PIXI.Graphics()
+        graphics.zIndex = 9999
+        app.stage.addChild(graphics)
+        rippleGraphicsRef.current.set(ripple.id, graphics)
+      }
+    })
+    
+    // Animation loop
+    const animateRipples = () => {
+      const now = Date.now()
+      const toRemove: string[] = []
+      
+      activeRipples.forEach((ripple) => {
+        const elapsed = now - ripple.startTime
+        const progress = Math.min(1, elapsed / RIPPLE_DURATION)
+        const graphics = rippleGraphicsRef.current.get(ripple.id)
+        
+        if (!graphics) return
+        
+        if (progress >= 1) {
+          toRemove.push(ripple.id)
+          graphics.destroy()
+          rippleGraphicsRef.current.delete(ripple.id)
+        } else {
+          // Easing: easeOutQuad
+          const eased = 1 - (1 - progress) * (1 - progress)
+          const radius = eased * MAX_RADIUS
+          const alpha = 1 - eased
+          
+          graphics.clear()
+          graphics.circle(ripple.x, ripple.y, radius)
+          graphics.fill({ color: 0xa855f7, alpha: alpha * 0.5 })
+          graphics.circle(ripple.x, ripple.y, radius)
+          graphics.stroke({ width: 3, color: 0xa855f7, alpha })
+        }
+      })
+      
+      if (toRemove.length > 0) {
+        setActiveRipples((prev) => prev.filter((r) => !toRemove.includes(r.id)))
+      }
+      
+      app.render()
+    }
+    
+    const intervalId = setInterval(animateRipples, 16) // ~60fps
+    
+    return () => {
+      clearInterval(intervalId)
+    }
+  }, [activeRipples])
 
   // 1. Initialize Pixi App ONCE
   useEffect(() => {
@@ -785,55 +905,69 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         
         // For shapes (not sprites), redraw the graphics
         const layer = renderLayers.find(l => l.id === layerId)
-        if (!sprite && g && g instanceof PIXI.Graphics && layer) {
-          // Find the shape fill graphics (first child that's a graphics or the main container)
-          g.clear()
-          const fillColor = layer.fillColor ?? 0xffffff
-          switch (layer.shapeKind) {
-            case 'square':
-              g.rect(-newWidth / 2, -newHeight / 2, newWidth, newHeight)
-              g.fill(fillColor)
-              break
-            case 'circle':
-              g.ellipse(0, 0, newWidth / 2, newHeight / 2)
-              g.fill(fillColor)
-              break
-            case 'triangle':
-              g.moveTo(0, -newHeight / 2)
-              g.lineTo(newWidth / 2, newHeight / 2)
-              g.lineTo(-newWidth / 2, newHeight / 2)
-              g.closePath()
-              g.fill(fillColor)
-              break
-            case 'pill':
-              const pillRadius = Math.min(newWidth, newHeight) / 2
-              g.roundRect(-newWidth / 2, -newHeight / 2, newWidth, newHeight, pillRadius)
-              g.fill(fillColor)
-              break
-            case 'heart':
-              const hScale = newWidth / 100
-              const vScale = newHeight / 100
-              g.moveTo(0, -30 * vScale)
-              g.bezierCurveTo(25 * hScale, -50 * vScale, 50 * hScale, -30 * vScale, 50 * hScale, 0)
-              g.bezierCurveTo(50 * hScale, 30 * vScale, 0, 50 * vScale, 0, 50 * vScale)
-              g.bezierCurveTo(0, 50 * vScale, -50 * hScale, 30 * vScale, -50 * hScale, 0)
-              g.bezierCurveTo(-50 * hScale, -30 * vScale, -25 * hScale, -50 * vScale, 0, -30 * vScale)
-              g.fill(fillColor)
-              break
-            case 'star':
-              const outerRadius = Math.min(newWidth, newHeight) / 2
-              const innerRadius = outerRadius * 0.4
-              for (let i = 0; i < 10; i++) {
-                const r = i % 2 === 0 ? outerRadius : innerRadius
-                const angle = (Math.PI / 5) * i - Math.PI / 2
-                const sx = Math.cos(angle) * r
-                const sy = Math.sin(angle) * r
-                if (i === 0) g.moveTo(sx, sy)
-                else g.lineTo(sx, sy)
+        if (!sprite && g && layer) {
+          // Check if this container has a sprite child (for icon-based shapes like cursor, like, etc.)
+          const iconShapes = ['like', 'comment', 'share', 'cursor']
+          if (iconShapes.includes(layer.shapeKind)) {
+            // Find the sprite child and resize it
+            for (let i = 0; i < g.children.length; i++) {
+              const child = g.children[i]
+              if (child instanceof PIXI.Sprite) {
+                child.width = newWidth
+                child.height = newHeight
+                break
               }
-              g.closePath()
-              g.fill(fillColor)
-              break
+            }
+          } else if (g instanceof PIXI.Graphics) {
+            // For non-icon shapes, clear and redraw
+            g.clear()
+            const fillColor = layer.fillColor ?? 0xffffff
+            switch (layer.shapeKind) {
+              case 'square':
+                g.rect(-newWidth / 2, -newHeight / 2, newWidth, newHeight)
+                g.fill(fillColor)
+                break
+              case 'circle':
+                g.ellipse(0, 0, newWidth / 2, newHeight / 2)
+                g.fill(fillColor)
+                break
+              case 'triangle':
+                g.moveTo(0, -newHeight / 2)
+                g.lineTo(newWidth / 2, newHeight / 2)
+                g.lineTo(-newWidth / 2, newHeight / 2)
+                g.closePath()
+                g.fill(fillColor)
+                break
+              case 'pill':
+                const pillRadius = Math.min(newWidth, newHeight) / 2
+                g.roundRect(-newWidth / 2, -newHeight / 2, newWidth, newHeight, pillRadius)
+                g.fill(fillColor)
+                break
+              case 'heart':
+                const hScale = newWidth / 100
+                const vScale = newHeight / 100
+                g.moveTo(0, -30 * vScale)
+                g.bezierCurveTo(25 * hScale, -50 * vScale, 50 * hScale, -30 * vScale, 50 * hScale, 0)
+                g.bezierCurveTo(50 * hScale, 30 * vScale, 0, 50 * vScale, 0, 50 * vScale)
+                g.bezierCurveTo(0, 50 * vScale, -50 * hScale, 30 * vScale, -50 * hScale, 0)
+                g.bezierCurveTo(-50 * hScale, -30 * vScale, -25 * hScale, -50 * vScale, 0, -30 * vScale)
+                g.fill(fillColor)
+                break
+              case 'star':
+                const outerRadius = Math.min(newWidth, newHeight) / 2
+                const innerRadius = outerRadius * 0.4
+                for (let i = 0; i < 10; i++) {
+                  const r = i % 2 === 0 ? outerRadius : innerRadius
+                  const angle = (Math.PI / 5) * i - Math.PI / 2
+                  const sx = Math.cos(angle) * r
+                  const sy = Math.sin(angle) * r
+                  if (i === 0) g.moveTo(sx, sy)
+                  else g.lineTo(sx, sy)
+                }
+                g.closePath()
+                g.fill(fillColor)
+                break
+            }
           }
         }
         

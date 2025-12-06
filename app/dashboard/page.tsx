@@ -1424,6 +1424,11 @@ function DashboardContent() {
         onUpdateEffect={handleUpdateEffect}
         onToggleEffect={handleToggleEffect}
         layerEffects={layers.find(l => l.id === selectedLayerId)?.effects}
+        onAddClickMarker={(layerId) => {
+          if (layerId) {
+            timeline.addClickMarker(layerId)
+          }
+        }}
       >
         <MotionCanvas 
           template={selectedTemplate} 

@@ -68,6 +68,12 @@ type TimelineState = {
       }
     }
   }>
+  // Click markers for click animation effect
+  clickMarkers: Array<{
+    id: string
+    layerId: string
+    time: number  // when the click happens (in ms)
+  }>
 }
 
 export type TimelineStore = ReturnType<typeof createTimelineStore>
@@ -100,6 +106,7 @@ const defaultState: TimelineState = {
   spinSpeed: 1,
   spinDirection: 1,
   templateClips: [],
+  clickMarkers: [],
 }
 
 export function createTimelineStore(initialState?: Partial<TimelineState>) {
@@ -121,6 +128,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     spinSpeed: initialState?.spinSpeed ?? defaultState.spinSpeed,
     spinDirection: initialState?.spinDirection ?? defaultState.spinDirection,
     templateClips: initialState?.templateClips ?? defaultState.templateClips,
+    clickMarkers: initialState?.clickMarkers ?? defaultState.clickMarkers,
   }
 
   const listeners = new Set<() => void>()
@@ -242,6 +250,38 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             }
           : track
       ),
+    }))
+  }
+
+  // Click marker methods
+  const addClickMarker = (layerId: string, time?: number) => {
+    const markerId = `click-${layerId}-${Date.now()}`
+    const markerTime = time ?? state.currentTime
+    
+    setState((prev) => ({
+      ...prev,
+      clickMarkers: [
+        ...prev.clickMarkers,
+        { id: markerId, layerId, time: markerTime }
+      ].sort((a, b) => a.time - b.time)
+    }))
+    
+    return markerId
+  }
+
+  const removeClickMarker = (markerId: string) => {
+    setState((prev) => ({
+      ...prev,
+      clickMarkers: prev.clickMarkers.filter((m) => m.id !== markerId)
+    }))
+  }
+
+  const updateClickMarker = (markerId: string, time: number) => {
+    setState((prev) => ({
+      ...prev,
+      clickMarkers: prev.clickMarkers
+        .map((m) => m.id === markerId ? { ...m, time } : m)
+        .sort((a, b) => a.time - b.time)
     }))
   }
 
@@ -2256,6 +2296,10 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     addPathClip,
     removePathClip,
     updatePathClip,
+    // Click markers
+    addClickMarker,
+    removeClickMarker,
+    updateClickMarker,
     replaceTracks,
     applyPresetToLayer,
     clear,
@@ -2278,6 +2322,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       pulseSpeed: state.pulseSpeed,
       spinSpeed: state.spinSpeed,
       spinDirection: state.spinDirection,
+      clickMarkers: state.clickMarkers,
     }),
     
     // Undo/Redo: Restore from snapshot
@@ -2298,6 +2343,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       spinSpeed: number
       spinDirection: 1 | -1
       layers: { id: string; x: number; y: number; scale: number; rotation?: number; opacity?: number }[]
+      clickMarkers: typeof state.clickMarkers
     }>) => {
       const layerBaseMap: Record<string, { position?: Vec2; scale?: number; rotation?: number; opacity?: number }> = {}
       snapshot.layers?.forEach((layer) => {
@@ -2329,6 +2375,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         pulseSpeed: snapshot.pulseSpeed ?? prev.pulseSpeed,
         spinSpeed: snapshot.spinSpeed ?? prev.spinSpeed,
         spinDirection: snapshot.spinDirection ?? prev.spinDirection,
+        clickMarkers: snapshot.clickMarkers ?? prev.clickMarkers,
         tracks,
         duration,
         currentTime: clampTime(prev.currentTime, duration),

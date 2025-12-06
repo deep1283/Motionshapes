@@ -42,6 +42,7 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
   const popSpeed = useTimeline((s) => s.popSpeed)
   const popCollapse = useTimeline((s) => s.popCollapse)
   const templateClips = useTimeline((s) => s.templateClips)
+  const clickMarkers = useTimeline((s) => s.clickMarkers)
   const timeline = useTimelineActions()
   const MIN_TIMELINE_MS = 4000
   const safeDuration = Math.max(MIN_TIMELINE_MS, Number.isFinite(duration) ? duration : MIN_TIMELINE_MS)
@@ -536,6 +537,45 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
                           style={{ left: `${summaryLeft}%`, width: `${summaryWidth}%` }}
                         />
                       )}
+                      
+                      {/* Click Markers as dots */}
+                      {clickMarkers
+                        .filter((m) => m.layerId === layer.id)
+                        .map((marker) => {
+                          const markerLeft = (marker.time / safeDuration) * 100
+                          return (
+                            <div
+                              key={marker.id}
+                              className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-purple-500 border-2 border-white cursor-grab hover:scale-125 transition-transform z-10"
+                              style={{ left: `${markerLeft}%`, transform: 'translate(-50%, -50%)' }}
+                              title={`Click at ${Math.round(marker.time)}ms`}
+                              onPointerDown={(e) => {
+                                e.stopPropagation()
+                                // Start dragging the marker
+                                const rect = e.currentTarget.parentElement?.getBoundingClientRect()
+                                if (!rect) return
+                                const startX = e.clientX
+                                const baseTime = marker.time
+                                
+                                const onMove = (ev: PointerEvent) => {
+                                  const pxPerMs = rect.width / safeDuration
+                                  const deltaMs = (ev.clientX - startX) / pxPerMs
+                                  const newTime = Math.max(0, Math.min(safeDuration, baseTime + deltaMs))
+                                  timeline.updateClickMarker(marker.id, newTime)
+                                }
+                                
+                                const onUp = () => {
+                                  window.removeEventListener('pointermove', onMove)
+                                  window.removeEventListener('pointerup', onUp)
+                                }
+                                
+                                window.addEventListener('pointermove', onMove)
+                                window.addEventListener('pointerup', onUp)
+                              }}
+                            />
+                          )
+                        })
+                      }
                     </div>
                   </div>
 
