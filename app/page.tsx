@@ -50,8 +50,8 @@ export default function Home() {
           className="mb-8 inline-flex items-center gap-2 rounded-full border border-white/5 bg-white/5 px-4 py-1.5 text-sm font-medium text-neutral-300 backdrop-blur-md shadow-[0_0_15px_rgba(255,255,255,0.05)] hover:bg-white/10 transition-colors duration-300"
         >
           <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-violet-400 opacity-75"></span>
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-violet-500"></span>
           </span>
           <span className="tracking-wide text-xs uppercase text-neutral-400">v1.0 is now live</span>
         </motion.div>
@@ -169,7 +169,7 @@ export default function Home() {
                         transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
                         className="absolute left-1/3 bottom-1/4"
                     >
-                        <svg width="60" height="20" viewBox="0 0 60 20" stroke="currentColor" className="text-emerald-500/30" fill="none" strokeWidth="3">
+                        <svg width="60" height="20" viewBox="0 0 60 20" stroke="currentColor" className="text-violet-500/30" fill="none" strokeWidth="3">
                             <path d="M2 10 Q 15 -5, 30 10 T 58 10" strokeLinecap="round" />
                         </svg>
                     </motion.div>
@@ -207,7 +207,7 @@ export default function Home() {
                         scale: [1.05, 1, 1.05]
                       }}
                       transition={{ duration: 7, repeat: Infinity, ease: "easeInOut", delay: 1 }}
-                      className="absolute inset-8 rounded-2xl bg-linear-to-tr from-emerald-500/20 to-cyan-500/20 border border-white/10 backdrop-blur-xl"
+                      className="absolute inset-8 rounded-2xl bg-linear-to-tr from-violet-500/20 to-cyan-500/20 border border-white/10 backdrop-blur-xl"
                    />
                    
                    {/* Center Icon */}

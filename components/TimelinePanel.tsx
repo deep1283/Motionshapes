@@ -376,21 +376,23 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
     >
       {/* Resize Handle */}
       <div
-        className="absolute -top-1 left-0 right-0 h-2 cursor-row-resize hover:bg-emerald-500/50 transition-colors z-50 active:bg-emerald-500"
+        className="absolute -top-1.5 left-0 right-0 h-3 cursor-row-resize z-50 group flex items-center justify-center"
         onPointerDown={handleResizeStart}
-      />
+      >
+        <div className="w-full h-[2px] bg-transparent group-hover:bg-violet-500/50 group-active:bg-violet-500 transition-colors" />
+      </div>
       <div className="flex h-10 items-center justify-between border-b border-white/5 px-4 bg-white/[0.02]">
         <div className="flex items-center gap-4">
           <span className="text-[10px] font-bold tracking-widest text-neutral-600">TIMELINE</span>
           <div className="h-3 w-px bg-white/5" />
-          <span className="text-[10px] font-mono text-emerald-500/80 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+          <span className="text-[10px] font-mono text-violet-500/80 bg-violet-500/10 px-1.5 py-0.5 rounded border border-violet-500/20">
             {formatTime(currentTime)} / {formatTime(duration)}
           </span>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={handlePlayClick}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] text-neutral-100 hover:bg-white/[0.12] transition-colors"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-violet-500/30 bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white shadow-lg shadow-violet-500/20 hover:shadow-violet-500/40 hover:scale-105 transition-all"
           >
             {isPlaying ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3 fill-current" />}
           </button>
@@ -590,7 +592,7 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
                     const clipClasses = [
                       'absolute top-1/2 -translate-y-1/2 h-6 rounded-md border px-2 text-[10px] text-white flex items-center gap-1 shadow-lg overflow-hidden transition-all',
                       'bg-gradient-to-r from-purple-500/40 to-purple-600/40 border-purple-500/50 hover:brightness-110',
-                      isSelected ? 'ring-2 ring-emerald-400 ring-offset-2 ring-offset-black/40' : '',
+                      isSelected ? 'ring-2 ring-violet-400 ring-offset-2 ring-offset-black/40' : '',
                     ]
 
                     return (

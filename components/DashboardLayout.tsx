@@ -867,7 +867,7 @@ export default function DashboardLayout({
               className={cn(
                 "flex-1 border-b-2 py-3 text-[11px] font-medium transition-colors",
                 activeTab === 'templates'
-                  ? "border-emerald-500 text-emerald-400"
+                  ? "border-violet-500 text-violet-400"
                   : "border-transparent text-neutral-400 hover:text-neutral-200"
               )}
             >
@@ -878,7 +878,7 @@ export default function DashboardLayout({
               className={cn(
                 "flex-1 border-b-2 py-3 text-[11px] font-medium transition-colors",
                 activeTab === 'animations'
-                  ? "border-emerald-500 text-emerald-400"
+                  ? "border-violet-500 text-violet-400"
                   : "border-transparent text-neutral-400 hover:text-neutral-200"
               )}
             >
@@ -889,7 +889,7 @@ export default function DashboardLayout({
               className={cn(
                 "flex-1 border-b-2 py-3 text-[11px] font-medium transition-colors",
                 activeTab === 'effects'
-                  ? "border-emerald-500 text-emerald-400"
+                  ? "border-violet-500 text-violet-400"
                   : "border-transparent text-neutral-400 hover:text-neutral-200"
               )}
             >
@@ -900,7 +900,7 @@ export default function DashboardLayout({
               className={cn(
                 "flex-1 border-b-2 py-3 text-[11px] font-medium transition-colors",
                 activeTab === 'shapes'
-                  ? "border-emerald-500 text-emerald-400"
+                  ? "border-violet-500 text-violet-400"
                   : "border-transparent text-neutral-400 hover:text-neutral-200"
               )}
             >
@@ -993,11 +993,11 @@ export default function DashboardLayout({
                     className={cn(
                       "group flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-sm font-medium transition-all duration-200 border border-transparent",
                       isDrawingPath
-                        ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                        ? "bg-violet-500/10 text-violet-400 border-violet-500/20"
                         : "text-neutral-400 hover:bg-white/5 hover:text-neutral-200 hover:border-white/5"
                     )}
                   >
-                    <PenTool className={cn("h-4 w-4", isDrawingPath ? "text-emerald-400" : "text-neutral-500 group-hover:text-neutral-300")} />
+                    <PenTool className={cn("h-4 w-4", isDrawingPath ? "text-violet-400" : "text-neutral-500 group-hover:text-neutral-300")} />
                     <span className="truncate">Draw a custom path</span>
                   </button>
                   <button
@@ -1005,11 +1005,11 @@ export default function DashboardLayout({
                     className={cn(
                       "group flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-sm font-medium transition-all duration-200 border border-transparent",
                       isDrawingLine
-                        ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                        ? "bg-violet-500/10 text-violet-400 border-violet-500/20"
                         : "text-neutral-400 hover:bg-white/5 hover:text-neutral-200 hover:border-white/5"
                     )}
                   >
-                    <Minus className={cn("h-4 w-4", isDrawingLine ? "text-emerald-400" : "text-neutral-500 group-hover:text-neutral-300")} />
+                    <Minus className={cn("h-4 w-4", isDrawingLine ? "text-violet-400" : "text-neutral-500 group-hover:text-neutral-300")} />
                     <span className="truncate">Draw a line</span>
                   </button>
                 </div>
@@ -1797,7 +1797,7 @@ export default function DashboardLayout({
                   step={100}
                   value={selectedClipDuration}
                   onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
-                  className="w-full accent-emerald-500"
+                  className="w-full accent-violet-500"
                 />
               </div>
             )}
@@ -1815,7 +1815,7 @@ export default function DashboardLayout({
                     step={0.05}
                     value={templateSpeed}
                     onChange={(e) => onTemplateSpeedChange?.(Number(e.target.value))}
-                    className="w-full accent-emerald-500"
+                    className="w-full accent-violet-500"
                   />
                 </div>
                 <div>
@@ -1830,7 +1830,7 @@ export default function DashboardLayout({
                     step={0.01}
                     value={rollDistance}
                     onChange={(e) => onRollDistanceChange?.(Number(e.target.value))}
-                    className="w-full accent-emerald-500"
+                    className="w-full accent-violet-500"
                   />
                 </div>
               </>
@@ -1849,7 +1849,7 @@ export default function DashboardLayout({
                     step={0.01}
                     value={jumpHeight}
                     onChange={(e) => onJumpHeightChange?.(Number(e.target.value))}
-                    className="w-full accent-emerald-500"
+                    className="w-full accent-violet-500"
                   />
                 </div>
                 <div>
@@ -1864,7 +1864,7 @@ export default function DashboardLayout({
                     step={0.05}
                     value={jumpVelocity}
                     onChange={(e) => onJumpVelocityChange?.(Number(e.target.value))}
-                    className="w-full accent-emerald-500"
+                    className="w-full accent-violet-500"
                   />
                 </div>
               </div>
@@ -1883,7 +1883,7 @@ export default function DashboardLayout({
                     step={0.05}
                     value={popScale}
                     onChange={(e) => onPopScaleChange?.(Number(e.target.value))}
-                    className="w-full accent-emerald-500"
+                    className="w-full accent-violet-500"
                   />
                 </div>
                 <div>
@@ -1898,7 +1898,7 @@ export default function DashboardLayout({
                     step={0.05}
                     value={popSpeed}
                     onChange={(e) => onPopSpeedChange?.(Number(e.target.value))}
-                    className="w-full accent-emerald-500"
+                    className="w-full accent-violet-500"
                   />
                 </div>
                 <div className="flex items-center justify-between pt-2">
@@ -1910,7 +1910,7 @@ export default function DashboardLayout({
                       checked={popCollapse}
                       onChange={(e) => onPopCollapseChange?.(e.target.checked)}
                     />
-                    <div className="peer h-4 w-7 rounded-full bg-neutral-700 peer-checked:bg-emerald-500 transition-colors" />
+                    <div className="peer h-4 w-7 rounded-full bg-neutral-700 peer-checked:bg-violet-500 transition-colors" />
                     <div className="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-white transition-transform peer-checked:translate-x-3" />
                   </label>
                 </div>
@@ -1923,7 +1923,7 @@ export default function DashboardLayout({
                       checked={popReappear}
                       onChange={(e) => onPopReappearChange?.(e.target.checked)}
                     />
-                    <div className="peer h-4 w-7 rounded-full bg-neutral-700 peer-checked:bg-emerald-500 transition-colors" />
+                    <div className="peer h-4 w-7 rounded-full bg-neutral-700 peer-checked:bg-violet-500 transition-colors" />
                     <div className="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-white transition-transform peer-checked:translate-x-3" />
                   </label>
                 </div>
@@ -1943,7 +1943,7 @@ export default function DashboardLayout({
                     step={1}
                     value={shakeDistance}
                     onChange={(e) => onShakeDistanceChange?.(Number(e.target.value))}
-                    className="w-full accent-emerald-500"
+                    className="w-full accent-violet-500"
                   />
                 </div>
                 <div className="mb-4">
@@ -1958,7 +1958,7 @@ export default function DashboardLayout({
                     step={50}
                     value={selectedClipDuration ?? 500}
                     onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
-                    className="w-full accent-emerald-500"
+                    className="w-full accent-violet-500"
                   />
                 </div>
                 <div>
@@ -1973,7 +1973,7 @@ export default function DashboardLayout({
                     step={0.1}
                     value={templateSpeed}
                     onChange={(e) => onTemplateSpeedChange?.(Number(e.target.value))}
-                    className="w-full accent-emerald-500"
+                    className="w-full accent-violet-500"
                   />
                 </div>
               </>
@@ -1992,7 +1992,7 @@ export default function DashboardLayout({
                     step={0.01}
                     value={pulseScale}
                     onChange={(e) => onPulseScaleChange?.(Number(e.target.value))}
-                    className="w-full accent-emerald-500"
+                    className="w-full accent-violet-500"
                   />
                 </div>
                 <div className="mb-4">
@@ -2007,7 +2007,7 @@ export default function DashboardLayout({
                     step={0.1}
                     value={pulseSpeed}
                     onChange={(e) => onPulseSpeedChange?.(Number(e.target.value))}
-                    className="w-full accent-emerald-500"
+                    className="w-full accent-violet-500"
                   />
                 </div>
                 <div className="mb-4">
@@ -2022,7 +2022,7 @@ export default function DashboardLayout({
                     step={50}
                     value={selectedClipDuration ?? 800}
                     onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
-                    className="w-full accent-emerald-500"
+                    className="w-full accent-violet-500"
                   />
                 </div>
               </>
@@ -2041,7 +2041,7 @@ export default function DashboardLayout({
                     step={0.1}
                     value={spinSpeed}
                     onChange={(e) => onSpinSpeedChange?.(Number(e.target.value))}
-                    className="w-full accent-emerald-500"
+                    className="w-full accent-violet-500"
                   />
                 </div>
                 <div className="mb-4">
@@ -2053,7 +2053,7 @@ export default function DashboardLayout({
                     <button
                       onClick={() => onSpinDirectionChange?.(1)}
                       className={`flex-1 rounded-md border px-3 py-1 text-[11px] font-semibold ${
-                        spinDirection === 1 ? 'border-emerald-500 text-emerald-400 bg-emerald-500/10' : 'border-white/10 text-neutral-300 hover:bg-white/5'
+                        spinDirection === 1 ? 'border-violet-500 text-violet-400 bg-violet-500/10' : 'border-white/10 text-neutral-300 hover:bg-white/5'
                       }`}
                     >
                       CW
@@ -2061,7 +2061,7 @@ export default function DashboardLayout({
                     <button
                       onClick={() => onSpinDirectionChange?.(-1)}
                       className={`flex-1 rounded-md border px-3 py-1 text-[11px] font-semibold ${
-                        spinDirection === -1 ? 'border-emerald-500 text-emerald-400 bg-emerald-500/10' : 'border-white/10 text-neutral-300 hover:bg-white/5'
+                        spinDirection === -1 ? 'border-violet-500 text-violet-400 bg-violet-500/10' : 'border-white/10 text-neutral-300 hover:bg-white/5'
                       }`}
                     >
                       CCW
@@ -2080,7 +2080,7 @@ export default function DashboardLayout({
                     step={50}
                     value={selectedClipDuration ?? 1200}
                     onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
-                    className="w-full accent-emerald-500"
+                    className="w-full accent-violet-500"
                   />
                 </div>
               </>
@@ -2101,7 +2101,7 @@ export default function DashboardLayout({
                       checked={layerEffects.find(e => e.type === activeEffectId)?.isEnabled ?? false}
                       onChange={(e) => onToggleEffect?.(activeEffectId, e.target.checked)}
                     />
-                    <div className="peer h-4 w-7 rounded-full bg-neutral-700 peer-checked:bg-emerald-500 transition-colors" />
+                    <div className="peer h-4 w-7 rounded-full bg-neutral-700 peer-checked:bg-violet-500 transition-colors" />
                     <div className="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-white transition-transform peer-checked:translate-x-3" />
                   </label>
                 </div>
@@ -2123,7 +2123,7 @@ export default function DashboardLayout({
                         step={0.1}
                         value={layerEffects.find(e => e.type === 'glow')?.params.intensity ?? 0}
                         onChange={(e) => onUpdateEffect?.('glow', { intensity: Number(e.target.value) })}
-                        className="w-full accent-emerald-500"
+                        className="w-full accent-violet-500"
                       />
                     </div>
                     <div>
@@ -2140,7 +2140,7 @@ export default function DashboardLayout({
                         step={1}
                         value={layerEffects.find(e => e.type === 'glow')?.params.blur ?? 0}
                         onChange={(e) => onUpdateEffect?.('glow', { blur: Number(e.target.value) })}
-                        className="w-full accent-emerald-500"
+                        className="w-full accent-violet-500"
                       />
                     </div>
                   </>
@@ -2163,7 +2163,7 @@ export default function DashboardLayout({
                         step={1}
                         value={layerEffects.find(e => e.type === 'dropShadow')?.params.distance ?? 5}
                         onChange={(e) => onUpdateEffect?.('dropShadow', { distance: Number(e.target.value) })}
-                        className="w-full accent-emerald-500"
+                        className="w-full accent-violet-500"
                       />
                     </div>
                     <div>
@@ -2180,7 +2180,7 @@ export default function DashboardLayout({
                         step={1}
                         value={layerEffects.find(e => e.type === 'dropShadow')?.params.blur ?? 2}
                         onChange={(e) => onUpdateEffect?.('dropShadow', { blur: Number(e.target.value) })}
-                        className="w-full accent-emerald-500"
+                        className="w-full accent-violet-500"
                       />
                     </div>
                     <div>
@@ -2197,7 +2197,7 @@ export default function DashboardLayout({
                         step={15}
                         value={layerEffects.find(e => e.type === 'dropShadow')?.params.rotation ?? 45}
                         onChange={(e) => onUpdateEffect?.('dropShadow', { rotation: Number(e.target.value) })}
-                        className="w-full accent-emerald-500"
+                        className="w-full accent-violet-500"
                       />
                     </div>
                   </>
@@ -2219,7 +2219,7 @@ export default function DashboardLayout({
                       step={0.5}
                       value={layerEffects.find(e => e.type === 'blur')?.params.strength ?? 0}
                       onChange={(e) => onUpdateEffect?.('blur', { strength: Number(e.target.value) })}
-                      className="w-full accent-emerald-500"
+                      className="w-full accent-violet-500"
                     />
                   </div>
                 )}
@@ -2240,7 +2240,7 @@ export default function DashboardLayout({
                       step={1}
                       value={layerEffects.find(e => e.type === 'glitch')?.params.slices ?? 0}
                       onChange={(e) => onUpdateEffect?.('glitch', { slices: Number(e.target.value) })}
-                      className="w-full accent-emerald-500"
+                      className="w-full accent-violet-500"
                     />
                   </div>
                 )}
@@ -2261,7 +2261,7 @@ export default function DashboardLayout({
                       step={2}
                       value={layerEffects.find(e => e.type === 'pixelate')?.params.size ?? 10}
                       onChange={(e) => onUpdateEffect?.('pixelate', { size: Number(e.target.value) })}
-                      className="w-full accent-emerald-500"
+                      className="w-full accent-violet-500"
                     />
                   </div>
                 )}
@@ -2283,7 +2283,7 @@ export default function DashboardLayout({
                         step={0.05}
                         value={layerEffects.find(e => e.type === activeEffectId)?.params.density ?? 0.5}
                         onChange={(e) => onUpdateEffect?.(activeEffectId, { density: Number(e.target.value) })}
-                        className="w-full accent-emerald-500"
+                        className="w-full accent-violet-500"
                       />
                     </div>
                     <div>
@@ -2300,7 +2300,7 @@ export default function DashboardLayout({
                         step={0.1}
                         value={layerEffects.find(e => e.type === activeEffectId)?.params.speed ?? 1}
                         onChange={(e) => onUpdateEffect?.(activeEffectId, { speed: Number(e.target.value) })}
-                        className="w-full accent-emerald-500"
+                        className="w-full accent-violet-500"
                       />
                     </div>
                   </>
@@ -2320,7 +2320,7 @@ export default function DashboardLayout({
                   step={0.05}
                   value={templateSpeed}
                   onChange={(e) => onTemplateSpeedChange?.(Number(e.target.value))}
-                  className="w-full accent-emerald-500"
+                  className="w-full accent-violet-500"
                 />
               </div>
             )}

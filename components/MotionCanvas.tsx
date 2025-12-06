@@ -73,6 +73,12 @@ interface MotionCanvasProps {
   onUpdateLayerSize?: (id: string, width: number, height: number) => void
 }
 
+const ICON_SHAPE_KINDS = ['like', 'comment', 'share', 'cursor'] as const
+// Extract the item type from the array, handling the fact that 'layers' might be undefined
+type LayerItem = NonNullable<MotionCanvasProps['layers']>[number]
+const isIconShapeKind = (kind?: LayerItem['shapeKind']) =>
+  !!kind && ICON_SHAPE_KINDS.includes(kind as any)
+
 type LineOverlayProps = {
   canvasBounds: { width: number; height: number; left: number; top: number }
   offsetX: number
@@ -901,14 +907,17 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         if (sprite) {
           sprite.width = newWidth
           sprite.height = newHeight
+          // If the parent graphics had fallback geometry, clear it so only the sprite remains
+          if (g instanceof PIXI.Graphics) {
+            g.clear()
+          }
         }
         
         // For shapes (not sprites), redraw the graphics
         const layer = renderLayers.find(l => l.id === layerId)
         if (!sprite && g && layer) {
           // Check if this container has a sprite child (for icon-based shapes like cursor, like, etc.)
-          const iconShapes = ['like', 'comment', 'share', 'cursor']
-          if (iconShapes.includes(layer.shapeKind)) {
+          if (isIconShapeKind(layer.shapeKind)) {
             // Find the sprite child and resize it
             for (let i = 0; i < g.children.length; i++) {
               const child = g.children[i]
@@ -1325,6 +1334,9 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             container.on('pointerdown', (e) => {
               e.stopPropagation()
               onSelectLayer?.(layer.id)
+              // Show outline/handles immediately on click for SVGs
+              outline.visible = true
+              handles.forEach(h => h.visible = true)
               dragRef.current = { id: layer.id, offsetX: e.global.x - container.x, offsetY: e.global.y - container.y }
               stage.cursor = 'grabbing'
             })
@@ -1581,7 +1593,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         console.log(`Layer ${layer.shapeKind}: index=${layerIndex}, zIndex=${g.zIndex}`)
         
         // Check if this shape uses an SVG icon
-        const usesIcon = ['like', 'comment', 'share', 'cursor'].includes(layer.shapeKind)
+        const usesIcon = isIconShapeKind(layer.shapeKind)
         
         if (usesIcon) {
           // For icon shapes, load SVG asynchronously
@@ -1605,6 +1617,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
               sprite.tint = layer.fillColor
               
               g.addChild(sprite)
+              spritesByIdRef.current[layer.id] = sprite
             } catch (error) {
               console.error(`Failed to load icon ${layer.shapeKind}:`, error)
               // Fallback to manual drawing
@@ -1636,22 +1649,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         g.eventMode = 'dynamic'
         g.cursor = 'pointer'
         g.hitArea = new PIXI.Rectangle(-layer.width / 2, -layer.height / 2, layer.width, layer.height)
-        
-        g.on('pointerdown', (e) => {
-          e.stopPropagation()
-          if (e.originalEvent) {
-            e.originalEvent.stopPropagation()
-          }
-          const pos = e.global
-          onSelectLayer?.(layer.id)
-          dragRef.current = {
-            id: layer.id,
-            offsetX: pos.x - g.x,
-            offsetY: pos.y - g.y,
-          }
-          stage.cursor = 'grabbing'
-        })
-        
         // Create a separate graphics object for the selection outline
         const outline = new PIXI.Graphics()
         switch (layer.shapeKind) {
@@ -1747,6 +1744,29 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           handles.push(handleGfx)
         })
         resizeHandlesRef.current[layer.id] = handles
+        // If this layer is already selected (e.g., auto-selected on creation), show outline/handles immediately
+        if (selectedLayerId === layer.id) {
+          outline.visible = true
+          handles.forEach(h => (h.visible = true))
+        }
+        
+        g.on('pointerdown', (e) => {
+          e.stopPropagation()
+          if (e.originalEvent) {
+            e.originalEvent.stopPropagation()
+          }
+          const pos = e.global
+          onSelectLayer?.(layer.id)
+          // Show outline/handles immediately on click for shape/icon layers
+          outline.visible = true
+          handles.forEach(h => (h.visible = true))
+          dragRef.current = {
+            id: layer.id,
+            offsetX: pos.x - g.x,
+            offsetY: pos.y - g.y,
+          }
+          stage.cursor = 'grabbing'
+        })
         
         graphicsByIdRef.current[layer.id] = g
         stage.addChild(g)
@@ -2046,17 +2066,29 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   useEffect(() => {
     if (!isReady || !appRef.current) return
     
+    let needsRender = false
     // Simply show/hide the outline graphics and resize handles
     Object.entries(outlinesByIdRef.current).forEach(([id, outline]) => {
       const isSelected = selectedLayerId === id
-      outline.visible = isSelected
+      if (outline.visible !== isSelected) {
+        outline.visible = isSelected
+        needsRender = true
+      }
       
       // Also show/hide resize handles
       const handles = resizeHandlesRef.current[id]
       if (handles) {
-        handles.forEach(h => h.visible = isSelected)
+        handles.forEach(h => {
+          if (h.visible !== isSelected) {
+            h.visible = isSelected
+            needsRender = true
+          }
+        })
       }
     })
+    if (needsRender) {
+      appRef.current.render()
+    }
   }, [selectedLayerId, isReady])
 
   // 4. Sync dimensions from panel to canvas (for BOTH images AND shapes)
@@ -2068,6 +2100,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     renderLayers.forEach(layer => {
       const g = graphicsByIdRef.current[layer.id]
       if (!g) return
+      const isIconShape = isIconShapeKind(layer.shapeKind)
       
       // For text layers, ALWAYS check for text/fontSize/width changes
       if (layer.type === 'text') {
@@ -2188,10 +2221,21 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       if (sprite) {
         sprite.width = layer.width
         sprite.height = layer.height
+        if (g instanceof PIXI.Graphics) {
+          g.clear() // remove any fallback geometry so only the sprite shows
+        }
+      }
+      // Fallback: some icon shapes keep the sprite as a child of a Graphics container
+      if (isIconShape && !sprite && 'children' in g) {
+        const childSprite = g.children.find((c): c is PIXI.Sprite => c instanceof PIXI.Sprite)
+        if (childSprite) {
+          childSprite.width = layer.width
+          childSprite.height = layer.height
+        }
       }
       
       // For shapes only (not images or SVGs which use containers), redraw the graphics
-      if (layer.shapeKind && layer.type !== 'image' && layer.type !== 'svg') {
+      if (layer.shapeKind && layer.type !== 'image' && layer.type !== 'svg' && !isIconShape) {
         g.clear()
         const fillColor = layer.fillColor ?? 0xffffff
         switch (layer.shapeKind) {

@@ -189,9 +189,9 @@ export const EffectPreview: React.FC<EffectPreviewProps> = ({
       className={cn(
         "flex flex-col items-center justify-center gap-2 rounded-lg border p-4 transition-all hover:bg-white/5 relative group",
         isActive
-          ? "border-emerald-500 bg-emerald-500/10 text-emerald-400"
+          ? "border-violet-500 bg-violet-500/10 text-violet-400"
           : isEnabled
-            ? "border-emerald-500/50 bg-emerald-500/5 text-emerald-300"
+            ? "border-violet-500/50 bg-violet-500/5 text-violet-300"
             : "border-white/5 bg-white/5 text-neutral-400"
       )}
     >
@@ -200,7 +200,7 @@ export const EffectPreview: React.FC<EffectPreviewProps> = ({
       </div>
       <span className="text-xs font-medium">{name}</span>
       {isEnabled && (
-        <div className="absolute top-2 right-2 h-1.5 w-1.5 rounded-full bg-emerald-500" />
+        <div className="absolute top-2 right-2 h-1.5 w-1.5 rounded-full bg-violet-500" />
       )}
     </button>
   )
