@@ -43,6 +43,7 @@ import { Button } from '@/components/ui/button'
 import { EffectPreview } from '@/components/EffectPreview'
 import { TemplatePreview } from '@/components/TemplatePreview'
 import TimelinePanel from '@/components/TimelinePanel'
+import FontPicker from '@/components/FontPicker'
 import { ExploreShapesModal } from '@/components/ExploreShapesModal'
 
 export type BackgroundSettings = {
@@ -98,6 +99,7 @@ interface DashboardLayoutProps {
     text?: string;
     fontSize?: number;
     fillColor?: number;
+    fontFamily?: string;
   }>
   layerOrder?: string[]
   onReorderLayers?: (order: string[]) => void
@@ -160,6 +162,7 @@ interface DashboardLayoutProps {
   onUpdateLayerText?: (id: string, text: string) => void
   onUpdateLayerFontSize?: (id: string, fontSize: number) => void
   onUpdateLayerColor?: (id: string, color: number) => void
+  onUpdateLayerFontFamily?: (id: string, fontFamily: string) => void
   onRedo?: () => void
 }
 
@@ -234,6 +237,7 @@ export default function DashboardLayout({
   onUpdateLayerText,
   onUpdateLayerFontSize,
   onUpdateLayerColor,
+  onUpdateLayerFontFamily,
 }: DashboardLayoutProps) {
   const router = useRouter()
   const supabase = createClient()
@@ -1665,6 +1669,18 @@ export default function DashboardLayout({
                     Apply
                   </button>
                 </div>
+              </div>
+
+              {/* Font Family */}
+              <div className="space-y-2">
+                <span className="text-[10px] uppercase text-neutral-500">Font</span>
+                <FontPicker
+                  value={layers.find(l => l.id === selectedLayerId)?.fontFamily || 'Inter'}
+                  onChange={(fontFamily) => {
+                    if (!selectedLayerId) return
+                    onUpdateLayerFontFamily?.(selectedLayerId, fontFamily)
+                  }}
+                />
               </div>
 
               {/* Font Size */}

@@ -891,6 +891,16 @@ function DashboardContent() {
     )
   }
 
+  const handleUpdateLayerFontFamily = (id: string, fontFamily: string) => {
+    setLayers((prev) =>
+      prev.map((layer) =>
+        layer.id === id
+          ? { ...layer, fontFamily }
+          : layer
+      )
+    )
+  }
+
   const handleSelectLayer = (id: string) => {
     setSelectedLayerId(id)
     setSelectedClipId('')
@@ -1399,6 +1409,7 @@ function DashboardContent() {
         onUpdateLayerText={handleUpdateLayerText}
         onUpdateLayerFontSize={handleUpdateLayerFontSize}
         onUpdateLayerColor={handleUpdateLayerColor}
+        onUpdateLayerFontFamily={handleUpdateLayerFontFamily}
         selectedClipDuration={selectedClipDuration}
         onClipDurationChange={handleClipDurationChange}
         onClipClick={(clip) => {

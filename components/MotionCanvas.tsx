@@ -1878,19 +1878,51 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         if (container && container.children && container.children.length > 0) {
           const textObj = container.children[0] as PIXI.Text
           if (textObj && 'text' in textObj) {
+            let textChanged = false
+            
             // Update text content
             if (layer.text !== undefined && textObj.text !== layer.text) {
               textObj.text = layer.text
+              textChanged = true
               needsRender = true
             }
             // Update font size
             if (layer.fontSize !== undefined && textObj.style && textObj.style.fontSize !== layer.fontSize) {
               textObj.style.fontSize = layer.fontSize
+              textChanged = true
               needsRender = true
             }
             // Update fill color
             if (layer.fillColor !== undefined && textObj.style) {
               textObj.style.fill = layer.fillColor
+              needsRender = true
+            }
+            // Update font family
+            if (layer.fontFamily !== undefined && textObj.style && textObj.style.fontFamily !== layer.fontFamily) {
+              textObj.style.fontFamily = layer.fontFamily
+              textChanged = true
+              needsRender = true
+            }
+            
+            // If text properties changed, update outline and hit area
+            if (textChanged) {
+              // Give PIXI time to recalculate text bounds
+              const newBounds = textObj.getBounds()
+              const newWidth = newBounds.width
+              const newHeight = newBounds.height
+              
+              // Update hit area
+              container.hitArea = new PIXI.Rectangle(-newWidth / 2, -newHeight / 2, newWidth, newHeight)
+              
+              // Find and update the outline graphics (child index 1)
+              if (container.children.length > 1) {
+                const outline = container.children[1] as PIXI.Graphics
+                if (outline && 'clear' in outline) {
+                  outline.clear()
+                  outline.rect(-newWidth / 2 - 4, -newHeight / 2 - 4, newWidth + 8, newHeight + 8)
+                  outline.stroke({ width: 2, color: 0xA855F7 })
+                }
+              }
             }
           }
         }
@@ -2070,7 +2102,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     if (needsRender) {
       appRef.current?.render()
     }
-  }, [renderLayers, isReady])
+  }, [renderLayers, isReady, layers])
 
   return (
     <div className="relative h-full w-full overflow-visible rounded-lg" onPointerDown={handleCanvasPointerDown}>
