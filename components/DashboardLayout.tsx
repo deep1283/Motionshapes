@@ -226,7 +226,61 @@ export default function DashboardLayout({
   const [activeTab, setActiveTab] = useState<'templates' | 'shapes' | 'effects' | 'animations'>('shapes')
   const [animationType, setAnimationType] = useState<'in' | 'out'>('in')
 
-  // Canvas resize and move state
+  /* Buffered Input Component */
+  interface BufferedInputProps {
+    value: number
+    onCommit: (val: number) => void
+    label: string
+  }
+
+  function BufferedInput({ value, onCommit, label }: BufferedInputProps) {
+    const [localValue, setLocalValue] = useState(String(value))
+
+    // Sync local value when prop changes (e.g. undo/redo or external update)
+    useEffect(() => {
+      setLocalValue(String(value))
+    }, [value])
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter') {
+        const rawVal = e.currentTarget.value.replace(/[^0-9]/g, '')
+        if (rawVal === '') return 
+        const val = Math.max(0, parseInt(rawVal))
+        onCommit(val)
+        e.currentTarget.blur()
+      }
+    }
+
+    const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+      // Reset to current prop value on blur to indicate no change if not committed
+      setLocalValue(String(value))
+    }
+
+    return (
+      <div className="relative">
+        <input
+          type="text"
+          inputMode="numeric"
+          value={localValue}
+          onChange={(e) => setLocalValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onBlur={handleBlur}
+          style={{ 
+            width: '50px',
+            padding: '6px 6px 6px 24px',
+            color: '#ffffff',
+            backgroundColor: '#333',
+            border: 'none',
+            borderRadius: '4px',
+            fontSize: '12px'
+          }}
+        />
+        <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '10px', color: '#888', fontWeight: 'bold' }}>{label}</span>
+      </div>
+    )
+  }
+
+
   const DEFAULT_CANVAS_WIDTH = 680
   const DEFAULT_CANVAS_HEIGHT = 445
   const MIN_CANVAS_WIDTH = 400
@@ -1498,95 +1552,49 @@ export default function DashboardLayout({
                 <span className="text-xs font-medium text-neutral-400">Transform</span>
               </div>
               
-              <div className="grid grid-cols-2 gap-4">
-
-                {/* Size */}
-                <div className="space-y-2">
-                  <span className="text-[10px] uppercase text-neutral-500">Size</span>
-                  <div className="flex gap-2">
-                    <div className="relative">
-                      <input
-                        key={`w-${selectedLayerId}-${layers.find(l => l.id === selectedLayerId)?.width ?? 100}`}
-                        type="text"
-                        inputMode="numeric"
-                        defaultValue={String(layers.find(l => l.id === selectedLayerId)?.width ?? 100)}
-                        style={{ 
-                          width: '50px',
-                          padding: '6px 6px 6px 24px',
-                          color: '#ffffff',
-                          backgroundColor: '#333',
-                          border: 'none',
-                          borderRadius: '4px',
-                          fontSize: '12px'
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            if (!selectedLayerId) return
-                            const layer = layers.find(l => l.id === selectedLayerId)
-                            const rawVal = e.currentTarget.value.replace(/[^0-9]/g, '')
-                            const val = rawVal === '' ? 100 : Math.max(1, parseInt(rawVal))
-                            onUpdateLayerSize?.(selectedLayerId, val, layer?.height ?? 100)
-                            e.currentTarget.blur()
-                          }
-                        }}
-                      />
-                      <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '10px', color: '#888', fontWeight: 'bold' }}>W</span>
-                    </div>
-                    <div className="relative">
-                      <input
-                        key={`h-${selectedLayerId}-${layers.find(l => l.id === selectedLayerId)?.height ?? 100}`}
-                        type="text"
-                        inputMode="numeric"
-                        defaultValue={String(layers.find(l => l.id === selectedLayerId)?.height ?? 100)}
-                        style={{ 
-                          width: '50px',
-                          padding: '6px 6px 6px 24px',
-                          color: '#ffffff',
-                          backgroundColor: '#333',
-                          border: 'none',
-                          borderRadius: '4px',
-                          fontSize: '12px'
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            if (!selectedLayerId) return
-                            const layer = layers.find(l => l.id === selectedLayerId)
-                            const rawVal = e.currentTarget.value.replace(/[^0-9]/g, '')
-                            const val = rawVal === '' ? 100 : Math.max(1, parseInt(rawVal))
-                            onUpdateLayerSize?.(selectedLayerId, layer?.width ?? 100, val)
-                            e.currentTarget.blur()
-                          }
-                        }}
-                      />
-                      <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '10px', color: '#888', fontWeight: 'bold' }}>H</span>
-                    </div>
-                  </div>
+              {/* Size */}
+              <div className="space-y-2">
+                <span className="text-[10px] uppercase text-neutral-500">Size</span>
+                <div className="flex gap-2">
+                  <BufferedInput
+                    value={layers.find(l => l.id === selectedLayerId)?.width ?? 100}
+                    onCommit={(val) => {
+                      if (!selectedLayerId) return
+                      const layer = layers.find(l => l.id === selectedLayerId)
+                      onUpdateLayerSize?.(selectedLayerId, val, layer?.height ?? 100)
+                    }}
+                    label="W"
+                  />
+                  <BufferedInput
+                    value={layers.find(l => l.id === selectedLayerId)?.height ?? 100}
+                    onCommit={(val) => {
+                      if (!selectedLayerId) return
+                      const layer = layers.find(l => l.id === selectedLayerId)
+                      onUpdateLayerSize?.(selectedLayerId, layer?.width ?? 100, val)
+                    }}
+                    label="H"
+                  />
                 </div>
               </div>
 
               {/* Angle */}
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                   <span className="text-[10px] uppercase text-neutral-500">Angle</span>
-                </div>
-                <div className="flex items-center gap-2">
-                   <div className="relative flex-1">
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        pattern="-?[0-9]*"
-                        value={String(layers.find(l => l.id === selectedLayerId)?.rotation ?? 0)}
-                        className="w-full rounded bg-neutral-800 pl-8 pr-2 py-1.5 text-left text-xs text-white placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
-                        onChange={(e) => {
-                          if (!selectedLayerId) return
-                          // Allow empty string during editing, parse as 0
-                          const rawVal = e.currentTarget.value.replace(/[^0-9-]/g, '')
-                          const val = rawVal === '' || rawVal === '-' ? 0 : parseInt(rawVal)
-                          onUpdateLayerRotation?.(selectedLayerId, val)
-                        }}
-                      />
-                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-neutral-500 font-bold">°</span>
-                   </div>
+                <span className="text-[10px] uppercase text-neutral-500">Angle</span>
+                <div className="relative">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="-?[0-9]*"
+                    value={String(layers.find(l => l.id === selectedLayerId)?.rotation ?? 0)}
+                    className="w-full rounded bg-neutral-800 pl-8 pr-2 py-1.5 text-left text-xs text-white placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                    onChange={(e) => {
+                      if (!selectedLayerId) return
+                      const rawVal = e.currentTarget.value.replace(/[^0-9-]/g, '')
+                      const val = rawVal === '' || rawVal === '-' ? 0 : parseInt(rawVal)
+                      onUpdateLayerRotation?.(selectedLayerId, val)
+                    }}
+                  />
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-neutral-500 font-bold">°</span>
                 </div>
               </div>
             </div>

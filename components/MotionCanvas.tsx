@@ -199,7 +199,7 @@ function LineOverlay({
   )
 }
 
-export default function MotionCanvas({ template, templateVersion, layers = [], layerOrder = [], onUpdateLayerPosition, onTemplateComplete, isDrawingPath = false, isDrawingLine = false, pathPoints = [], onAddPathPoint, onFinishPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint, background: _background, offsetX = 0, offsetY = 0, popReappear = false, onCanvasBackgroundClick }: MotionCanvasProps) {
+export default function MotionCanvas({ template, templateVersion, layers = [], layerOrder = [], onUpdateLayerPosition, onUpdateLayerSize, onTemplateComplete, isDrawingPath = false, isDrawingLine = false, pathPoints = [], onAddPathPoint, onFinishPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint, background: _background, offsetX = 0, offsetY = 0, popReappear = false, onCanvasBackgroundClick }: MotionCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<PIXI.Application | null>(null)
   const [isReady, setIsReady] = useState(false)
@@ -220,6 +220,17 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   const emittersByLayerIdRef = useRef<Record<string, SimpleParticleEmitter[]>>({})
   const iconTextureCacheRef = useRef<Record<string, PIXI.Texture>>({})
   const spritesByIdRef = useRef<Record<string, PIXI.Sprite>>({})
+  const resizeHandlesRef = useRef<Record<string, PIXI.Graphics[]>>({})
+  // Track layer dimensions to detect changes from control panel
+  const layerDimensionsRef = useRef<Record<string, { width: number; height: number }>>({})
+  const resizeStateRef = useRef<{
+    layerId: string
+    handle: 'tl' | 'tr' | 'br' | 'bl' | 't' | 'r' | 'b' | 'l'
+    startX: number
+    startY: number
+    startWidth: number
+    startHeight: number
+  } | null>(null)
   const orderedLayers = useMemo(() => {
     if (!layers || layers.length === 0) return []
     if (!layerOrder || layerOrder.length === 0) return layers
@@ -722,6 +733,163 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     const templateEnabled = false
 
   const handlePointerMove = (e: PIXI.FederatedPointerEvent) => {
+      // Handle resize drag first
+      if (resizeStateRef.current) {
+        const { layerId, handle, startX, startY, startWidth, startHeight } = resizeStateRef.current
+        const deltaX = e.global.x - startX
+        const deltaY = e.global.y - startY
+        
+        let newWidth = startWidth
+        let newHeight = startHeight
+        
+        // Calculate new dimensions based on handle type
+        if (handle === 'tl') {
+          newWidth = Math.max(20, startWidth - deltaX)
+          newHeight = Math.max(20, startHeight - deltaY)
+        } else if (handle === 'tr') {
+          newWidth = Math.max(20, startWidth + deltaX)
+          newHeight = Math.max(20, startHeight - deltaY)
+        } else if (handle === 'br') {
+          newWidth = Math.max(20, startWidth + deltaX)
+          newHeight = Math.max(20, startHeight + deltaY)
+        } else if (handle === 'bl') {
+          newWidth = Math.max(20, startWidth - deltaX)
+          newHeight = Math.max(20, startHeight + deltaY)
+        } else if (handle === 't') {
+          newHeight = Math.max(20, startHeight - deltaY)
+        } else if (handle === 'b') {
+          newHeight = Math.max(20, startHeight + deltaY)
+        } else if (handle === 'l') {
+          newWidth = Math.max(20, startWidth - deltaX)
+        } else if (handle === 'r') {
+          newWidth = Math.max(20, startWidth + deltaX)
+        }
+        
+        // Update visuals immediately for real-time feedback
+        const sprite = spritesByIdRef.current[layerId]
+        const g = graphicsByIdRef.current[layerId]
+        const outline = outlinesByIdRef.current[layerId]
+        const handles = resizeHandlesRef.current[layerId]
+        
+        if (sprite) {
+          sprite.width = newWidth
+          sprite.height = newHeight
+        }
+        
+        // For shapes (not sprites), redraw the graphics
+        const layer = renderLayers.find(l => l.id === layerId)
+        if (!sprite && g && g instanceof PIXI.Graphics && layer) {
+          // Find the shape fill graphics (first child that's a graphics or the main container)
+          g.clear()
+          const fillColor = layer.fillColor ?? 0xffffff
+          switch (layer.shapeKind) {
+            case 'square':
+              g.rect(-newWidth / 2, -newHeight / 2, newWidth, newHeight)
+              g.fill(fillColor)
+              break
+            case 'circle':
+              g.ellipse(0, 0, newWidth / 2, newHeight / 2)
+              g.fill(fillColor)
+              break
+            case 'triangle':
+              g.moveTo(0, -newHeight / 2)
+              g.lineTo(newWidth / 2, newHeight / 2)
+              g.lineTo(-newWidth / 2, newHeight / 2)
+              g.closePath()
+              g.fill(fillColor)
+              break
+            case 'pill':
+              const pillRadius = Math.min(newWidth, newHeight) / 2
+              g.roundRect(-newWidth / 2, -newHeight / 2, newWidth, newHeight, pillRadius)
+              g.fill(fillColor)
+              break
+            case 'heart':
+              const hScale = newWidth / 100
+              const vScale = newHeight / 100
+              g.moveTo(0, -30 * vScale)
+              g.bezierCurveTo(25 * hScale, -50 * vScale, 50 * hScale, -30 * vScale, 50 * hScale, 0)
+              g.bezierCurveTo(50 * hScale, 30 * vScale, 0, 50 * vScale, 0, 50 * vScale)
+              g.bezierCurveTo(0, 50 * vScale, -50 * hScale, 30 * vScale, -50 * hScale, 0)
+              g.bezierCurveTo(-50 * hScale, -30 * vScale, -25 * hScale, -50 * vScale, 0, -30 * vScale)
+              g.fill(fillColor)
+              break
+            case 'star':
+              const outerRadius = Math.min(newWidth, newHeight) / 2
+              const innerRadius = outerRadius * 0.4
+              for (let i = 0; i < 10; i++) {
+                const r = i % 2 === 0 ? outerRadius : innerRadius
+                const angle = (Math.PI / 5) * i - Math.PI / 2
+                const sx = Math.cos(angle) * r
+                const sy = Math.sin(angle) * r
+                if (i === 0) g.moveTo(sx, sy)
+                else g.lineTo(sx, sy)
+              }
+              g.closePath()
+              g.fill(fillColor)
+              break
+          }
+        }
+        
+        if (g) {
+          g.hitArea = new PIXI.Rectangle(-newWidth / 2, -newHeight / 2, newWidth, newHeight)
+        }
+        
+        if (outline && outline instanceof PIXI.Graphics) {
+          outline.clear()
+          outline.rect(-newWidth / 2, -newHeight / 2, newWidth, newHeight)
+          outline.stroke({ color: 0x9333ea, width: 2, alpha: 1 })
+        }
+        
+        // Update handle positions and dimensions
+        if (handles && handles.length === 8) {
+          const halfW = newWidth / 2
+          const halfH = newHeight / 2
+          const positions = [
+            { x: -halfW, y: -halfH }, // tl
+            { x: halfW, y: -halfH },  // tr
+            { x: halfW, y: halfH },   // br
+            { x: -halfW, y: halfH },  // bl
+            { x: 0, y: -halfH },      // t
+            { x: 0, y: halfH },       // b
+            { x: -halfW, y: 0 },      // l
+            { x: halfW, y: 0 },       // r
+          ]
+          
+          const edgeThickness = 2
+          const hitAreaSize = 12
+          
+          handles.forEach((h, i) => {
+            h.x = positions[i].x
+            h.y = positions[i].y
+            
+            // For edge handles (indices 4-7), we must update their length and hitArea
+            if (i >= 4) {
+              h.clear()
+              let w = 0, hDim = 0
+              
+              if (i === 4 || i === 5) { // Top or Bottom
+                w = newWidth
+                hDim = edgeThickness
+                h.hitArea = new PIXI.Rectangle(-w / 2, -hitAreaSize / 2, w, hitAreaSize)
+              } else { // Left or Right
+                w = edgeThickness
+                hDim = newHeight
+                h.hitArea = new PIXI.Rectangle(-hitAreaSize / 2, -hDim / 2, hitAreaSize, hDim)
+              }
+              
+              h.rect(-w / 2, -hDim / 2, w, hDim)
+              h.fill(0x9333ea)
+            }
+          })
+        }
+        
+        appRef.current?.render()
+        
+        // Update via callback
+        onUpdateLayerSize?.(layerId, Math.round(newWidth), Math.round(newHeight))
+        return
+      }
+      
       if (!dragRef.current) return
       const { id, offsetX, offsetY } = dragRef.current
       const pos = e.global
@@ -755,6 +923,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
 
   const clearDrag = () => {
     dragRef.current = null
+    resizeStateRef.current = null
     stage.cursor = 'default'
   }
 
@@ -789,20 +958,22 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
 
       const drawStar = (g: PIXI.Graphics, width: number, height: number) => {
         const spikes = 5
-        const outerRadius = Math.min(width, height) / 2
-        const innerRadius = outerRadius * 0.5
+        const rx = width / 2
+        const ry = height / 2
+        const innerRx = rx * 0.5
+        const innerRy = ry * 0.5
         let rotation = Math.PI / 2 * 3
         const cx = 0
         const cy = 0
-        g.moveTo(cx, cy - outerRadius)
+        g.moveTo(cx, cy - ry)
         for (let i = 0; i < spikes; i++) {
-          const x = cx + Math.cos(rotation) * outerRadius
-          const y = cy + Math.sin(rotation) * outerRadius
+          const x = cx + Math.cos(rotation) * rx
+          const y = cy + Math.sin(rotation) * ry
           g.lineTo(x, y)
           rotation += Math.PI / spikes
 
-          const xInner = cx + Math.cos(rotation) * innerRadius
-          const yInner = cy + Math.sin(rotation) * innerRadius
+          const xInner = cx + Math.cos(rotation) * innerRx
+          const yInner = cy + Math.sin(rotation) * innerRy
           g.lineTo(xInner, yInner)
           rotation += Math.PI / spikes
         }
@@ -849,7 +1020,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             break
           case 'circle':
           default:
-            graphics.circle(0, 0, width / 2)
+            graphics.ellipse(0, 0, width / 2, height / 2)
             break
         }
         graphics.fill(fillColor)
@@ -942,6 +1113,66 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             outline.eventMode = 'none'
             container.addChild(outline)
             outlinesByIdRef.current[layer.id] = outline
+            
+            // Add bounding box resize handles (4 corners + 4 edges)
+            const handleSize = 8
+            const edgeThickness = 2
+            const hitAreaSize = 12
+            const halfW = layer.width / 2
+            const halfH = layer.height / 2
+            
+            const allHandles: Array<{ handle: 'tl' | 'tr' | 'br' | 'bl' | 't' | 'r' | 'b' | 'l', x: number, y: number, w: number, h: number, cursor: string }> = [
+              // 4 corner squares
+              { handle: 'tl', x: -halfW, y: -halfH, w: handleSize, h: handleSize, cursor: 'nwse-resize' },
+              { handle: 'tr', x: halfW, y: -halfH, w: handleSize, h: handleSize, cursor: 'nesw-resize' },
+              { handle: 'br', x: halfW, y: halfH, w: handleSize, h: handleSize, cursor: 'nwse-resize' },
+              { handle: 'bl', x: -halfW, y: halfH, w: handleSize, h: handleSize, cursor: 'nesw-resize' },
+              // 4 edge lines (at midpoints)
+              { handle: 't', x: 0, y: -halfH, w: layer.width, h: edgeThickness, cursor: 'ns-resize' },
+              { handle: 'b', x: 0, y: halfH, w: layer.width, h: edgeThickness, cursor: 'ns-resize' },
+              { handle: 'l', x: -halfW, y: 0, w: edgeThickness, h: layer.height, cursor: 'ew-resize' },
+              { handle: 'r', x: halfW, y: 0, w: edgeThickness, h: layer.height, cursor: 'ew-resize' },
+            ]
+            const handles: PIXI.Graphics[] = []
+            allHandles.forEach(({ handle: handleType, x, y, w, h, cursor }) => {
+              const handleGfx = new PIXI.Graphics()
+              handleGfx.rect(-w / 2, -h / 2, w, h)
+              handleGfx.fill(0x9333ea)
+              
+              // Set larger hit area for easier grabbing
+              if (['t', 'b'].includes(handleType)) {
+                handleGfx.hitArea = new PIXI.Rectangle(-w / 2, -hitAreaSize / 2, w, hitAreaSize)
+              } else if (['l', 'r'].includes(handleType)) {
+                handleGfx.hitArea = new PIXI.Rectangle(-hitAreaSize / 2, -h / 2, hitAreaSize, h)
+              } else {
+                // Corners
+                handleGfx.hitArea = new PIXI.Rectangle(-handleSize, -handleSize, handleSize * 2, handleSize * 2)
+              }
+              
+              handleGfx.x = x
+              handleGfx.y = y
+              handleGfx.eventMode = 'static'
+              handleGfx.cursor = cursor
+              handleGfx.visible = false
+              // Corners (first 4) have higher priority than edges
+              handleGfx.zIndex = ['tl', 'tr', 'br', 'bl'].includes(handleType) ? 10 : 1
+              handleGfx.on('pointerdown', (e) => {
+                e.stopPropagation()
+                // Get CURRENT dimensions from layer state (not stale render-time values)
+                const currentLayer = layersRef.current.find(l => l.id === layer.id)
+                resizeStateRef.current = {
+                  layerId: layer.id,
+                  handle: handleType,
+                  startX: e.global.x,
+                  startY: e.global.y,
+                  startWidth: currentLayer?.width ?? layer.width,
+                  startHeight: currentLayer?.height ?? layer.height,
+                }
+              })
+              container.addChild(handleGfx)
+              handles.push(handleGfx)
+            })
+            resizeHandlesRef.current[layer.id] = handles
             
             // Pointer events
             container.on('pointerdown', (e) => {
@@ -1072,6 +1303,66 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         outline.eventMode = 'none' // CRITICAL: Don't intercept pointer events
         g.addChild(outline)
         outlinesByIdRef.current[layer.id] = outline
+        
+        // Add bounding box resize handles (4 corners + 4 edges) for shapes
+        const shapeHandleSize = 8
+        const shapeEdgeThickness = 2
+        const shapeHitAreaSize = 12
+        const shapeHalfW = layer.width / 2
+        const shapeHalfH = layer.height / 2
+        
+        const shapeHandles: Array<{ handle: 'tl' | 'tr' | 'br' | 'bl' | 't' | 'r' | 'b' | 'l', x: number, y: number, w: number, h: number, cursor: string }> = [
+          // 4 corner squares
+          { handle: 'tl', x: -shapeHalfW, y: -shapeHalfH, w: shapeHandleSize, h: shapeHandleSize, cursor: 'nwse-resize' },
+          { handle: 'tr', x: shapeHalfW, y: -shapeHalfH, w: shapeHandleSize, h: shapeHandleSize, cursor: 'nesw-resize' },
+          { handle: 'br', x: shapeHalfW, y: shapeHalfH, w: shapeHandleSize, h: shapeHandleSize, cursor: 'nwse-resize' },
+          { handle: 'bl', x: -shapeHalfW, y: shapeHalfH, w: shapeHandleSize, h: shapeHandleSize, cursor: 'nesw-resize' },
+          // 4 edge lines
+          { handle: 't', x: 0, y: -shapeHalfH, w: layer.width, h: shapeEdgeThickness, cursor: 'ns-resize' },
+          { handle: 'b', x: 0, y: shapeHalfH, w: layer.width, h: shapeEdgeThickness, cursor: 'ns-resize' },
+          { handle: 'l', x: -shapeHalfW, y: 0, w: shapeEdgeThickness, h: layer.height, cursor: 'ew-resize' },
+          { handle: 'r', x: shapeHalfW, y: 0, w: shapeEdgeThickness, h: layer.height, cursor: 'ew-resize' },
+        ]
+        const handles: PIXI.Graphics[] = []
+        shapeHandles.forEach(({ handle: handleType, x, y, w, h, cursor }) => {
+          const handleGfx = new PIXI.Graphics()
+          handleGfx.rect(-w / 2, -h / 2, w, h)
+          handleGfx.fill(0x9333ea)
+          
+          // Set larger hit area for easier grabbing
+          if (['t', 'b'].includes(handleType)) {
+            handleGfx.hitArea = new PIXI.Rectangle(-w / 2, -shapeHitAreaSize / 2, w, shapeHitAreaSize)
+          } else if (['l', 'r'].includes(handleType)) {
+            handleGfx.hitArea = new PIXI.Rectangle(-shapeHitAreaSize / 2, -h / 2, shapeHitAreaSize, h)
+          } else {
+            // Corners
+            handleGfx.hitArea = new PIXI.Rectangle(-shapeHandleSize, -shapeHandleSize, shapeHandleSize * 2, shapeHandleSize * 2)
+          }
+          
+          handleGfx.x = x
+          handleGfx.y = y
+          handleGfx.eventMode = 'static'
+          handleGfx.cursor = cursor
+          handleGfx.visible = false
+          // Corners have higher priority than edges
+          handleGfx.zIndex = ['tl', 'tr', 'br', 'bl'].includes(handleType) ? 10 : 1
+          handleGfx.on('pointerdown', (e) => {
+            e.stopPropagation()
+            // Get CURRENT dimensions from layer state (not stale render-time values)
+            const currentLayer = layersRef.current.find(l => l.id === layer.id)
+            resizeStateRef.current = {
+              layerId: layer.id,
+              handle: handleType,
+              startX: e.global.x,
+              startY: e.global.y,
+              startWidth: currentLayer?.width ?? layer.width,
+              startHeight: currentLayer?.height ?? layer.height,
+            }
+          })
+          g.addChild(handleGfx)
+          handles.push(handleGfx)
+        })
+        resizeHandlesRef.current[layer.id] = handles
         
         graphicsByIdRef.current[layer.id] = g
         stage.addChild(g)
@@ -1227,9 +1518,13 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         app.ticker.start()
       }
 
-      // render once to show the shapes even if no animation selected
-      updateGraphicsFromTimeline()
-      app.render()
+      
+      // Update graphics and render
+      Promise.all(renderLayers.map(async (layer, layerIndex) => {
+        await updateGraphicsFromTimeline()
+      })).then(() => {
+        app.render()
+      })
 
       return () => {
         tickerCallbacks.forEach((cb) => app.ticker.remove(cb))
@@ -1367,11 +1662,203 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   useEffect(() => {
     if (!isReady || !appRef.current) return
     
-    // Simply show/hide the outline graphics
+    // Simply show/hide the outline graphics and resize handles
     Object.entries(outlinesByIdRef.current).forEach(([id, outline]) => {
-      outline.visible = (selectedLayerId === id)
+      const isSelected = selectedLayerId === id
+      outline.visible = isSelected
+      
+      // Also show/hide resize handles
+      const handles = resizeHandlesRef.current[id]
+      if (handles) {
+        handles.forEach(h => h.visible = isSelected)
+      }
     })
   }, [selectedLayerId, isReady])
+
+  // 4. Sync dimensions from panel to canvas (for BOTH images AND shapes)
+  useEffect(() => {
+    if (!isReady || !appRef.current) return
+    
+    let needsRender = false
+    
+    renderLayers.forEach(layer => {
+      const prevDims = layerDimensionsRef.current[layer.id]
+      const hasChanged = !prevDims || prevDims.width !== layer.width || prevDims.height !== layer.height
+      
+      if (!hasChanged) return
+      
+      // Update tracked dimensions
+      layerDimensionsRef.current[layer.id] = { width: layer.width, height: layer.height }
+      needsRender = true
+      
+      const g = graphicsByIdRef.current[layer.id]
+      if (!g) return
+      
+      // For images, update sprite dimensions
+      const sprite = spritesByIdRef.current[layer.id]
+      if (sprite) {
+        sprite.width = layer.width
+        sprite.height = layer.height
+      }
+      
+      // For shapes, redraw the graphics
+      if (layer.shapeKind && layer.type !== 'image') {
+        g.clear()
+        const fillColor = layer.fillColor ?? 0xffffff
+        switch (layer.shapeKind) {
+          case 'square':
+            g.rect(-layer.width / 2, -layer.height / 2, layer.width, layer.height)
+            break
+          case 'heart': {
+            const w = layer.width, h = layer.height
+            g.moveTo(0, -h * 0.35)
+            g.bezierCurveTo(w * 0.5, -h * 0.5, w * 0.5, 0, 0, h * 0.5)
+            g.bezierCurveTo(-w * 0.5, 0, -w * 0.5, -h * 0.5, 0, -h * 0.35)
+            g.closePath()
+            break
+          }
+          case 'star': {
+            const spikes = 5
+            const rx = layer.width / 2, ry = layer.height / 2
+            const innerRx = rx * 0.5, innerRy = ry * 0.5
+            let rotation = Math.PI / 2 * 3
+            g.moveTo(0, -ry)
+            for (let i = 0; i < spikes; i++) {
+              const x = Math.cos(rotation) * rx
+              const y = Math.sin(rotation) * ry
+              g.lineTo(x, y)
+              rotation += Math.PI / spikes
+              const xInner = Math.cos(rotation) * innerRx
+              const yInner = Math.sin(rotation) * innerRy
+              g.lineTo(xInner, yInner)
+              rotation += Math.PI / spikes
+            }
+            g.closePath()
+            break
+          }
+          case 'triangle':
+            g.moveTo(-layer.width / 2, layer.height / 2)
+            g.lineTo(layer.width / 2, layer.height / 2)
+            g.lineTo(0, -layer.height / 2)
+            g.closePath()
+            break
+          case 'pill': {
+            const radius = Math.min(layer.width, layer.height) / 2
+            g.roundRect(-layer.width / 2, -layer.height / 2, layer.width, layer.height, radius)
+            break
+          }
+          case 'circle':
+          default:
+            g.ellipse(0, 0, layer.width / 2, layer.height / 2)
+            break
+        }
+        g.fill(fillColor)
+      }
+      
+      // Update hit area
+      g.hitArea = new PIXI.Rectangle(-layer.width / 2, -layer.height / 2, layer.width, layer.height)
+      
+      // Update outline for selection
+      const outline = outlinesByIdRef.current[layer.id]
+      if (outline && outline instanceof PIXI.Graphics) {
+        outline.clear()
+        if (layer.shapeKind === 'heart') {
+          const w = layer.width, h = layer.height
+          outline.moveTo(0, -h * 0.35)
+          outline.bezierCurveTo(w * 0.5, -h * 0.5, w * 0.5, 0, 0, h * 0.5)
+          outline.bezierCurveTo(-w * 0.5, 0, -w * 0.5, -h * 0.5, 0, -h * 0.35)
+          outline.closePath()
+        } else if (layer.shapeKind === 'star') {
+          const spikes = 5, rx = layer.width / 2, ry = layer.height / 2
+          const innerRx = rx * 0.5, innerRy = ry * 0.5
+          let rotation = Math.PI / 2 * 3
+          outline.moveTo(0, -ry)
+          for (let i = 0; i < spikes; i++) {
+            outline.lineTo(Math.cos(rotation) * rx, Math.sin(rotation) * ry)
+            rotation += Math.PI / spikes
+            outline.lineTo(Math.cos(rotation) * innerRx, Math.sin(rotation) * innerRy)
+            rotation += Math.PI / spikes
+          }
+          outline.closePath()
+        } else if (layer.shapeKind === 'triangle') {
+          outline.moveTo(-layer.width / 2, layer.height / 2)
+          outline.lineTo(layer.width / 2, layer.height / 2)
+          outline.lineTo(0, -layer.height / 2)
+          outline.closePath()
+        } else if (layer.shapeKind === 'circle') {
+          outline.ellipse(0, 0, layer.width / 2, layer.height / 2)
+        } else {
+          outline.rect(-layer.width / 2, -layer.height / 2, layer.width, layer.height)
+        }
+        outline.stroke({ color: 0x9333ea, width: 2, alpha: 1 })
+      }
+      
+      // Update handle positions and geometry (4 corners or 8 with edges)
+      const handles = resizeHandlesRef.current[layer.id]
+      if (handles) {
+        const halfW = layer.width / 2, halfH = layer.height / 2
+        const edgeThickness = 2
+        const hitAreaSize = 12
+        
+        if (handles.length === 8) {
+          // Corner positions (indices 0-3)
+          const cornerPositions = [
+            { x: -halfW, y: -halfH }, { x: halfW, y: -halfH },
+            { x: halfW, y: halfH }, { x: -halfW, y: halfH },
+          ]
+          // Edge positions (indices 4-7: top, bottom, left, right)
+          const edgePositions = [
+            { x: 0, y: -halfH }, { x: 0, y: halfH },
+            { x: -halfW, y: 0 }, { x: halfW, y: 0 },
+          ]
+          
+          // Update corner handles (just position)
+          for (let i = 0; i < 4; i++) {
+            handles[i].x = cornerPositions[i].x
+            handles[i].y = cornerPositions[i].y
+          }
+          
+          // Update edge handles (position + redraw geometry)
+          for (let i = 4; i < 8; i++) {
+            const h = handles[i]
+            h.x = edgePositions[i - 4].x
+            h.y = edgePositions[i - 4].y
+            
+            // Redraw the edge handle bar with new dimensions
+            h.clear()
+            let w: number, hDim: number
+            if (i === 4 || i === 5) { // Top or Bottom edge
+              w = layer.width
+              hDim = edgeThickness
+              h.hitArea = new PIXI.Rectangle(-w / 2, -hitAreaSize / 2, w, hitAreaSize)
+            } else { // Left or Right edge
+              w = edgeThickness
+              hDim = layer.height
+              h.hitArea = new PIXI.Rectangle(-hitAreaSize / 2, -hDim / 2, hitAreaSize, hDim)
+            }
+            h.rect(-w / 2, -hDim / 2, w, hDim)
+            h.fill(0x9333ea)
+          }
+        } else {
+          // 4 corner handles only
+          const positions = [
+            { x: -halfW, y: -halfH }, { x: halfW, y: -halfH },
+            { x: halfW, y: halfH }, { x: -halfW, y: halfH },
+          ]
+          handles.forEach((h, i) => {
+            if (positions[i]) {
+              h.x = positions[i].x
+              h.y = positions[i].y
+            }
+          })
+        }
+      }
+    })
+    
+    if (needsRender) {
+      appRef.current?.render()
+    }
+  }, [renderLayers, isReady])
 
   return (
     <div className="relative h-full w-full overflow-visible rounded-lg" onPointerDown={handleCanvasPointerDown}>
