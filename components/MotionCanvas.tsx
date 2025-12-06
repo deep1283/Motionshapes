@@ -1174,6 +1174,12 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             })
             resizeHandlesRef.current[layer.id] = handles
             
+            // If this layer is already selected (e.g. auto-selected on import), show handles now
+            if (selectedLayerId === layer.id) {
+              outline.visible = true
+              handles.forEach(h => h.visible = true)
+            }
+            
             // Pointer events
             container.on('pointerdown', (e) => {
               e.stopPropagation()
