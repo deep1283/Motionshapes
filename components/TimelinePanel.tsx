@@ -15,6 +15,7 @@ interface TimelinePanelProps {
   onCancelPath?: () => void
   pathPointCount?: number
   onClipClick?: (clip: { id: string; template: string }) => void
+  onSelectLayer?: (layerId: string) => void
 }
 
 const formatTime = (ms: number) => {
@@ -26,7 +27,7 @@ const formatTime = (ms: number) => {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}:${String(centiseconds).padStart(2, '0')}`
 }
 
-export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers, selectedLayerId, selectedTemplate, selectedClipId, isDrawingPath, onFinishPath, onCancelPath, pathPointCount = 0, onClipClick }: TimelinePanelProps) {
+export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers, selectedLayerId, selectedTemplate, selectedClipId, isDrawingPath, onFinishPath, onCancelPath, pathPointCount = 0, onClipClick, onSelectLayer }: TimelinePanelProps) {
   // Split selectors to ensure each value change triggers re-render
   const currentTime = useTimeline((s) => s.currentTime)
   const duration = useTimeline((s) => s.duration)
@@ -206,6 +207,57 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
     duration: number
     currentStart?: number
   } | null>(null)
+  
+  // State for dragging/resizing the Shape Visibility Bar itself
+  const [optimisticLayer, setOptimisticLayer] = useState<{ layerId: string; startTime: number; duration: number } | null>(null)
+  const [isMovingLayer, setIsMovingLayer] = useState(false)
+  const [isResizingLayer, setIsResizingLayer] = useState(false)
+
+  const handleLayerDragStart = (e: React.PointerEvent, layerId: string, start: number, duration: number) => {
+    e.stopPropagation()
+    const rect = timelineAreaRef.current?.getBoundingClientRect()
+    if (!rect) return
+    
+    layerMoveStateRef.current = {
+      layerId,
+      startX: e.clientX,
+      baseStart: start,
+      currentStart: start
+    }
+    setIsMovingLayer(true)
+    setScrubTarget(false)
+    setIsScrubbing(false)
+  }
+
+  const handleLayerResizeStart = (e: React.PointerEvent, layerId: string, duration: number) => {
+    e.stopPropagation()
+    const rect = timelineAreaRef.current?.getBoundingClientRect()
+    if (!rect) return
+
+    layerResizeStateRef.current = {
+      layerId,
+      startX: e.clientX,
+      baseDuration: duration,
+      currentDuration: duration
+    }
+    setIsResizingLayer(true)
+    setScrubTarget(false)
+    setIsScrubbing(false)
+  }
+  
+  const layerMoveStateRef = useRef<{
+    layerId: string
+    startX: number
+    baseStart: number
+    currentStart?: number
+  } | null>(null)
+
+  const layerResizeStateRef = useRef<{
+    layerId: string
+    startX: number
+    baseDuration: number
+    currentDuration?: number
+  } | null>(null)
   const MIN_CLIP_DURATION = 80 // ms
 
   const applyScrub = (clientX: number) => {
@@ -357,6 +409,176 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
       window.removeEventListener('pointerup', handleUp)
     }
   }, [isMovingClip, safeDuration, timeline])
+
+  // Effect for Moving Layer visibility bar
+  useEffect(() => {
+    if (!isMovingLayer) return
+    const handleMove = (ev: PointerEvent) => {
+      const state = layerMoveStateRef.current
+      const rect = timelineAreaRef.current?.getBoundingClientRect()
+      if (!state || !rect) return
+      
+      const pxPerMs = rect.width / safeDuration
+      const deltaMs = (ev.clientX - state.startX) / pxPerMs
+      const nextStart = Math.max(0, Math.round(state.baseStart + deltaMs))
+      
+      state.currentStart = nextStart
+      
+      // We need to fetch the duration to keep the object complete
+      // Since duration doesn't change during MOVE, retrieving from optimistic or store would be tricky
+      // But we can infer it or pass it. For now, let's assume we can get it from the store or optimistic state?
+      // Actually, we should store duration in ref too if needed. But let's just update start.
+      // Wait, setOptimisticLayer needs duration too.
+      // Let's add duration to the moveStateRef in previous step? 
+      // Or just find the track again. But hooks inside loops are bad.
+      // Simplest: `optimisticLayer` already has it if initialized?
+      // Actually, we updated handleLayerDragStart but forgot to store duration in ref.
+      // Let's assume we stored it or can pass it.
+      // FIX: Upstream I should have stored duration in Ref.
+      // Let's just fix the Ref type first? No, too much backtracking.
+      // Let's just pass `duration` into the ref in `handleLayerDragStart` - wait I can't change that now easily without another replace.
+      // Okay, I will try to read it from `tracks` here? No hooks in callbacks.
+      // I'll update the Ref type in the *next* block if needed, but for now let's just use what we have.
+      // Actually, I can just use `optimisticLayer?.duration`?
+      // Let's assume the previous step added it?
+      // Let's look at previous step replaced content:
+      // handleLayerDragStart takes (e, layerId, start, duration).
+      // But it sets `layerMoveStateRef.current = { layerId, startX, baseStart, currentStart }`. 
+      // It DOES NOT store duration.
+      // This is a problem. I need duration to call `setOptimisticLayer`.
+      
+      // I will fix `handleLayerDragStart` to store duration in the ref in THIS step by redefining the ref and handler if needed?
+      // Or I can just access the current track from `tracks`? `tracks` is available in scope!
+      const track = tracks.find(t => t.layerId === state.layerId)
+      const duration = track?.duration ?? 2000
+
+      setOptimisticLayer({
+        layerId: state.layerId,
+        startTime: nextStart,
+        duration: duration
+      })
+    }
+
+    const handleUp = () => {
+       const state = layerMoveStateRef.current
+       if (state && state.currentStart !== undefined) {
+         timeline.updateLayer(state.layerId, {
+           startTime: state.currentStart
+         })
+       }
+       setIsMovingLayer(false)
+       setOptimisticLayer(null)
+       layerMoveStateRef.current = null
+    }
+
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', handleUp)
+    return () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleUp)
+    }
+  }, [isMovingLayer, safeDuration, timeline, tracks])
+
+  // Effect for Resizing Layer visibility bar
+  useEffect(() => {
+    if (!isResizingLayer) return
+    const handleMove = (ev: PointerEvent) => {
+      const state = layerResizeStateRef.current
+      const rect = timelineAreaRef.current?.getBoundingClientRect()
+      if (!state || !rect) return
+
+      const pxPerMs = rect.width / safeDuration
+      const deltaMs = (ev.clientX - state.startX) / pxPerMs
+      
+      const track = tracks.find(t => t.layerId === state.layerId)
+      const startTime = track?.startTime ?? 0
+      
+      // Calculate minimum duration based on template clips for this layer
+      const layerClips = templateClips.filter(c => c.layerId === state.layerId)
+      const templateClipsEnd = layerClips.reduce((max, c) => {
+        const clipEnd = (c.start ?? 0) + (c.duration ?? 0) - startTime
+        return Math.max(max, clipEnd)
+      }, 0)
+      const minDuration = Math.max(100, templateClipsEnd) // Min 100ms or templates' end
+      
+      let newDuration = Math.max(minDuration, Math.round(state.baseDuration + deltaMs))
+      
+      // Snap logic: snap to template clip edges and other shapes' bars (50ms threshold)
+      const SNAP_THRESHOLD = 50
+      const newEndTime = startTime + newDuration
+      let snapped = false
+      
+      // 1. Snap to own template clips
+      for (const clip of layerClips) {
+        if (snapped) break
+        const clipStart = clip.start ?? 0
+        const clipEnd = clipStart + (clip.duration ?? 0)
+        
+        // Snap to clip end
+        if (Math.abs(newEndTime - clipEnd) <= SNAP_THRESHOLD) {
+          newDuration = clipEnd - startTime
+          snapped = true
+          break
+        }
+        // Snap to clip start
+        if (Math.abs(newEndTime - clipStart) <= SNAP_THRESHOLD) {
+          newDuration = clipStart - startTime
+          if (newDuration < minDuration) newDuration = minDuration
+          snapped = true
+          break
+        }
+      }
+      
+      // 2. Snap to other shapes' visibility bars
+      if (!snapped) {
+        for (const otherTrack of tracks) {
+          if (snapped) break
+          if (otherTrack.layerId === state.layerId) continue // Skip self
+          
+          const otherStart = otherTrack.startTime ?? 0
+          const otherEnd = otherStart + (otherTrack.duration ?? 0)
+          
+          // Snap to other shape's start
+          if (Math.abs(newEndTime - otherStart) <= SNAP_THRESHOLD) {
+            newDuration = otherStart - startTime
+            if (newDuration >= minDuration) snapped = true
+          }
+          // Snap to other shape's end
+          if (!snapped && Math.abs(newEndTime - otherEnd) <= SNAP_THRESHOLD) {
+            newDuration = otherEnd - startTime
+            if (newDuration >= minDuration) snapped = true
+          }
+        }
+      }
+      
+      state.currentDuration = newDuration
+
+      setOptimisticLayer({
+        layerId: state.layerId,
+        startTime: startTime,
+        duration: newDuration
+      })
+    }
+
+    const handleUp = () => {
+      const state = layerResizeStateRef.current
+      if (state && state.currentDuration !== undefined) {
+        timeline.updateLayer(state.layerId, {
+          duration: state.currentDuration
+        })
+      }
+      setIsResizingLayer(false)
+      setOptimisticLayer(null)
+      layerResizeStateRef.current = null
+    }
+
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', handleUp)
+    return () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleUp)
+    }
+  }, [isResizingLayer, safeDuration, timeline, tracks])
 
   const [collapsedLayers, setCollapsedLayers] = useState<Record<string, boolean>>({})
 
@@ -544,13 +766,48 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
                         </div>
                       </div>
                       
-                      {/* Summary Bar */}
-                      {clips.length > 0 && (
-                        <div
-                          className="absolute top-1/2 -translate-y-1/2 h-4 rounded-sm bg-purple-500/30 border border-purple-500/30"
-                          style={{ left: `${summaryLeft}%`, width: `${summaryWidth}%` }}
-                        />
-                      )}
+                      
+                      {/* Shape Visibility Bar (Parent Container) */}
+                      {(() => {
+                        const track = tracks.find(t => t.layerId === layer.id)
+                        const isOptimistic = optimisticLayer?.layerId === layer.id
+                        const startTime = isOptimistic ? optimisticLayer!.startTime : (track?.startTime ?? 0)
+                        const duration = isOptimistic ? optimisticLayer!.duration : (track?.duration ?? 2000)
+                        
+                        const left = (startTime / safeDuration) * 100
+                        const width = Math.max(0, (duration / safeDuration) * 100)
+                        
+                        // Check if locked (has children)
+                        const hasClips = clips.length > 0
+                        const hasPaths = (track?.paths?.length ?? 0) > 0
+                        // Keyframes check could be complex, for now let's stick to clips/paths as "children"
+                        const isLocked = hasClips || hasPaths || hasPaths
+
+                        return (
+                          <div
+                            className={`absolute top-1/2 -translate-y-1/2 h-5 rounded-sm border transition-all z-20 group/bar cursor-pointer
+                              ${isOptimistic ? 'bg-purple-500/60 border-purple-500/80' : selectedLayerId === layer.id ? 'bg-purple-500/60 border-purple-500' : 'bg-purple-500/40 border-purple-500/50 hover:bg-purple-500/50'}
+                            `}
+                            style={{ left: `${left}%`, width: `${width}%` }}
+                            onClick={() => onSelectLayer?.(layer.id)}
+                            onPointerDown={(e) => handleLayerDragStart(e, layer.id, startTime, duration)}
+                          >
+                             {/* Label */}
+                             <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[9px] font-medium text-white/90 truncate pointer-events-none opacity-0 group-hover/bar:opacity-100 transition-opacity">
+                               {layer.shapeKind || 'Shape'}
+                             </span>
+
+                             {/* Resize Handle (Right) - Always visible */}
+                             <div
+                               className="absolute right-0 top-0 bottom-0 w-3 cursor-e-resize flex items-center justify-center hover:bg-white/10"
+                               onPointerDown={(e) => handleLayerResizeStart(e, layer.id, duration)}
+                               onClick={(e) => e.stopPropagation()}
+                             >
+                               <div className="w-[1px] h-3 bg-white/40" />
+                             </div>
+                          </div>
+                        )
+                      })()}
                       
                       {/* Click Markers as dots */}
                       {clickMarkers

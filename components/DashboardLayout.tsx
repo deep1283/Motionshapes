@@ -166,6 +166,7 @@ interface DashboardLayoutProps {
   onUpdateLayerColor?: (id: string, color: number) => void
   onUpdateLayerFontFamily?: (id: string, fontFamily: string) => void
   onRedo?: () => void
+  onSelectLayer?: (layerId: string) => void
 }
 
 export default function DashboardLayout({ 
@@ -241,6 +242,7 @@ export default function DashboardLayout({
   onUpdateLayerFontSize,
   onUpdateLayerColor,
   onUpdateLayerFontFamily,
+  onSelectLayer,
 }: DashboardLayoutProps) {
   const router = useRouter()
   const supabase = createClient()
@@ -2388,6 +2390,7 @@ export default function DashboardLayout({
           onCancelPath={onCancelPath}
           pathPointCount={pathPointCount}
           onClipClick={onClipClick}
+          onSelectLayer={onSelectLayer}
         />
       </div>
       

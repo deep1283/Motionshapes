@@ -603,11 +603,25 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       if (g && Number.isFinite(canvasPosX)) g.x = canvasPosX
       if (g && Number.isFinite(canvasPosY)) g.y = canvasPosY
       if (g && g.scale) g.scale.set(finalScale)
+      
+      // Calculate strict visibility based on timeline clips
+      // If playhead < startTime or playhead > startTime + duration, alpha = 0
+      const trackStartTime = track?.startTime ?? 0
+      const trackDuration = track?.duration ?? 2000
+      const isVisibleInTime = playhead >= trackStartTime && playhead <= trackStartTime + trackDuration
+      
+      let finalOpacity = state.opacity
+      if (!isVisibleInTime) {
+        finalOpacity = 0
+      }
+      
+      g.alpha = hasOpacityAnim ? finalOpacity : (isVisibleInTime ? 1 : 0)
+
+      // Sync rotation
       // For rotation: layer.rotation is the base, animation rotation is additive
       const baseRotationRad = ((layerData?.rotation ?? 0) * Math.PI) / 180
       const animRotation = hasRotationAnim ? state.rotation : 0
       if (g) g.rotation = baseRotationRad + animRotation
-      if (g) g.alpha = hasOpacityAnim ? state.opacity : 1 // Default opacity is 1
       
       // Apply filters (Effects + Off-canvas Blur)
       if (g) {

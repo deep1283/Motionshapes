@@ -154,6 +154,17 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
 
     const newTrack: LayerTracks = {
       layerId,
+      startTime: (() => {
+        // Auto-sequencing: Start after the last clip ends
+        // But if there are no clips, start at 0
+        const maxEndTime = state.tracks.reduce((max, t) => {
+          const start = t.startTime ?? 0
+          const dur = t.duration ?? 0
+          return Math.max(max, start + dur)
+        }, 0)
+        return maxEndTime
+      })(),
+      duration: 2000, // Default 2s duration
       position: [
         {
           time: 0,
@@ -181,10 +192,17 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       paths: [],
     }
 
-    setState((prev) => ({
-      ...prev,
-      tracks: [...prev.tracks, newTrack],
-    }))
+    setState((prev) => {
+      const newLayerEnd = newTrack.startTime! + newTrack.duration!
+      const newDuration = Math.max(prev.duration, newLayerEnd + 500) // Extend if needed, with 500ms buffer
+      
+      return {
+        ...prev,
+        tracks: [...prev.tracks, newTrack],
+        duration: newDuration,
+        currentTime: clampTime(prev.currentTime, newDuration),
+      }
+    })
     return newTrack
   }
 
@@ -285,6 +303,73 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     }))
   }
 
+  const updateLayer = (
+    layerId: string,
+    updates: { startTime?: number; duration?: number }
+  ) => {
+    setState((prev) => {
+      const track = prev.tracks.find((t) => t.layerId === layerId)
+      if (!track) return prev
+
+      const oldStart = track.startTime ?? 0
+      const newStart = updates.startTime !== undefined ? updates.startTime : oldStart
+      const delta = newStart - oldStart
+
+      // Update the track itself
+      const updatedTracks = prev.tracks.map((t) => {
+        if (t.layerId !== layerId) return t
+        return {
+          ...t,
+          startTime: newStart,
+          duration: updates.duration !== undefined ? updates.duration : t.duration,
+          // Shift keyframes if start time changed
+          position: delta !== 0 && t.position ? t.position.map(k => ({ ...k, time: k.time + delta })) : t.position,
+          scale: delta !== 0 && t.scale ? t.scale.map(k => ({ ...k, time: k.time + delta })) : t.scale,
+          rotation: delta !== 0 && t.rotation ? t.rotation.map(k => ({ ...k, time: k.time + delta })) : t.rotation,
+          opacity: delta !== 0 && t.opacity ? t.opacity.map(k => ({ ...k, time: k.time + delta })) : t.opacity,
+          // Shift paths
+          paths: delta !== 0 && t.paths ? t.paths.map(p => ({ ...p, startTime: p.startTime + delta })) : t.paths
+        }
+      })
+
+      // Shift template clips
+      const updatedClips = delta !== 0 
+        ? prev.templateClips.map((c) => 
+            c.layerId === layerId ? { ...c, start: c.start + delta } : c
+          )
+        : prev.templateClips
+
+      // Shift click markers
+      const updatedMarkers = delta !== 0
+        ? prev.clickMarkers.map((m) =>
+            m.layerId === layerId ? { ...m, time: m.time + delta } : m
+          )
+        : prev.clickMarkers
+
+      // Update total duration
+      let maxEnd = 0
+      updatedTracks.forEach(t => {
+        maxEnd = Math.max(maxEnd, (t.startTime ?? 0) + (t.duration ?? 0))
+      })
+      // Also check paths inside tracks (though they should be contained in duration)
+      // And clips
+      updatedClips.forEach(c => {
+         maxEnd = Math.max(maxEnd, c.start + c.duration)
+      })
+
+      const newDuration = Math.max(prev.duration, maxEnd + 1000)
+
+      return {
+        ...prev,
+        tracks: updatedTracks,
+        templateClips: updatedClips,
+        clickMarkers: updatedMarkers,
+        duration: newDuration,
+        currentTime: clampTime(prev.currentTime, newDuration)
+      }
+    })
+  }
+
   const updateClickMarker = (markerId: string, time: number) => {
     setState((prev) => {
       const updatedMarkers = prev.clickMarkers
@@ -338,7 +423,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     layerScale?: number
   ) => {
     setState((prev) => {
-      const updatedClips = prev.templateClips.map((clip) => {
+      const newClips = prev.templateClips.map((clip) => {
         if (clip.id === clipId && clip.layerId === layerId) {
           return {
             ...clip,
@@ -352,8 +437,27 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         return clip
       })
 
+      // Auto-Expand Logic for updateTemplateClip:
+      // If the updated clip extends beyond the layer's current duration, expand the layer.
+      let expandedTracks = prev.tracks
+      const updatedClip = newClips.find(c => c.id === clipId)
+      if (updatedClip) {
+        const clipEnd = (updatedClip.start ?? 0) + (updatedClip.duration ?? 0)
+        const layerTrack = prev.tracks.find(t => t.layerId === layerId)
+        if (layerTrack) {
+          const currentLayerEnd = (layerTrack.startTime ?? 0) + (layerTrack.duration ?? 2000)
+          if (clipEnd > currentLayerEnd) {
+            // Expand layer duration
+            const newLayerDuration = clipEnd - (layerTrack.startTime ?? 0)
+            expandedTracks = prev.tracks.map(t => 
+              t.layerId === layerId ? { ...t, duration: newLayerDuration } : t
+            )
+          }
+        }
+      }
+
       // Calculate new parameters for the specific clip being updated
-      const layerClips = updatedClips.filter((c) => c.layerId === layerId)
+      const layerClips = newClips.filter((c) => c.layerId === layerId)
       const rollClip = layerClips.find((c) => c.id === clipId && c.template === 'roll')
       const jumpClip = layerClips.find((c) => c.id === clipId && c.template === 'jump')
       const popClip = layerClips.find((c) => c.id === clipId && c.template === 'pop')
@@ -398,22 +502,22 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           }
         }
         
-        // Replace the clip in updatedClips
-        const clipIndex = updatedClips.findIndex(c => c.id === clipId)
+        // Replace the clip in newClips
+        const clipIndex = newClips.findIndex(c => c.id === clipId)
         if (clipIndex !== -1) {
-          updatedClips[clipIndex] = updatedPathClip
+          newClips[clipIndex] = updatedPathClip
         }
       }
 
       // Explicitly update parameters for Roll, Jump, and Pop clips if duration changed
       // This ensures rebuildTrackFromClips uses the correct values instead of stale global defaults
       if (rollClip && typeof rollClip.duration === 'number') {
-        const clipIndex = updatedClips.findIndex(c => c.id === rollClip.id)
+        const clipIndex = newClips.findIndex(c => c.id === rollClip.id)
         if (clipIndex !== -1) {
-          updatedClips[clipIndex] = {
-            ...updatedClips[clipIndex],
+          newClips[clipIndex] = {
+            ...newClips[clipIndex],
             parameters: {
-              ...updatedClips[clipIndex].parameters,
+              ...newClips[clipIndex].parameters,
               rollDistance: nextRollDistance
             }
           }
@@ -421,12 +525,12 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       }
 
       if (jumpClip && typeof jumpClip.duration === 'number') {
-        const clipIndex = updatedClips.findIndex(c => c.id === jumpClip.id)
+        const clipIndex = newClips.findIndex(c => c.id === jumpClip.id)
         if (clipIndex !== -1) {
-          updatedClips[clipIndex] = {
-            ...updatedClips[clipIndex],
+          newClips[clipIndex] = {
+            ...newClips[clipIndex],
             parameters: {
-              ...updatedClips[clipIndex].parameters,
+              ...newClips[clipIndex].parameters,
               jumpHeight: nextJumpHeight
             }
           }
@@ -434,31 +538,31 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       }
 
       if (popClip && typeof popClip.duration === 'number') {
-        const clipIndex = updatedClips.findIndex(c => c.id === popClip.id)
+        const clipIndex = newClips.findIndex(c => c.id === popClip.id)
         if (clipIndex !== -1) {
-          updatedClips[clipIndex] = {
-            ...updatedClips[clipIndex],
+          newClips[clipIndex] = {
+            ...newClips[clipIndex],
             parameters: {
-              ...updatedClips[clipIndex].parameters,
+              ...newClips[clipIndex].parameters,
               popSpeed: nextPopSpeed
             }
           }
         }
       }
 
-      const currentPopClip = updatedClips.find(c => c.id === clipId && c.template === 'pop')
+      const currentPopClip = newClips.find(c => c.id === clipId && c.template === 'pop')
       const parameters = updates.parameters
       const currentParams = currentPopClip?.parameters || {}
 
       const nextPopReappear = parameters?.popReappear ?? currentParams.popReappear
 
       if (popClip && typeof popClip.duration === 'number') {
-        const clipIndex = updatedClips.findIndex(c => c.id === popClip.id)
+        const clipIndex = newClips.findIndex(c => c.id === popClip.id)
         if (clipIndex !== -1) {
-          updatedClips[clipIndex] = {
-            ...updatedClips[clipIndex],
+          newClips[clipIndex] = {
+            ...newClips[clipIndex],
             parameters: {
-              ...updatedClips[clipIndex].parameters,
+              ...newClips[clipIndex].parameters,
               popReappear: nextPopReappear
             }
           }
@@ -466,12 +570,12 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       }
 
       if (shakeClip && typeof shakeClip.duration === 'number') {
-        const clipIndex = updatedClips.findIndex(c => c.id === shakeClip.id)
+        const clipIndex = newClips.findIndex(c => c.id === shakeClip.id)
         if (clipIndex !== -1) {
-          updatedClips[clipIndex] = {
-            ...updatedClips[clipIndex],
+          newClips[clipIndex] = {
+            ...newClips[clipIndex],
             parameters: {
-              ...updatedClips[clipIndex].parameters,
+              ...newClips[clipIndex].parameters,
               shakeDistance: updates.parameters?.shakeDistance ?? prev.shakeDistance,
               templateSpeed: updates.parameters?.templateSpeed ?? prev.templateSpeed
             }
@@ -480,12 +584,12 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       }
 
       if (pulseClip && typeof pulseClip.duration === 'number') {
-        const clipIndex = updatedClips.findIndex(c => c.id === pulseClip.id)
+        const clipIndex = newClips.findIndex(c => c.id === pulseClip.id)
         if (clipIndex !== -1) {
-          updatedClips[clipIndex] = {
-            ...updatedClips[clipIndex],
+          newClips[clipIndex] = {
+            ...newClips[clipIndex],
             parameters: {
-              ...updatedClips[clipIndex].parameters,
+              ...newClips[clipIndex].parameters,
               pulseScale: updates.parameters?.pulseScale ?? prev.pulseScale,
               pulseSpeed: updates.parameters?.pulseSpeed ?? prev.pulseSpeed
             }
@@ -494,12 +598,12 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       }
 
       if (spinClip && typeof spinClip.duration === 'number') {
-        const clipIndex = updatedClips.findIndex(c => c.id === spinClip.id)
+        const clipIndex = newClips.findIndex(c => c.id === spinClip.id)
         if (clipIndex !== -1) {
-          updatedClips[clipIndex] = {
-            ...updatedClips[clipIndex],
+          newClips[clipIndex] = {
+            ...newClips[clipIndex],
             parameters: {
-              ...updatedClips[clipIndex].parameters,
+              ...newClips[clipIndex].parameters,
               spinSpeed: updates.parameters?.spinSpeed ?? prev.spinSpeed,
               spinDirection: updates.parameters?.spinDirection ?? prev.spinDirection,
               templateSpeed: updates.parameters?.templateSpeed ?? prev.templateSpeed
@@ -512,7 +616,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       // Helper to rebuild track from clips
       const rebuildTrackFromClips = (
         layerId: string, 
-        currentClips: typeof updatedClips, 
+        currentClips: typeof newClips, 
         currentTracks: LayerTracks[], 
         baseScale: number = 1,
         layerPosition?: Vec2,
@@ -915,16 +1019,31 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         return currentTracks.map(t => t.layerId === layerId ? newTrack : t)
       }
 
-      const targetClip = updatedClips.find(c => c.id === clipId)
+
+
+      const targetClip = newClips.find(c => c.id === clipId)
       const layerBaseForRebuild = targetClip?.parameters?.layerBase
-      const newTracks = rebuildTrackFromClips(
+      const rebuiltTracks = rebuildTrackFromClips(
         layerId,
-        updatedClips,
-        prev.tracks,
+        newClips,
+        expandedTracks, // Use tracks with expanded layer duration
         1,
         layerBaseForRebuild?.position,
         layerBaseForRebuild
       )
+
+      // Merge layer visibility properties (startTime, duration) from expandedTracks into rebuiltTracks
+      const newTracks = rebuiltTracks.map(track => {
+        const originalTrack = expandedTracks.find(t => t.layerId === track.layerId)
+        if (originalTrack) {
+          return {
+            ...track,
+            startTime: originalTrack.startTime,
+            duration: originalTrack.duration,
+          }
+        }
+        return track
+      })
 
       const getTrackEnd = (track: LayerTracks) => {
         const times: number[] = []
@@ -936,16 +1055,18 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       }
 
       const tracksEnd = newTracks.reduce((max, t) => Math.max(max, getTrackEnd(t)), 0)
-      const clipsEnd = updatedClips.reduce((max, c) => Math.max(max, (c.start ?? 0) + (c.duration ?? 0)), 0)
+      const clipsEnd = newClips.reduce((max, c) => Math.max(max, (c.start ?? 0) + (c.duration ?? 0)), 0)
       const pathsEnd = getMaxPathEnd(newTracks)
-      const newDuration = Math.max(tracksEnd, clipsEnd, pathsEnd, 4000)
+      // Include layer visibility bars in duration calculation
+      const layersEnd = newTracks.reduce((max, t) => Math.max(max, (t.startTime ?? 0) + (t.duration ?? 0)), 0)
+      const newDuration = Math.max(tracksEnd, clipsEnd, pathsEnd, layersEnd, 4000)
       
       // If path clip speed was updated, also update global templateSpeed
       const nextTemplateSpeed = updatedPathClip?.parameters?.templateSpeed ?? prev.templateSpeed
 
       return {
         ...prev,
-        templateClips: updatedClips,
+        templateClips: newClips,
         tracks: newTracks,
         duration: newDuration,
         currentTime: clampTime(prev.currentTime, newDuration),
@@ -1362,6 +1483,23 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       }
 
       const nextClips = [...prev.templateClips, newClip]
+
+            // Auto-Expand Logic:
+      // If the new clip extends beyond the layer's current duration, expand the layer.
+      let updatedTracks = prev.tracks
+      const clipEnd = start + duration
+      const layerTrack = prev.tracks.find(t => t.layerId === layerId)
+      
+      if (layerTrack) {
+        const currentLayerEnd = (layerTrack.startTime ?? 0) + (layerTrack.duration ?? 2000)
+        if (clipEnd > currentLayerEnd) {
+          // Expand layer duration
+          const newLayerDuration = clipEnd - (layerTrack.startTime ?? 0)
+          updatedTracks = prev.tracks.map(t => 
+             t.layerId === layerId ? { ...t, duration: newLayerDuration } : t // Exact fit
+          )
+        }
+      }
       
       // Rebuild tracks
       // We can reuse the logic from updateTemplateClip by extracting it, 
@@ -1727,14 +1865,27 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         return currentTracks.map(t => t.layerId === layerId ? newTrack : t)
       }
 
-      const newTracks = rebuildTrackFromClips(
+      const rebuiltTracks = rebuildTrackFromClips(
         layerId,
         nextClips,
-        prev.tracks,
+        updatedTracks, // Use tracks with expanded layer duration
         layerScale ?? 1,
         parameters?.layerBase?.position,
         parameters?.layerBase
       )
+      
+      // Merge layer visibility properties (startTime, duration) from updatedTracks into rebuiltTracks
+      const newTracks = rebuiltTracks.map(track => {
+        const originalTrack = updatedTracks.find(t => t.layerId === track.layerId)
+        if (originalTrack) {
+          return {
+            ...track,
+            startTime: originalTrack.startTime,
+            duration: originalTrack.duration,
+          }
+        }
+        return track
+      })
       
       // Recalculate duration
       const getMaxPathEnd = (tracks: LayerTracks[]) => {
@@ -1756,7 +1907,9 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       const tracksEnd = newTracks.reduce((max, t) => Math.max(max, getTrackEndTime(t)), 0)
       const clipsEnd = nextClips.reduce((max, c) => Math.max(max, (c.start ?? 0) + (c.duration ?? 0)), 0)
       const pathsEnd = getMaxPathEnd(newTracks)
-      const newDuration = Math.max(tracksEnd, clipsEnd, pathsEnd, 4000)
+      // Include layer visibility bars in duration calculation
+      const layersEnd = newTracks.reduce((max, t) => Math.max(max, (t.startTime ?? 0) + (t.duration ?? 0)), 0)
+      const newDuration = Math.max(tracksEnd, clipsEnd, pathsEnd, layersEnd, 4000)
 
       return {
         ...prev,
@@ -1997,14 +2150,18 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       const clipsEnd = prev.templateClips.reduce((max, c) => Math.max(max, (c.start ?? 0) + (c.duration ?? 0)), 0)
       const pathsEnd = getMaxPathEnd(prev.tracks)
       
+      // Include layer visibility bars (shape bars) - the purple parent bars
+      const layersEnd = prev.tracks.reduce((max, t) => Math.max(max, (t.startTime ?? 0) + (t.duration ?? 0)), 0)
+      
       // Include click markers in content duration
       const clickMarkersEnd = prev.clickMarkers.reduce((max, m) => Math.max(max, m.time), 0)
       
-      // If there are clips/templates, stop at the end of the last clip
-      // If there are no clips, allow 5 seconds of free movement
-      const hasClips = prev.templateClips.length > 0 || tracksEnd > 0 || pathsEnd > 0
+      // If there are shape bars, stop at the end of the last bar
+      // If there are no bars, allow 5 seconds of free movement
+      const hasLayers = prev.tracks.length > 0
+      const hasClips = prev.templateClips.length > 0 || tracksEnd > 0 || pathsEnd > 0 || hasLayers
       const contentDuration = hasClips 
-        ? Math.max(100, tracksEnd, clipsEnd, pathsEnd, clickMarkersEnd)  // Stop at content end
+        ? Math.max(100, tracksEnd, clipsEnd, pathsEnd, layersEnd, clickMarkersEnd)  // Stop at content end (including bars)
         : Math.max(5000, clickMarkersEnd + 500)  // 5s free movement or until click markers
 
       if (nextTime >= contentDuration) {
@@ -2333,6 +2490,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     applyPresetToLayer,
     clear,
     sampleAt,
+    updateLayer,
     
     // Undo/Redo: Get snapshotable state
     getSnapshot: () => ({

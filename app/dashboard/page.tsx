@@ -1429,6 +1429,7 @@ function DashboardContent() {
             timeline.addClickMarker(layerId)
           }
         }}
+        onSelectLayer={handleSelectLayer}
       >
         <MotionCanvas 
           template={selectedTemplate} 
