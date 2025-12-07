@@ -322,8 +322,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     
     // Check if playhead crossed any click markers
     clickMarkers.forEach((marker) => {
-      const crossed = (prevTime <= marker.time && currentTime >= marker.time) ||
-                      (prevTime >= marker.time && currentTime <= marker.time && currentTime < 100) // Reset case
+      // Only trigger when playhead moves FORWARD across the marker time
+      const crossed = prevTime < marker.time && currentTime >= marker.time
       
       if (crossed && !triggeredMarkersRef.current.has(marker.id)) {
         triggeredMarkersRef.current.add(marker.id)
@@ -389,8 +389,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       }
     })
     
-    // Reset all markers when playhead goes back to start
-    if (currentTime < 50 && prevTime > 100) {
+    // Reset all markers when playhead is at start or jumps back to start
+    if (currentTime < 50) {
       triggeredMarkersRef.current.clear()
     }
   }, [playhead, clickMarkers, renderLayers, canvasBounds])

@@ -2189,11 +2189,42 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
   }
 
   const setPlaying = (playing: boolean) => {
-    setState((prev) => ({
-      ...prev,
-      isPlaying: playing,
-      lastTick: playing ? undefined : prev.lastTick,
-    }))
+    setState((prev) => {
+      let newTime = prev.currentTime
+      
+      // If starting to play and playhead is at the end, reset to 0
+      if (playing) {
+        // Calculate content end (same logic as tick function)
+        const tracksEnd = prev.tracks.reduce((max, t) => {
+          const times: number[] = []
+          if (t.position?.length) times.push(t.position[t.position.length - 1].time)
+          if (t.scale?.length) times.push(t.scale[t.scale.length - 1].time)
+          if (t.rotation?.length) times.push(t.rotation[t.rotation.length - 1].time)
+          if (t.opacity?.length) times.push(t.opacity[t.opacity.length - 1].time)
+          return Math.max(max, times.length ? Math.max(...times) : 0)
+        }, 0)
+        const clipsEnd = prev.templateClips.reduce((max, c) => Math.max(max, (c.start ?? 0) + (c.duration ?? 0)), 0)
+        const pathsEnd = getMaxPathEnd(prev.tracks)
+        const layersEnd = prev.tracks.reduce((max, t) => Math.max(max, (t.startTime ?? 0) + (t.duration ?? 0)), 0)
+        const hasLayers = prev.tracks.length > 0
+        const hasClips = prev.templateClips.length > 0 || tracksEnd > 0 || pathsEnd > 0 || hasLayers
+        const contentDuration = hasClips 
+          ? Math.max(100, tracksEnd, clipsEnd, pathsEnd, layersEnd)
+          : 5000
+        
+        // If at or near the end, reset to 0
+        if (prev.currentTime >= contentDuration - 50) {
+          newTime = 0
+        }
+      }
+      
+      return {
+        ...prev,
+        currentTime: newTime,
+        isPlaying: playing,
+        lastTick: playing ? undefined : prev.lastTick,
+      }
+    })
     if (playing) {
       if (typeof requestAnimationFrame !== 'undefined') {
         stopTicker()
