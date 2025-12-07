@@ -44,7 +44,7 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
   const templateClips = useTimeline((s) => s.templateClips)
   const clickMarkers = useTimeline((s) => s.clickMarkers)
   const timeline = useTimelineActions()
-  const MIN_TIMELINE_MS = 4000
+  const MIN_TIMELINE_MS = 5000 // 5 seconds minimum for free playhead movement
   const safeDuration = Math.max(MIN_TIMELINE_MS, Number.isFinite(duration) ? duration : MIN_TIMELINE_MS)
   // Timeline resize state
   const MIN_HEIGHT = 100
@@ -139,7 +139,13 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
     return track?.paths?.[0] ?? null
   }, [tracks, selectedLayerId])
   const handlePlayClick = () => {
-    // Calculate actual content duration (ignoring the 4s minimum padding)
+    // If currently playing, just pause (don't reset)
+    if (isPlaying) {
+      timeline.togglePlay()
+      return
+    }
+    
+    // Starting playback - check if we need to reset from end
     const clipsEnd = templateClips.reduce((max, c) => Math.max(max, (c.start ?? 0) + (c.duration ?? 0)), 0)
     
     const getTrackEnd = (track: any) => {
@@ -159,10 +165,13 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
         pathsEnd = Math.max(pathsEnd, p.startTime + p.duration)
       })
     })
+    
+    // Also check click markers
+    const clickMarkersEnd = clickMarkers.reduce((max, m) => Math.max(max, m.time), 0)
 
-    const contentDuration = Math.max(100, tracksEnd, clipsEnd, pathsEnd)
+    const contentDuration = Math.max(5000, tracksEnd, clipsEnd, pathsEnd, clickMarkersEnd)
 
-    // If at or near the end of CONTENT, reset to beginning before playing
+    // Only reset to beginning if at or near the end
     if (currentTime >= contentDuration - 50) {
       timeline.setCurrentTime(0)
     }

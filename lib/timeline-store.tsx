@@ -86,7 +86,7 @@ const clampTime = (time: number, duration: number) => {
 
 const defaultState: TimelineState = {
   tracks: [],
-  duration: 4000, // ms
+  duration: 5000, // 5 seconds minimum for free playhead movement
   currentTime: 0,
   isPlaying: false,
   loop: false,
@@ -258,13 +258,22 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     const markerId = `click-${layerId}-${Date.now()}`
     const markerTime = time ?? state.currentTime
     
-    setState((prev) => ({
-      ...prev,
-      clickMarkers: [
+    setState((prev) => {
+      const updatedMarkers = [
         ...prev.clickMarkers,
         { id: markerId, layerId, time: markerTime }
       ].sort((a, b) => a.time - b.time)
-    }))
+      
+      // Extend duration if marker is placed beyond current duration
+      const maxMarkerTime = Math.max(...updatedMarkers.map(m => m.time), 0)
+      const newDuration = Math.max(prev.duration, maxMarkerTime + 500) // Add 500ms padding
+      
+      return {
+        ...prev,
+        clickMarkers: updatedMarkers,
+        duration: newDuration,
+      }
+    })
     
     return markerId
   }
@@ -277,12 +286,21 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
   }
 
   const updateClickMarker = (markerId: string, time: number) => {
-    setState((prev) => ({
-      ...prev,
-      clickMarkers: prev.clickMarkers
+    setState((prev) => {
+      const updatedMarkers = prev.clickMarkers
         .map((m) => m.id === markerId ? { ...m, time } : m)
         .sort((a, b) => a.time - b.time)
-    }))
+      
+      // Extend duration if marker is placed beyond current duration
+      const maxMarkerTime = Math.max(...updatedMarkers.map(m => m.time), 0)
+      const newDuration = Math.max(prev.duration, maxMarkerTime + 500) // Add 500ms padding
+      
+      return {
+        ...prev,
+        clickMarkers: updatedMarkers,
+        duration: newDuration,
+      }
+    })
   }
 
   const updatePathClip = (
@@ -1979,8 +1997,11 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       const clipsEnd = prev.templateClips.reduce((max, c) => Math.max(max, (c.start ?? 0) + (c.duration ?? 0)), 0)
       const pathsEnd = getMaxPathEnd(prev.tracks)
       
-      // Use a minimum of 100ms to avoid instant looping on empty timeline
-      const contentDuration = Math.max(100, tracksEnd, clipsEnd, pathsEnd)
+      // Include click markers in content duration
+      const clickMarkersEnd = prev.clickMarkers.reduce((max, m) => Math.max(max, m.time), 0)
+      
+      // Use a minimum of 5000ms so playhead can move freely for 5 seconds even without animations
+      const contentDuration = Math.max(5000, tracksEnd, clipsEnd, pathsEnd, clickMarkersEnd)
 
       if (nextTime >= contentDuration) {
         if (prev.loop && contentDuration > 0) {
