@@ -169,7 +169,10 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
     // Also check click markers
     const clickMarkersEnd = clickMarkers.reduce((max, m) => Math.max(max, m.time), 0)
 
-    const contentDuration = Math.max(5000, tracksEnd, clipsEnd, pathsEnd, clickMarkersEnd)
+    const hasClips = templateClips.length > 0 || tracksEnd > 0 || pathsEnd > 0
+    const contentDuration = hasClips 
+      ? Math.max(100, tracksEnd, clipsEnd, pathsEnd, clickMarkersEnd) 
+      : Math.max(5000, clickMarkersEnd + 500)
 
     // Only reset to beginning if at or near the end
     if (currentTime >= contentDuration - 50) {

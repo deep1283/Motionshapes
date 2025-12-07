@@ -298,11 +298,14 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   }>>([])
   const rippleGraphicsRef = useRef<Map<string, PIXI.Graphics>>(new Map())
 
-  const currentPathClip = useMemo(() => {
-    if (!selectedLayerId) return null
+  const allPathClips = useMemo(() => {
+    if (!selectedLayerId) return []
     const track = timelineTracks.find((t) => t.layerId === selectedLayerId)
-    return track?.paths?.[0] ?? null
+    return track?.paths ?? []
   }, [timelineTracks, selectedLayerId])
+  
+  // For backward compatibility, also keep a reference to the first path
+  const currentPathClip = allPathClips[0] ?? null
 
   const [canvasBounds, setCanvasBounds] = useState({ width: 1, height: 1, left: 0, top: 0 })
   // Keep layers ref updated
@@ -325,11 +328,12 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       if (crossed && !triggeredMarkersRef.current.has(marker.id)) {
         triggeredMarkersRef.current.add(marker.id)
         
-        // Get the layer's position
-        const layer = renderLayers.find((l) => l.id === marker.layerId)
-        if (layer) {
-          const x = layer.x <= 4 ? layer.x * canvasBounds.width : layer.x
-          const y = layer.y <= 4 ? layer.y * canvasBounds.height : layer.y
+        // Get the shape's CURRENT animated position from the graphics object
+        const g = graphicsByIdRef.current[marker.layerId]
+        if (g) {
+          // Use the graphics object's current position (follows animations/paths)
+          const x = g.x
+          const y = g.y
           
           setActiveRipples((prev) => [...prev, {
             id: `ripple-${marker.id}-${Date.now()}`,
@@ -338,6 +342,44 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             x,
             y
           }])
+          
+          // Add rapid click pulse effect on the shape itself
+          const originalScaleX = g.scale.x
+          const originalScaleY = g.scale.y
+          const PULSE_DURATION = 150 // Very fast - 150ms total
+          const pulseStartTime = Date.now()
+          
+          const animatePulse = () => {
+            const elapsed = Date.now() - pulseStartTime
+            const progress = Math.min(1, elapsed / PULSE_DURATION)
+            
+            if (progress < 0.4) {
+              // Squish down quickly (first 60ms)
+              const squishProgress = progress / 0.4
+              const scale = 1 - (0.15 * squishProgress) // Goes to 0.85
+              g.scale.set(originalScaleX * scale, originalScaleY * scale)
+            } else {
+              // Bounce back with overshoot (remaining 90ms)
+              const bounceProgress = (progress - 0.4) / 0.6
+              // Elastic bounce back: overshoot to 1.05 then settle to 1.0
+              const eased = 1 - Math.pow(1 - bounceProgress, 3)
+              const overshoot = bounceProgress < 0.5 ? 1 + (0.08 * (bounceProgress * 2)) : 1.08 - (0.08 * ((bounceProgress - 0.5) * 2))
+              const scale = 0.85 + (eased * (overshoot - 0.85))
+              g.scale.set(originalScaleX * scale, originalScaleY * scale)
+            }
+            
+            appRef.current?.render()
+            
+            if (progress < 1) {
+              requestAnimationFrame(animatePulse)
+            } else {
+              // Ensure we end exactly at original scale
+              g.scale.set(originalScaleX, originalScaleY)
+              appRef.current?.render()
+            }
+          }
+          
+          requestAnimationFrame(animatePulse)
         }
         
         // Reset trigger after animation completes
@@ -2441,53 +2483,58 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     )}
       
       {/* Show the finished path (non-interactive, just visual) */}
-      {!isDrawingPath && currentPathClip && (
+      {!isDrawingPath && allPathClips.length > 0 && (
         <div className="absolute inset-0" style={{ zIndex: 25, pointerEvents: 'none' }}>
           <svg className="h-full w-full">
-            <path
-              d={(() => {
-                const { width, height } = canvasBounds
-                if (!width || !height || !currentPathClip.points.length) return ''
-                const pts = currentPathClip.points.map((pt) => ({ x: pt.x * width + offsetX, y: pt.y * height + offsetY }))
-                return pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
-              })()}
-              stroke="#22c55e"
-              strokeWidth={2}
-              fill="none"
-              opacity={0.5}
-            />
-            {/* Start point (green circle) */}
-            {currentPathClip.points.length > 0 && (() => {
-              const { width, height } = canvasBounds
-              if (!width || !height) return null
-              const startPt = currentPathClip.points[0]
-              return (
-                <circle
-                  cx={startPt.x * width + offsetX}
-                  cy={startPt.y * height + offsetY}
-                  r={6}
-                  fill="#22c55e"
-                  stroke="#0f172a"
+            {allPathClips.map((pathClip, pathIndex) => (
+              <g key={pathClip.id || pathIndex}>
+                {/* Path line */}
+                <path
+                  d={(() => {
+                    const { width, height } = canvasBounds
+                    if (!width || !height || !pathClip.points.length) return ''
+                    const pts = pathClip.points.map((pt) => ({ x: pt.x * width + offsetX, y: pt.y * height + offsetY }))
+                    return pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
+                  })()}
+                  stroke="#22c55e"
                   strokeWidth={2}
+                  fill="none"
+                  opacity={0.5}
                 />
-              )
-            })()}
-            {/* End point (red circle) */}
-            {currentPathClip.points.length > 1 && (() => {
-              const { width, height } = canvasBounds
-              if (!width || !height) return null
-              const endPt = currentPathClip.points[currentPathClip.points.length - 1]
-              return (
-                <circle
-                  cx={endPt.x * width + offsetX}
-                  cy={endPt.y * height + offsetY}
-                  r={6}
-                  fill="#ef4444"
-                  stroke="#0f172a"
-                  strokeWidth={2}
-                />
-              )
-            })()}
+                {/* Start point (green circle) */}
+                {pathClip.points.length > 0 && (() => {
+                  const { width, height } = canvasBounds
+                  if (!width || !height) return null
+                  const startPt = pathClip.points[0]
+                  return (
+                    <circle
+                      cx={startPt.x * width + offsetX}
+                      cy={startPt.y * height + offsetY}
+                      r={6}
+                      fill="#22c55e"
+                      stroke="#0f172a"
+                      strokeWidth={2}
+                    />
+                  )
+                })()}
+                {/* End point (red circle) */}
+                {pathClip.points.length > 1 && (() => {
+                  const { width, height } = canvasBounds
+                  if (!width || !height) return null
+                  const endPt = pathClip.points[pathClip.points.length - 1]
+                  return (
+                    <circle
+                      cx={endPt.x * width + offsetX}
+                      cy={endPt.y * height + offsetY}
+                      r={6}
+                      fill="#ef4444"
+                      stroke="#0f172a"
+                      strokeWidth={2}
+                    />
+                  )
+                })()}
+              </g>
+            ))}
           </svg>
         </div>
       )}

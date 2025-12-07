@@ -2000,8 +2000,12 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       // Include click markers in content duration
       const clickMarkersEnd = prev.clickMarkers.reduce((max, m) => Math.max(max, m.time), 0)
       
-      // Use a minimum of 5000ms so playhead can move freely for 5 seconds even without animations
-      const contentDuration = Math.max(5000, tracksEnd, clipsEnd, pathsEnd, clickMarkersEnd)
+      // If there are clips/templates, stop at the end of the last clip
+      // If there are no clips, allow 5 seconds of free movement
+      const hasClips = prev.templateClips.length > 0 || tracksEnd > 0 || pathsEnd > 0
+      const contentDuration = hasClips 
+        ? Math.max(100, tracksEnd, clipsEnd, pathsEnd, clickMarkersEnd)  // Stop at content end
+        : Math.max(5000, clickMarkersEnd + 500)  // 5s free movement or until click markers
 
       if (nextTime >= contentDuration) {
         if (prev.loop && contentDuration > 0) {
