@@ -1666,6 +1666,51 @@ export default function DashboardLayout({
                   <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-neutral-500 font-bold">°</span>
                 </div>
               </div>
+
+              {/* Color */}
+              <div className="space-y-2">
+                <span className="text-[10px] uppercase text-neutral-500">Color</span>
+                <div className="flex items-center gap-2 w-full">
+                  <input
+                    type="text"
+                    defaultValue={(() => {
+                      const c = layers.find(l => l.id === selectedLayerId)?.fillColor ?? 0xffffff
+                      return c.toString(16).toUpperCase().padStart(6, '0')
+                    })()}
+                    key={`fill-hex-${selectedLayerId}`}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && selectedLayerId) {
+                        const hex = e.currentTarget.value.replace('#', '')
+                        const numColor = parseInt(hex, 16)
+                        if (!isNaN(numColor)) {
+                          onUpdateLayerColor?.(selectedLayerId, numColor)
+                        }
+                      }
+                    }}
+                    onBlur={(e) => {
+                      if (!selectedLayerId) return
+                      const hex = e.currentTarget.value.replace('#', '')
+                      const numColor = parseInt(hex, 16)
+                      if (!isNaN(numColor)) {
+                        onUpdateLayerColor?.(selectedLayerId, numColor)
+                      }
+                    }}
+                    placeholder="FFFFFF"
+                    maxLength={6}
+                    className="flex-1 min-w-0 rounded bg-neutral-800 px-3 py-2.5 text-sm text-white font-mono focus:outline-none focus:ring-1 focus:ring-purple-500"
+                  />
+                  <input
+                    type="color"
+                    value={`#${(layers.find(l => l.id === selectedLayerId)?.fillColor ?? 0xffffff).toString(16).padStart(6, '0')}`}
+                    onChange={(e) => {
+                      if (!selectedLayerId) return
+                      const numColor = parseInt(e.target.value.replace('#', ''), 16)
+                      onUpdateLayerColor?.(selectedLayerId, numColor)
+                    }}
+                    className="w-10 h-10 rounded border-2 border-neutral-600 hover:border-purple-500 cursor-pointer transition-colors flex-shrink-0 p-0 bg-transparent"
+                  />
+                </div>
+              </div>
             </div>
           )}
 

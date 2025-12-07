@@ -538,7 +538,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
                // For In/Out animations, use authoritative layer base if provided, otherwise fallback
                const basePosition = layerBase?.position ?? layerPosition ?? DEFAULT_LAYER_STATE.position
                const baseScaleFromLayer = layerBase?.scale ?? baseScale
-               const baseRotation = layerBase?.rotation ?? DEFAULT_LAYER_STATE.rotation
+               // Rotation is always 0 in keyframes - layer.rotation applied separately
+               const baseRotation = 0
                const baseOpacity = layerBase?.opacity ?? DEFAULT_LAYER_STATE.opacity
                clipBaseState = {
                  position: basePosition,
@@ -551,14 +552,15 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
              // For subsequent clips or non In/Out, prefer stored layerBase if present
              const basePositionOverride = layerBase?.position
              const baseScaleOverride = layerBase?.scale
-             const baseRotationOverride = layerBase?.rotation
+             // Rotation is always 0 in keyframes - layer.rotation applied separately
+             const baseRotationOverride = 0
              const baseOpacityOverride = layerBase?.opacity
 
              const sampledFromOriginal = sampleLayerTracks(track, sampleTime, {
                ...DEFAULT_LAYER_STATE,
                position: basePositionOverride ?? DEFAULT_LAYER_STATE.position,
                scale: baseScaleOverride ?? DEFAULT_LAYER_STATE.scale,
-               rotation: baseRotationOverride ?? DEFAULT_LAYER_STATE.rotation,
+               rotation: baseRotationOverride,
                opacity: baseOpacityOverride ?? DEFAULT_LAYER_STATE.opacity,
              })
                clipBaseState = {
@@ -1117,7 +1119,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         const basePosition = base?.position ?? layerBasePosition ?? baseSample.position
         // Track scale is always a multiplier; base layer scale lives on the layer itself
         const baseScale = layerBaseScale ?? popStartState?.scale ?? baseSample.scale ?? 1
-        const baseRotation = base?.rotation ?? layerBaseRotation ?? baseSample.rotation
+        // Rotation keyframes always start at 0 - layer.rotation is applied separately in MotionCanvas
+        const baseRotation = 0
         const baseOpacity = base?.opacity ?? layerBaseOpacity ?? (popStartState?.opacity ?? baseSample.opacity)
 
         const clearedTrack: LayerTracks = {
@@ -2084,7 +2087,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       const layerBase = layerBaseMap?.[layerId]
       const basePos = layerBase?.position ?? baseFromClip?.position ?? DEFAULT_LAYER_STATE.position
       const baseScale = layerBase?.scale ?? baseFromClip?.scale ?? DEFAULT_LAYER_STATE.scale
-      const baseRot = layerBase?.rotation ?? baseFromClip?.rotation ?? DEFAULT_LAYER_STATE.rotation
+      // Rotation keyframes should always start at 0 - layer.rotation is applied separately in MotionCanvas
+      const baseRot = 0
       const baseOpacity = layerBase?.opacity ?? baseFromClip?.opacity ?? DEFAULT_LAYER_STATE.opacity
 
       let track: LayerTracks = {

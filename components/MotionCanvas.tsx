@@ -26,6 +26,7 @@ interface MotionCanvasProps {
     width: number
     height: number
     scale?: number
+    rotation?: number
     fillColor: number
     imageUrl?: string
     svgUrl?: string
@@ -78,6 +79,19 @@ const ICON_SHAPE_KINDS = ['like', 'comment', 'share', 'cursor'] as const
 type LayerItem = NonNullable<MotionCanvasProps['layers']>[number]
 const isIconShapeKind = (kind?: LayerItem['shapeKind']) =>
   !!kind && ICON_SHAPE_KINDS.includes(kind as any)
+
+// Shared heart path so resizing keeps the shape consistent
+const drawHeartPath = (g: PIXI.Graphics, width: number, height: number) => {
+  const w = width
+  const h = height
+  const topCurveHeight = h * 0.3
+  g.moveTo(0, -h / 2 + h * 0.25)
+  g.bezierCurveTo(0, -h / 2, -w / 2, -h / 2, -w / 2, -h / 2 + topCurveHeight)
+  g.bezierCurveTo(-w / 2, h * 0.05, 0, h / 2, 0, h / 2)
+  g.bezierCurveTo(0, h / 2, w / 2, h * 0.05, w / 2, -h / 2 + topCurveHeight)
+  g.bezierCurveTo(w / 2, -h / 2, 0, -h / 2, 0, -h / 2 + h * 0.25)
+  g.closePath()
+}
 
 type LineOverlayProps = {
   canvasBounds: { width: number; height: number; left: number; top: number }
@@ -234,8 +248,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   const spritesByIdRef = useRef<Record<string, PIXI.Sprite>>({})
   const resizeHandlesRef = useRef<Record<string, PIXI.Graphics[]>>({})
   const handlesByIdRef = useRef<Record<string, PIXI.Graphics[]>>({}) // For text layer resize handles
-  // Track layer dimensions to detect changes from control panel
-  const layerDimensionsRef = useRef<Record<string, { width: number; height: number }>>({})
+  // Track layer dimensions, color, and rotation to detect changes from control panel
+  const layerDimensionsRef = useRef<Record<string, { width: number; height: number; fillColor: number; rotation: number }>>({})
   const resizeStateRef = useRef<{
     layerId: string
     handle: 'tl' | 'tr' | 'br' | 'bl' | 't' | 'r' | 'b' | 'l'
@@ -547,7 +561,10 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       if (g && Number.isFinite(canvasPosX)) g.x = canvasPosX
       if (g && Number.isFinite(canvasPosY)) g.y = canvasPosY
       if (g && g.scale) g.scale.set(finalScale)
-      if (g) g.rotation = hasRotationAnim ? state.rotation : 0 // Default rotation is 0
+      // For rotation: layer.rotation is the base, animation rotation is additive
+      const baseRotationRad = ((layerData?.rotation ?? 0) * Math.PI) / 180
+      const animRotation = hasRotationAnim ? state.rotation : 0
+      if (g) g.rotation = baseRotationRad + animRotation
       if (g) g.alpha = hasOpacityAnim ? state.opacity : 1 // Default opacity is 1
       
       // Apply filters (Effects + Off-canvas Blur)
@@ -750,10 +767,10 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     updateGraphicsFromTimeline()
   }, [sampledTimeline, isReady])
 
-  // Re-apply transforms when layer props change (e.g., scale/position updates without timeline changes)
+  // Re-apply transforms when layer props or selection changes (e.g., scale/position/rotation updates without timeline changes)
   useEffect(() => {
     updateGraphicsFromTimeline()
-  }, [orderedLayers])
+  }, [orderedLayers, layers, selectedLayerId])
 
   useEffect(() => {
     const app = appRef.current
@@ -953,13 +970,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
                 g.fill(fillColor)
                 break
               case 'heart':
-                const hScale = newWidth / 100
-                const vScale = newHeight / 100
-                g.moveTo(0, -30 * vScale)
-                g.bezierCurveTo(25 * hScale, -50 * vScale, 50 * hScale, -30 * vScale, 50 * hScale, 0)
-                g.bezierCurveTo(50 * hScale, 30 * vScale, 0, 50 * vScale, 0, 50 * vScale)
-                g.bezierCurveTo(0, 50 * vScale, -50 * hScale, 30 * vScale, -50 * hScale, 0)
-                g.bezierCurveTo(-50 * hScale, -30 * vScale, -25 * hScale, -50 * vScale, 0, -30 * vScale)
+                drawHeartPath(g, newWidth, newHeight)
                 g.fill(fillColor)
                 break
               case 'star':
@@ -1092,18 +1103,10 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     stage.on('pointerup', clearDrag)
     stage.on('pointerupoutside', clearDrag)
 
-    // If there are layers, render/animate them and skip the built-in preview
-    if (layers.length > 0) {
+      // If there are layers, render/animate them and skip the built-in preview
+      if (layers.length > 0) {
       const drawHeart = (g: PIXI.Graphics, width: number, height: number) => {
-        const w = width
-        const h = height
-        const topCurveHeight = h * 0.3
-        g.moveTo(0, -h / 2 + h * 0.25)
-        g.bezierCurveTo(0, -h / 2, -w / 2, -h / 2, -w / 2, -h / 2 + topCurveHeight)
-        g.bezierCurveTo(-w / 2, h * 0.05, 0, h / 2, 0, h / 2)
-        g.bezierCurveTo(0, h / 2, w / 2, h * 0.05, w / 2, -h / 2 + topCurveHeight)
-        g.bezierCurveTo(w / 2, -h / 2, 0, -h / 2, 0, -h / 2 + h * 0.25)
-        g.closePath()
+        drawHeartPath(g, width, height)
       }
 
       const drawStar = (g: PIXI.Graphics, width: number, height: number) => {
@@ -1224,11 +1227,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       // So we invert: first in renderLayers (top of timeline) gets lowest zIndex
       // Last in renderLayers (bottom of timeline) gets highest zIndex = rendered on top
       const totalLayers = renderLayers.length
-      
-      console.log('=== Z-ORDER DEBUG ===')
-      console.log('layerOrder prop:', layerOrder)
-      console.log('renderLayers (sorted):', renderLayers.map(l => `${l.shapeKind}`))
-      console.log('stage.sortableChildren:', stage.sortableChildren)
       
       renderLayers.forEach(async (layer, layerIndex) => {
         // Handle image layers
@@ -1366,6 +1364,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             const posY = layer.y <= 4 ? layer.y * screenHeight : layer.y
             container.x = posX
             container.y = posY
+            // Apply initial rotation from layer (convert degrees to radians)
+            container.rotation = ((layer.rotation ?? 0) * Math.PI) / 180
             container.zIndex = layerIndex
             container.eventMode = 'static'
             container.cursor = 'grab'
@@ -1590,8 +1590,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         // Bottom of timeline (higher index) = higher zIndex = renders on top
         g.zIndex = layerIndex
         
-        console.log(`Layer ${layer.shapeKind}: index=${layerIndex}, zIndex=${g.zIndex}`)
-        
         // Check if this shape uses an SVG icon
         const usesIcon = isIconShapeKind(layer.shapeKind)
         
@@ -1644,6 +1642,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         // No canvas offset needed
         g.x = posX
         g.y = posY
+        // Apply initial rotation from layer (convert degrees to radians)
+        g.rotation = ((layer.rotation ?? 0) * Math.PI) / 180
         
         g.interactive = true
         g.eventMode = 'dynamic'
@@ -2043,8 +2043,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     // Also sort after a delay to catch async-loaded layers
     setTimeout(() => {
       stage.sortChildren()
-      console.log('=== AFTER SORT ===')
-      console.log('Stage children order:', stage.children.map((c: any) => `zIndex=${c.zIndex}`))
       app.render()
     }, 100)
 
@@ -2208,19 +2206,23 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       }
       
       const prevDims = layerDimensionsRef.current[layer.id]
-      const hasChanged = !prevDims || prevDims.width !== layer.width || prevDims.height !== layer.height
+      const layerRotation = layer.rotation ?? 0
+      const hasChanged = !prevDims || prevDims.width !== layer.width || prevDims.height !== layer.height || prevDims.fillColor !== layer.fillColor || prevDims.rotation !== layerRotation
       
       if (!hasChanged) return
       
-      // Update tracked dimensions
-      layerDimensionsRef.current[layer.id] = { width: layer.width, height: layer.height }
+      // Update tracked dimensions, color, and rotation
+      layerDimensionsRef.current[layer.id] = { width: layer.width, height: layer.height, fillColor: layer.fillColor, rotation: layerRotation }
       needsRender = true
       
-      // For images, update sprite dimensions
+      // NOTE: Rotation is handled by updateGraphicsFromTimeline to combine base + animation
+      
+      // For images, update sprite dimensions and tint
       const sprite = spritesByIdRef.current[layer.id]
       if (sprite) {
         sprite.width = layer.width
         sprite.height = layer.height
+        sprite.tint = layer.fillColor ?? 0xffffff
         if (g instanceof PIXI.Graphics) {
           g.clear() // remove any fallback geometry so only the sprite shows
         }
@@ -2231,6 +2233,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         if (childSprite) {
           childSprite.width = layer.width
           childSprite.height = layer.height
+          childSprite.tint = layer.fillColor ?? 0xffffff
         }
       }
       
@@ -2291,20 +2294,16 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       // Update hit area
       g.hitArea = new PIXI.Rectangle(-layer.width / 2, -layer.height / 2, layer.width, layer.height)
       
-      // Update outline for selection
-      const outline = outlinesByIdRef.current[layer.id]
-      if (outline && outline instanceof PIXI.Graphics) {
-        outline.clear()
-        if (layer.shapeKind === 'heart') {
-          const w = layer.width, h = layer.height
-          outline.moveTo(0, -h * 0.35)
-          outline.bezierCurveTo(w * 0.5, -h * 0.5, w * 0.5, 0, 0, h * 0.5)
-          outline.bezierCurveTo(-w * 0.5, 0, -w * 0.5, -h * 0.5, 0, -h * 0.35)
-          outline.closePath()
-        } else if (layer.shapeKind === 'star') {
-          const spikes = 5, rx = layer.width / 2, ry = layer.height / 2
-          const innerRx = rx * 0.5, innerRy = ry * 0.5
-          let rotation = Math.PI / 2 * 3
+        // Update outline for selection
+        const outline = outlinesByIdRef.current[layer.id]
+        if (outline && outline instanceof PIXI.Graphics) {
+          outline.clear()
+          if (layer.shapeKind === 'heart') {
+            drawHeartPath(outline, layer.width, layer.height)
+          } else if (layer.shapeKind === 'star') {
+            const spikes = 5, rx = layer.width / 2, ry = layer.height / 2
+            const innerRx = rx * 0.5, innerRy = ry * 0.5
+            let rotation = Math.PI / 2 * 3
           outline.moveTo(0, -ry)
           for (let i = 0; i < spikes; i++) {
             outline.lineTo(Math.cos(rotation) * rx, Math.sin(rotation) * ry)
