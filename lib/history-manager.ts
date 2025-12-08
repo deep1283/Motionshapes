@@ -72,6 +72,7 @@ export type TemplateId =
   | 'path'
   | 'pan_zoom'
   | 'mask_center'
+  | 'mask_top'
 
 export interface TemplateClip {
   id: string
@@ -109,6 +110,8 @@ export interface TemplateClip {
     panZoomIntensity?: number // Zoom level (1.2 - 3.0)
     panZoomEasing?: 'linear' | 'ease-in-out' | 'smooth'
     panZoomBlurIntensity?: number // Blur intensity (0 = no blur, 10 = max blur)
+    // Mask Center parameters
+    maskAngle?: number // Angle in degrees (0 = horizontal, 90 = vertical)
   }
 }
 

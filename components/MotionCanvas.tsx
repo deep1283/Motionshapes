@@ -669,7 +669,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         
         g.filters = activeFilters.length > 0 ? activeFilters : null
       }
-      // Handle Masking (mask_center)
+      // Handle Masking (mask_center and mask_top)
       const maskScale = state.maskScale
       if (typeof maskScale === 'number') {
         let mask = maskGraphicsByIdRef.current[id]
@@ -682,18 +682,52 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         }
 
         if (g) {
+          // Check which mask type is active
+          const maskCenterClip = templateClips.find(c => c.layerId === id && c.template === 'mask_center')
+          const maskTopClip = templateClips.find(c => c.layerId === id && c.template === 'mask_top')
+          const activeClip = maskCenterClip || maskTopClip
+          const isMaskTop = !!maskTopClip
+          
+          const maskAngle = activeClip?.parameters?.maskAngle ?? 0
+          
           // Use layer dimensions instead of getLocalBounds() to avoid issues with unloaded images
           const layerWidth = layer.width || 100
           const layerHeight = layer.height || 100
-          const maskWidth = layerWidth * 1.2
-          const maskHeight = layerHeight * 1.2
+          
+          // For diagonal angles (like 45°), the mask needs to be larger to cover corners
+          // At 45°, we need √2 (≈1.414) times the size to ensure full coverage
+          const angleRad = (maskAngle * Math.PI / 180)
+          const rotationFactor = Math.abs(Math.cos(angleRad)) + Math.abs(Math.sin(angleRad))
+          
+          const maskWidth = layerWidth * 1.2 * rotationFactor
+          const maskHeight = layerHeight * 1.2 * rotationFactor
 
           mask.clear()
-          // Start as a thin horizontal line (scaleY will animate from 0 to 1)
-          mask.rect(-maskWidth / 2, -maskHeight / 2, maskWidth, maskHeight).fill(0xffffff)
           
-          mask.position.copyFrom(g.position)
-          mask.rotation = g.rotation
+          if (isMaskTop) {
+            // Mask Top: reveals from one edge
+            // Draw rect centered, but use pivot to control which edge is the "reveal origin"
+            mask.rect(-maskWidth / 2, -maskHeight / 2, maskWidth, maskHeight).fill(0xffffff)
+            
+            // Set pivot so the top edge is the origin for scaling
+            // When scaleY=0, the mask collapses to a line at the top edge
+            mask.pivot.set(0, -maskHeight / 2)
+            
+            // Position at top edge of shape (accounting for pivot offset)
+            const offsetAmount = (layerHeight / 2) * state.scale
+            // Calculate offset in rotated direction
+            const offsetX = Math.sin(angleRad) * offsetAmount
+            const offsetY = -Math.cos(angleRad) * offsetAmount
+            mask.position.set(g.position.x + offsetX, g.position.y + offsetY)
+          } else {
+            // Mask Center: draw rect centered, expands from center
+            mask.rect(-maskWidth / 2, -maskHeight / 2, maskWidth, maskHeight).fill(0xffffff)
+            mask.pivot.set(0, 0) // Center pivot
+            mask.position.copyFrom(g.position)
+          }
+          
+          // Apply layer rotation + mask angle (convert degrees to radians)
+          mask.rotation = g.rotation + angleRad
           
           // Non-uniform scale: X stays full, Y animates from 0 to full
           const fullScale = state.scale
