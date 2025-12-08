@@ -1272,6 +1272,11 @@ export default function DashboardLayout({
               <h2 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-neutral-600 px-2">
                 Effects
               </h2>
+              {!selectedLayerId && (
+                <div className="mb-4 px-2 py-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs">
+                  Select a layer first to add effects
+                </div>
+              )}
               <div className={cn(
                 "grid gap-2",
                 sidebarWidth < 240 ? "grid-cols-1" : "grid-cols-2"
@@ -1287,7 +1292,16 @@ export default function DashboardLayout({
                       name={effect.name}
                       isActive={isActive}
                       isEnabled={isEnabled}
-                      onClick={() => onSelectEffect?.(effect.id)}
+                      onClick={() => {
+                        // Add effect clip to timeline instead of toggle
+                        if (!selectedLayerId) return
+                        timeline.addEffectClip(
+                          selectedLayerId,
+                          effect.id as any, // Cast to effect type
+                          undefined, // start at current playhead
+                          1000 // 1 second duration
+                        )
+                      }}
                       icon={effect.icon}
                     />
                   )

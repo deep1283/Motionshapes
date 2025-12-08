@@ -80,6 +80,25 @@ type TimelineState = {
     layerId: string
     time: number  // when the click happens (in ms)
   }>
+  // Effect clips (glow, confetti, blur, etc.) - work like template clips with timing
+  effectClips: Array<{
+    id: string
+    layerId: string
+    effectType: 'glow' | 'dropShadow' | 'blur' | 'glitch' | 'pixelate' | 'sparkles' | 'confetti'
+    start: number       // ms
+    duration: number    // ms
+    params: {
+      // Glow params
+      glowColor?: number
+      glowIntensity?: number
+      glowDistance?: number
+      // Blur params
+      blurStrength?: number
+      // Confetti/Particles params
+      particleCount?: number
+      particleSpeed?: number
+    }
+  }>
 }
 
 export type TimelineStore = ReturnType<typeof createTimelineStore>
@@ -113,6 +132,7 @@ const defaultState: TimelineState = {
   spinDirection: 1,
   templateClips: [],
   clickMarkers: [],
+  effectClips: [],
 }
 
 export function createTimelineStore(initialState?: Partial<TimelineState>) {
@@ -135,6 +155,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     spinDirection: initialState?.spinDirection ?? defaultState.spinDirection,
     templateClips: initialState?.templateClips ?? defaultState.templateClips,
     clickMarkers: initialState?.clickMarkers ?? defaultState.clickMarkers,
+    effectClips: initialState?.effectClips ?? defaultState.effectClips,
   }
 
   const listeners = new Set<() => void>()
@@ -306,6 +327,58 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     setState((prev) => ({
       ...prev,
       clickMarkers: prev.clickMarkers.filter((m) => m.id !== markerId)
+    }))
+  }
+
+  // Effect clip methods (glow, blur, confetti, etc.)
+  const addEffectClip = (
+    layerId: string,
+    effectType: TimelineState['effectClips'][number]['effectType'],
+    start?: number,
+    duration?: number,
+    params?: TimelineState['effectClips'][number]['params']
+  ) => {
+    const clipId = `effect-${effectType}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    const clipStart = start ?? state.currentTime
+    const clipDuration = duration ?? 1000 // Default 1 second
+    
+    setState((prev) => {
+      const newClip: TimelineState['effectClips'][number] = {
+        id: clipId,
+        layerId,
+        effectType,
+        start: clipStart,
+        duration: clipDuration,
+        params: params ?? {}
+      }
+      
+      return {
+        ...prev,
+        effectClips: [...prev.effectClips, newClip]
+      }
+    })
+    
+    return clipId
+  }
+
+  const removeEffectClip = (clipId: string) => {
+    setState((prev) => ({
+      ...prev,
+      effectClips: prev.effectClips.filter((c) => c.id !== clipId)
+    }))
+  }
+
+  const updateEffectClip = (
+    clipId: string,
+    updates: Partial<Pick<TimelineState['effectClips'][number], 'start' | 'duration' | 'params'>>
+  ) => {
+    setState((prev) => ({
+      ...prev,
+      effectClips: prev.effectClips.map((c) => 
+        c.id === clipId 
+          ? { ...c, ...updates, params: { ...c.params, ...updates.params } }
+          : c
+      )
     }))
   }
 
@@ -2527,6 +2600,11 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     addClickMarker,
     removeClickMarker,
     updateClickMarker,
+    // Effect clips
+    addEffectClip,
+    removeEffectClip,
+    updateEffectClip,
+    effectClips: state.effectClips,
     replaceTracks,
     applyPresetToLayer,
     clear,
