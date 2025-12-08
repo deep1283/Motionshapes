@@ -72,6 +72,13 @@ type TimelineState = {
         rotation?: number
         opacity?: number
       }
+      // Pan & Zoom parameters
+      panZoomStartRegion?: { x: number; y: number; width: number; height: number }
+      panZoomEndRegion?: { x: number; y: number; width: number; height: number }
+      panZoomHoldDuration?: number
+      panZoomIntensity?: number // Zoom level (1.2 - 3.0)
+      panZoomEasing?: 'linear' | 'ease-in-out' | 'smooth'
+      panZoomBlurIntensity?: number // Blur intensity (0 = no blur, 10 = max blur)
     }
   }>
   // Click markers for click animation effect
@@ -869,6 +876,18 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
                   preset = { duration, position: [], scale: [], rotation: [], opacity: [] }
               }
            }
+           else if (clip.template === 'pan_zoom') {
+             // Pan & Zoom: use target region for zoom in + hold + zoom out
+
+             preset = PRESET_BUILDERS.pan_zoom(
+               clip.duration ?? 2000,
+               clip.parameters?.panZoomEndRegion,
+               clip.parameters?.panZoomHoldDuration ?? 500,
+               clip.parameters?.panZoomEasing,
+               clip.parameters?.panZoomIntensity ?? 1.5
+             )
+
+           }
 
            if (!preset) return
 
@@ -934,8 +953,12 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
            
            // If track is empty for a property, initialize it with baseValue at time 0
            // This ensures we have a starting point for the animation
+           // For pan_zoom: use {0,0} since MotionCanvas adds base at render time
            if ((newTrack.position?.length ?? 0) === 0 && clipBaseState.position) {
-             newTrack.position = [{ time: 0, value: clipBaseState.position }]
+             const initialPos = clip.template === 'pan_zoom' 
+               ? { x: 0, y: 0 } 
+               : clipBaseState.position
+             newTrack.position = [{ time: 0, value: initialPos }]
            }
           if ((newTrack.scale?.length ?? 0) === 0) {
             newTrack.scale = [{ time: 0, value: 1 }]
@@ -988,6 +1011,10 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
                     resultX = Math.round((baseX + (v?.x ?? 0)) * 1e6) / 1e6
                     resultY = Math.round((baseY + (v?.y ?? 0)) * 1e6) / 1e6
                   }
+                } else if (clip.template === 'pan_zoom') {
+                  // pan_zoom: keep offsets pure, MotionCanvas adds base at render time
+                  resultX = v?.x ?? 0
+                  resultY = v?.y ?? 0
                 } else {
                   resultX = Math.round((baseX + (v?.x ?? 0)) * 1e6) / 1e6
                   resultY = Math.round((baseY + (v?.y ?? 0)) * 1e6) / 1e6
@@ -1534,6 +1561,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     layerScale?: number,
     layerBase?: { position?: Vec2; scale?: number; rotation?: number; opacity?: number }
   ) => {
+    console.log('[STEP 1] addTemplateClip called with template:', template, 'layerId:', layerId)
     const clipId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID()
       : `clip-${Date.now()}-${Math.random()}`
@@ -1758,6 +1786,18 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
                   preset = { duration, position: [], scale: [], rotation: [], opacity: [] }
               }
            }
+            else if (clip.template === 'pan_zoom') {
+              // Pan & Zoom: use target region for zoom in + hold + zoom out
+              console.log('[ADD_CLIP] Building pan_zoom preset with params:', clip.parameters)
+              preset = PRESET_BUILDERS.pan_zoom(
+                clip.duration ?? 2000,
+                clip.parameters?.panZoomEndRegion,
+                clip.parameters?.panZoomHoldDuration ?? 500,
+                clip.parameters?.panZoomEasing,
+                clip.parameters?.panZoomIntensity ?? 1.5
+              )
+              console.log('[ADD_CLIP] Built pan_zoom preset:', preset)
+            }
 
           if (!preset) return
 
@@ -1806,8 +1846,12 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
 
             // If track is empty for a property, initialize it with baseValue at time 0
             // This ensures we have a starting point for the animation
+            // For pan_zoom: use {0,0} since MotionCanvas adds base at render time
             if ((newTrack.position?.length ?? 0) === 0 && clipBaseState.position) {
-              newTrack.position = [{ time: 0, value: clipBaseState.position }]
+              const initialPos = clip.template === 'pan_zoom' 
+                ? { x: 0, y: 0 } 
+                : clipBaseState.position
+              newTrack.position = [{ time: 0, value: initialPos }]
             }
             if ((newTrack.scale?.length ?? 0) === 0 && clipBaseState.scale !== undefined) {
               newTrack.scale = [{ time: 0, value: clipBaseState.scale }]
@@ -1854,6 +1898,10 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
                       resultX = Math.round((baseX + (v?.x ?? 0)) * 1e6) / 1e6
                       resultY = Math.round((baseY + (v?.y ?? 0)) * 1e6) / 1e6
                     }
+                  } else if (clip.template === 'pan_zoom') {
+                    // pan_zoom: keep offsets pure, MotionCanvas adds base at render time
+                    resultX = v?.x ?? 0
+                    resultY = v?.y ?? 0
                   } else {
                     resultX = Math.round((baseX + (v?.x ?? 0)) * 1e6) / 1e6
                     resultY = Math.round((baseY + (v?.y ?? 0)) * 1e6) / 1e6
@@ -1955,6 +2003,14 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         layerScale ?? 1,
         parameters?.layerBase?.position,
         parameters?.layerBase
+      )
+      
+      // Debug: trace rebuilt track keyframes
+      const targetTrack = rebuiltTracks.find(t => t.layerId === layerId)
+      console.log('[TRACK_REBUILD] layer:', layerId, 
+        'position keyframes:', targetTrack?.position?.length,
+        'scale keyframes:', targetTrack?.scale?.length,
+        'clips:', nextClips.filter(c => c.layerId === layerId).map(c => c.template)
       )
       
       // Merge layer visibility properties (startTime, duration) from updatedTracks into rebuiltTracks
@@ -2368,6 +2424,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       }
     >
   ) => {
+
+
     const clipsByLayer: Record<string, typeof clipsToRebuild> = {}
     clipsToRebuild.forEach((clip) => {
       if (!clipsByLayer[clip.layerId]) clipsByLayer[clip.layerId] = []
@@ -2402,6 +2460,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       ]
 
       sorted.forEach((clip, index) => {
+
         // Skip path templates as they're handled separately
         if (clip.template === 'path') return
         
@@ -2502,6 +2561,17 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             break
           case 'move_scale_out':
             built = PRESET_BUILDERS.move_scale_out(duration)
+            break
+          case 'pan_zoom':
+
+            built = PRESET_BUILDERS.pan_zoom(
+              duration, 
+              params?.panZoomEndRegion, // target region (where to zoom)
+              params?.panZoomHoldDuration ?? 500, // hold duration in ms
+              params?.panZoomEasing,
+              params?.panZoomIntensity ?? 1.5
+            )
+
             break
           default:
             console.warn(`Unknown template: ${clip.template}`)

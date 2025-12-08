@@ -70,6 +70,7 @@ export type TemplateId =
   | 'move_scale_in'
   | 'move_scale_out'
   | 'path'
+  | 'pan_zoom'
 
 export interface TemplateClip {
   id: string
@@ -100,6 +101,13 @@ export interface TemplateClip {
       rotation?: number
       opacity?: number
     }
+    // Pan & Zoom parameters
+    panZoomStartRegion?: { x: number; y: number; width: number; height: number }
+    panZoomEndRegion?: { x: number; y: number; width: number; height: number }
+    panZoomHoldDuration?: number
+    panZoomIntensity?: number // Zoom level (1.2 - 3.0)
+    panZoomEasing?: 'linear' | 'ease-in-out' | 'smooth'
+    panZoomBlurIntensity?: number // Blur intensity (0 = no blur, 10 = max blur)
   }
 }
 

@@ -161,6 +161,8 @@ interface DashboardLayoutProps {
   selectedClipId?: string
   // Click animation
   onAddClickMarker?: (layerId: string) => void
+  // Pan & Zoom animation
+  onAddPanZoom?: (layerId: string) => void
   // History
   canUndo?: boolean
   canRedo?: boolean
@@ -243,6 +245,7 @@ export default function DashboardLayout({
   layerEffects = [],
   selectedClipId,
   onAddClickMarker,
+  onAddPanZoom,
   canUndo,
   canRedo,
   onUndo,
@@ -1258,6 +1261,30 @@ export default function DashboardLayout({
                         123
                       </div>
                       <span className="text-[11px] font-medium text-neutral-300">Counter</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (!selectedLayerId) return
+                        console.log('[UI] Pan Zoom button clicked, calling onAddPanZoom')
+                        onAddPanZoom?.(selectedLayerId)
+                      }}
+                      disabled={!selectedLayerId}
+                      className={cn(
+                        "flex flex-col items-center justify-center gap-2 p-4 rounded-lg border transition-all",
+                        selectedLayerId
+                          ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/50 cursor-pointer"
+                          : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
+                      )}
+                    >
+                      <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 text-purple-400">
+                          <circle cx="11" cy="11" r="6" />
+                          <path d="M21 21l-4.35-4.35" />
+                          <path d="M11 8v6" />
+                          <path d="M8 11h6" />
+                        </svg>
+                      </div>
+                      <span className="text-[11px] font-medium text-neutral-300">Pan & Zoom</span>
                     </button>
                   </>
                 )}
@@ -2341,6 +2368,107 @@ export default function DashboardLayout({
               </>
             )}
             
+            {/* Pan & Zoom Controls */}
+            {selectedTemplate === 'pan_zoom' && selectedClipId && (() => {
+              const panZoomClip = templateClips.find(c => c.id === selectedClipId && c.template === 'pan_zoom')
+              if (!panZoomClip) return null
+              const intensity = panZoomClip.parameters?.panZoomIntensity ?? 1.5
+              const holdDuration = panZoomClip.parameters?.panZoomHoldDuration ?? 500
+              const easing = panZoomClip.parameters?.panZoomEasing ?? 'ease-in-out'
+              
+              return (
+                <>
+                  {/* Zoom Intensity */}
+                  <div className="mb-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-semibold text-neutral-200">Zoom Intensity</span>
+                      <span className="text-[10px] text-neutral-400">{intensity.toFixed(1)}x</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={1.1}
+                      max={3}
+                      step={0.1}
+                      value={intensity}
+                      onChange={(e) => {
+                        if (selectedLayerId) {
+                          timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
+                            parameters: { ...panZoomClip.parameters, panZoomIntensity: Number(e.target.value) }
+                          })
+                        }
+                      }}
+                      className="w-full accent-violet-500"
+                    />
+                    <div className="flex justify-between text-[9px] text-neutral-500 mt-1">
+                      <span>Subtle</span>
+                      <span>Intense</span>
+                    </div>
+                  </div>
+                  
+                  {/* Hold Duration */}
+                  <div className="mb-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-semibold text-neutral-200">Hold Duration</span>
+                      <span className="text-[10px] text-neutral-400">{holdDuration}ms</span>
+                    </div>
+                    <input
+                      type="number"
+                      min={0}
+                      max={5000}
+                      step={100}
+                      value={holdDuration}
+                      onChange={(e) => {
+                        if (selectedLayerId) {
+                          timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
+                            parameters: { ...panZoomClip.parameters, panZoomHoldDuration: Number(e.target.value) }
+                          })
+                        }
+                      }}
+                      className="w-full bg-neutral-800 border border-white/10 rounded-md px-2 py-1 text-[11px] text-white"
+                    />
+                  </div>
+                  
+                  {/* Easing */}
+                  <div className="mb-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-semibold text-neutral-200">Easing</span>
+                    </div>
+                    <select
+                      value={easing}
+                      onChange={(e) => {
+                        if (selectedLayerId) {
+                          timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
+                            parameters: { ...panZoomClip.parameters, panZoomEasing: e.target.value as 'linear' | 'ease-in-out' | 'smooth' }
+                          })
+                        }
+                      }}
+                      className="w-full bg-neutral-800 border border-white/10 rounded-md px-2 py-1.5 text-[11px] text-white"
+                    >
+                      <option value="linear">Linear</option>
+                      <option value="ease-in-out">Ease In Out</option>
+                      <option value="smooth">Smooth</option>
+                    </select>
+                  </div>
+                  
+                  {/* Duration */}
+                  <div className="mb-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-semibold text-neutral-200">Duration</span>
+                      <span className="text-[10px] text-neutral-400">{((selectedClipDuration ?? 2000) / 1000).toFixed(2)}s</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={500}
+                      max={6000}
+                      step={100}
+                      value={selectedClipDuration ?? 2000}
+                      onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
+                      className="w-full accent-violet-500"
+                    />
+                  </div>
+                </>
+              )
+            })()}
             {/* Effect Controls */}
             {activeTab === 'effects' && activeEffectId && (
               <div className="space-y-4 pt-4 border-t border-white/10">
