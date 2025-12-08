@@ -13,6 +13,7 @@ import { GlitchFilter } from 'pixi-filters'
 import { PixelateFilter } from 'pixi-filters'
 import { AdjustmentFilter } from 'pixi-filters'
 import { SimpleParticleEmitter } from '@/lib/particle-emitter'
+import { PanZoomRegionOverlay, PanZoomRegion } from '@/components/PanZoomRegionOverlay'
 
 interface MotionCanvasProps {
   template: string
@@ -77,6 +78,9 @@ interface MotionCanvasProps {
   onCanvasBackgroundClick?: () => void
   onUpdateLayerScale?: (id: string, scale: number) => void
   onUpdateLayerSize?: (id: string, width: number, height: number) => void
+  // Pan/Zoom region editing
+  selectedClipId?: string
+  onUpdatePanZoomRegions?: (clipId: string, targetRegion: PanZoomRegion) => void
 }
 
 const ICON_SHAPE_KINDS = ['like', 'comment', 'share', 'cursor'] as const
@@ -230,7 +234,7 @@ function LineOverlay({
   )
 }
 
-export default function MotionCanvas({ template, templateVersion, layers = [], layerOrder = [], onUpdateLayerPosition, onUpdateLayerSize, onTemplateComplete, isDrawingPath = false, isDrawingLine = false, pathPoints = [], onAddPathPoint, onFinishPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint, background: _background, offsetX = 0, offsetY = 0, popReappear = false, onCanvasBackgroundClick }: MotionCanvasProps) {
+export default function MotionCanvas({ template, templateVersion, layers = [], layerOrder = [], onUpdateLayerPosition, onUpdateLayerSize, onTemplateComplete, isDrawingPath = false, isDrawingLine = false, pathPoints = [], onAddPathPoint, onFinishPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint, background: _background, offsetX = 0, offsetY = 0, popReappear = false, onCanvasBackgroundClick, selectedClipId, onUpdatePanZoomRegions }: MotionCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<PIXI.Application | null>(null)
   const [isReady, setIsReady] = useState(false)
@@ -253,6 +257,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   const spritesByIdRef = useRef<Record<string, PIXI.Sprite>>({})
   const resizeHandlesRef = useRef<Record<string, PIXI.Graphics[]>>({})
   const handlesByIdRef = useRef<Record<string, PIXI.Graphics[]>>({}) // For text layer resize handles
+  const spotlightOverlayRef = useRef<PIXI.Graphics | null>(null) // For pan_zoom spotlight blur effect
   // Track layer dimensions, color, and rotation to detect changes from control panel
   const layerDimensionsRef = useRef<Record<string, { width: number; height: number; fillColor: number; rotation: number }>>({})
   const resizeStateRef = useRef<{
@@ -292,6 +297,12 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   const effectClips = useTimeline((s) => s.effectClips)
   const sampledTimeline = useMemo(() => sampleTimeline(timelineTracks, playhead), [timelineTracks, playhead])
   const timelineActions = useTimelineActions()
+  const isPlaying = useTimeline((s) => s.isPlaying)
+  
+  // Pan/Zoom region editing state
+  const [panZoomActiveRegion, setPanZoomActiveRegion] = useState<'start' | 'end' | null>(null)
+  
+
   
   // Track which click markers have been triggered (to avoid re-triggering)
   const triggeredMarkersRef = useRef<Set<string>>(new Set())
@@ -594,7 +605,15 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       const finalScale = scaleMultiplier * layerScale
       
       // For position: if animated, use timeline value. If not, use layer static position.
-      const rawPos = hasPositionAnim ? state.position : baseLayerPos
+      // pan_zoom stores offsets relative to the base position, so add base back in that case.
+      const hasPanZoom = templateClips.some(c => c.layerId === id && c.template === 'pan_zoom')
+      const rawPos = hasPositionAnim
+        ? hasPanZoom
+          ? { x: baseLayerPos.x + state.position.x, y: baseLayerPos.y + state.position.y }
+          : state.position
+        : baseLayerPos
+      
+
       
       // Allow values up to 4 (400% screen size) to be treated as normalized coordinates
       const posX = rawPos.x <= 4 ? rawPos.x * screenWidth : rawPos.x
@@ -630,10 +649,15 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       const animRotation = hasRotationAnim ? state.rotation : 0
       if (g) g.rotation = baseRotationRad + animRotation
       
-      // Apply filters (Effects + Off-canvas Blur)
+      // Apply filters (Effects + Off-canvas Blur + Pan/Zoom Focus Blur)
       if (g) {
         const layerEffects = filtersByLayerIdRef.current[id] || []
         let activeFilters = [...layerEffects]
+
+        // Hide any leftover spotlight overlay (from previous implementation)
+        if (hasPanZoom && spotlightOverlayRef.current) {
+          spotlightOverlayRef.current.visible = false
+        }
 
         if (isOffCanvas) {
           // Add blur if off-canvas
@@ -2665,6 +2689,39 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           lineDragActiveRef={lineDragActiveRef}
         />
       )}
+
+      {/* Pan/Zoom region overlay - show when editing a pan_zoom clip and not playing */}
+      {(() => {
+        // Find if selectedClipId corresponds to a pan_zoom template clip
+        const panZoomClip = selectedClipId 
+          ? templateClips.find(c => c.id === selectedClipId && c.template === 'pan_zoom')
+          : null
+        
+        if (!panZoomClip || isPlaying) return null
+        
+        // Get target region from clip parameters or use default
+        const targetRegion = panZoomClip.parameters?.panZoomEndRegion ?? { x: 0.25, y: 0.25, width: 0.5, height: 0.5 }
+        
+        // Get canvas bounds
+        const canvasBoundsForOverlay = {
+          width: canvasBounds.width,
+          height: canvasBounds.height,
+          left: canvasBounds.left,
+          top: canvasBounds.top,
+        }
+        
+        return (
+          <PanZoomRegionOverlay
+            canvasBounds={canvasBoundsForOverlay}
+            offsetX={offsetX}
+            offsetY={offsetY}
+            targetRegion={targetRegion}
+            onUpdateTargetRegion={(newTargetRegion) => {
+              onUpdatePanZoomRegions?.(panZoomClip.id, newTargetRegion)
+            }}
+          />
+        )
+      })()}
 
       {/* Fallback DOM previews removed; timeline drives all motion */}
     </div>

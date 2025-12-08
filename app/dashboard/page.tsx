@@ -335,6 +335,12 @@ function DashboardContent() {
       
       // Only update if the selected template matches the clip's template
       if (clip && clip.template === selectedTemplate) {
+        // Skip pan_zoom - it has its own dedicated update handlers
+        // Calling updateTemplateClip here would rebuild tracks and reset the animation
+        if (selectedTemplate === 'pan_zoom') {
+          return
+        }
+        
         // Update the clip's parameters based on the current control values
         const parameters: any = {}
         
@@ -981,6 +987,7 @@ function DashboardContent() {
   const handleSelectLayer = (id: string) => {
     setSelectedLayerId(id)
     setSelectedClipId('')
+    setSelectedTemplate('')  // Clear template to prevent accidentally applying it to the layer
     setShowSelectShapeHint(false)
   }
 
@@ -1161,10 +1168,19 @@ function DashboardContent() {
     setSelectedTemplate(clip.template)
     setSelectedClipId(clip.id)
     
-    // Load the clip's parameters into the global controls
+    // Find the clip data to get its layerId and start time
     const clipData = templateClips.find(c => c.id === clip.id)
-    if (clipData?.parameters?.templateSpeed) {
-      timeline.setTemplateSpeed(clipData.parameters.templateSpeed)
+    if (clipData) {
+      // Select the layer (shape) that owns this clip
+      setSelectedLayerId(clipData.layerId)
+      
+      // Note: Don't move playhead automatically - let user control it
+      // timeline.setCurrentTime(clipData.start ?? 0)
+      
+      // Load the clip's parameters into the global controls
+      if (clipData.parameters?.templateSpeed) {
+        timeline.setTemplateSpeed(clipData.parameters.templateSpeed)
+      }
     }
   }
 
@@ -1310,6 +1326,23 @@ function DashboardContent() {
     if (selectedClipId && selectedLayerId) {
       timeline.updateTemplateClip(selectedLayerId, selectedClipId, {
         duration: value
+      })
+      debouncedPushSnapshot()
+    }
+  }
+  
+  // Handler for updating pan/zoom regions from canvas overlay
+  const handleUpdatePanZoomRegions = (
+    clipId: string, 
+    targetRegion: { x: number; y: number; width: number; height: number }
+  ) => {
+    const clip = templateClips.find(c => c.id === clipId)
+    if (clip && clip.template === 'pan_zoom') {
+      timeline.updateTemplateClip(clip.layerId, clipId, {
+        parameters: {
+          ...clip.parameters,
+          panZoomEndRegion: targetRegion, // Use target as the zoom destination
+        }
       })
       debouncedPushSnapshot()
     }
@@ -1510,6 +1543,45 @@ function DashboardContent() {
             timeline.addClickMarker(layerId)
           }
         }}
+        onAddPanZoom={(layerId) => {
+          console.log('[PAGE] onAddPanZoom called for layer:', layerId)
+          const layer = layers.find(l => l.id === layerId)
+          if (!layer) return
+          
+          const now = timeline.getState().currentTime
+          const duration = 2000 // 2 seconds for zoom in + hold + zoom out
+          
+          // Get clip start position (after any existing clips on this layer)
+          const layerClips = templateClips.filter(c => c.layerId === layerId)
+          const lastEnd = layerClips.length
+            ? Math.max(...layerClips.map(c => (c.start ?? 0) + (c.duration ?? 0)))
+            : now
+          
+          console.log('[PAGE] Adding pan_zoom clip at', lastEnd, 'duration', duration)
+          
+          const clipId = timeline.addTemplateClip(
+            layerId,
+            'pan_zoom',
+            lastEnd,
+            duration,
+            {
+              panZoomEndRegion: { x: 0.25, y: 0.25, width: 0.5, height: 0.5 }, // Default target region
+              panZoomHoldDuration: 500, // 500ms hold
+              panZoomIntensity: 1.5, // Default zoom level
+              panZoomBlurIntensity: 0, // No blur by default
+              panZoomEasing: 'ease-in-out',
+            },
+            layer.scale ?? 1,
+            { position: { x: layer.x, y: layer.y }, scale: layer.scale ?? 1 }
+          )
+          
+          console.log('[PAGE] Created pan_zoom clip with id:', clipId)
+          setSelectedTemplate('pan_zoom')
+          setSelectedClipId(clipId)
+          timeline.setPlaying(false)
+          timeline.setCurrentTime(lastEnd)
+          pushSnapshot()
+        }}
         onSelectLayer={handleSelectLayer}
       >
         <MotionCanvas 
@@ -1538,6 +1610,8 @@ function DashboardContent() {
           background={background}
           popReappear={popReappear}
           onCanvasBackgroundClick={handleDeselectShape}
+          selectedClipId={selectedClipId}
+          onUpdatePanZoomRegions={handleUpdatePanZoomRegions}
         />
       </DashboardLayout>
 

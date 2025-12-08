@@ -1,7 +1,7 @@
 import { TimelineKeyframe, Vec2 } from '@/lib/timeline'
 
 export type TemplateId =
-  | 'roll' | 'jump' | 'pop' | 'path' | 'shake' | 'pulse' | 'spin' | 'counter'
+  | 'roll' | 'jump' | 'pop' | 'path' | 'shake' | 'pulse' | 'spin' | 'counter' | 'pan_zoom'
   | 'fade_in' | 'slide_in' | 'grow_in' | 'shrink_in' | 'spin_in' | 'twist_in' | 'move_scale_in'
   | 'fade_out' | 'slide_out' | 'grow_out' | 'shrink_out' | 'spin_out' | 'twist_out' | 'move_scale_out'
 
@@ -21,6 +21,11 @@ export interface PresetResult {
     pulseScale?: number
     spinSpeed?: number
     spinDirection?: 1 | -1
+    // Pan & Zoom
+    panZoomStartRegion?: { x: number; y: number; width: number; height: number }
+    panZoomEndRegion?: { x: number; y: number; width: number; height: number }
+    panZoomEasing?: 'linear' | 'ease-in-out' | 'smooth'
+    panZoomIntensity?: number
   }
 }
 
@@ -427,6 +432,91 @@ const moveScaleOutPreset = (duration: number = ANIMATION_BASE_DURATION): PresetR
   ]
 })
 
+// Pan & Zoom Preset - animates position and scale based on start/end regions
+export const PAN_ZOOM_BASE_DURATION = 2000
+
+const panZoomPreset = (
+  duration: number = PAN_ZOOM_BASE_DURATION,
+  targetRegion?: { x: number; y: number; width: number; height: number },
+  holdDuration: number = 500, // ms to stay zoomed
+  easing: 'linear' | 'ease-in-out' | 'smooth' = 'ease-in-out',
+  intensity: number = 1.5 // Zoom level (1.2 - 3.0)
+): PresetResult => {
+  // Default: zoom to center region
+  const target = targetRegion ?? { x: 0.25, y: 0.25, width: 0.5, height: 0.5 }
+  
+  // Calculate animation timing
+  // zoomInTime + holdTime + zoomOutTime = totalDuration
+  const actualHold = Math.min(holdDuration, duration * 0.8) // max 80% of duration for hold
+  const animTime = (duration - actualHold) / 2 // split remaining between zoom in and out
+  const zoomInEnd = animTime
+  const holdEnd = animTime + actualHold
+  
+  // Calculate zoom target position offset (from layer center)
+  // For camera zoom effect: the target rectangle should stay FIXED in center
+  // while the layer scales around it
+  const targetCenterX = target.x + target.width / 2
+  const targetCenterY = target.y + target.height / 2
+  
+  // Calculate offset to keep target center fixed during scale
+  // When scaling by S from center, a point at distance D from center moves to S*D
+  // We need to offset by -(S-1)*targetOffset to keep target fixed
+  // targetOffset = targetCenter - layerCenter (where layerCenter = 0.5, 0.5 in normalized coords)
+  const targetOffsetFromCenterX = targetCenterX - 0.5
+  const targetOffsetFromCenterY = targetCenterY - 0.5
+  
+  // Offset to keep target fixed: compensate for scale expansion
+  const offsetX = -targetOffsetFromCenterX * (intensity - 1)
+  const offsetY = -targetOffsetFromCenterY * (intensity - 1)
+  
+  // Scale: use intensity directly (not calculated from rectangle)
+  const targetScale = Math.max(1.1, Math.min(intensity, 4)) // Clamp between 1.1 and 4
+  
+  // Determine easing function
+  const getEasing = (easingType: string) => {
+    switch (easingType) {
+      case 'linear': return 'linear' as any
+      case 'smooth': return 'easeInOutCubic' as any
+      case 'ease-in-out': 
+      default: return 'easeInOutQuad' as any
+    }
+  }
+  const animEasing = getEasing(easing)
+  
+
+  
+  return {
+    duration,
+    // Position animation: pan layer so rectangle focal point centers on screen
+    position: [
+      // Start: no offset (normal position)
+      { time: 0, value: { x: 0, y: 0 }, easing: animEasing },
+      // Zoom in complete: offset to center target rectangle
+      { time: zoomInEnd, value: { x: offsetX, y: offsetY }, easing: animEasing },
+      // Hold: stay at offset
+      { time: holdEnd, value: { x: offsetX, y: offsetY }, easing: 'linear' as any },
+      // Zoom out complete: back to normal
+      { time: duration, value: { x: 0, y: 0 }, easing: animEasing },
+    ],
+    scale: [
+      // Start: normal scale (1)
+      { time: 0, value: 1, easing: animEasing },
+      // Zoom in complete: scaled up
+      { time: zoomInEnd, value: targetScale, easing: animEasing },
+      // Hold: stay scaled
+      { time: holdEnd, value: targetScale, easing: 'linear' as any },
+      // Zoom out complete: back to normal
+      { time: duration, value: 1, easing: animEasing },
+    ],
+    meta: {
+      panZoomStartRegion: { x: 0, y: 0, width: 1, height: 1 },
+      panZoomEndRegion: target,
+      panZoomEasing: easing,
+      panZoomIntensity: intensity,
+    },
+  }
+}
+
 export const PRESET_BUILDERS = {
   roll: rollPreset,
   jump: jumpPreset,
@@ -450,6 +540,7 @@ export const PRESET_BUILDERS = {
   spin_out: spinOutPreset,
   twist_out: twistOutPreset,
   move_scale_out: moveScaleOutPreset,
+  pan_zoom: panZoomPreset,
 } as const
 
 export type PresetBuilderMap = typeof PRESET_BUILDERS
