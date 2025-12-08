@@ -71,6 +71,7 @@ export type TemplateId =
   | 'move_scale_out'
   | 'path'
   | 'pan_zoom'
+  | 'mask_center'
 
 export interface TemplateClip {
   id: string

@@ -250,6 +250,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   // ... (rest of component)
   const dragRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null)
   const graphicsByIdRef = useRef<Record<string, PIXI.Graphics>>({})
+  const maskGraphicsByIdRef = useRef<Record<string, PIXI.Graphics>>({})
   const outlinesByIdRef = useRef<Record<string, PIXI.Graphics>>({})
   const filtersByLayerIdRef = useRef<Record<string, PIXI.Filter[]>>({})
   const emittersByLayerIdRef = useRef<Record<string, SimpleParticleEmitter[]>>({})
@@ -667,6 +668,46 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         }
         
         g.filters = activeFilters.length > 0 ? activeFilters : null
+      }
+      // Handle Masking (mask_center)
+      const maskScale = state.maskScale
+      if (typeof maskScale === 'number') {
+        let mask = maskGraphicsByIdRef.current[id]
+        if (!mask) {
+          mask = new PIXI.Graphics()
+          maskGraphicsByIdRef.current[id] = mask
+          if (g?.parent) g.parent.addChild(mask)
+        } else if (g?.parent && mask.parent !== g.parent) {
+             g.parent.addChild(mask)
+        }
+
+        if (g) {
+          // Use layer dimensions instead of getLocalBounds() to avoid issues with unloaded images
+          const layerWidth = layer.width || 100
+          const layerHeight = layer.height || 100
+          const maskWidth = layerWidth * 1.2
+          const maskHeight = layerHeight * 1.2
+
+          mask.clear()
+          // Start as a thin horizontal line (scaleY will animate from 0 to 1)
+          mask.rect(-maskWidth / 2, -maskHeight / 2, maskWidth, maskHeight).fill(0xffffff)
+          
+          mask.position.copyFrom(g.position)
+          mask.rotation = g.rotation
+          
+          // Non-uniform scale: X stays full, Y animates from 0 to full
+          const fullScale = state.scale
+          mask.scale.set(fullScale, maskScale * fullScale)
+          
+          g.mask = mask
+        }
+      } else {
+        const mask = maskGraphicsByIdRef.current[id]
+        if (mask) {
+          if (g && g.mask === mask) g.mask = null
+          mask.destroy()
+          delete maskGraphicsByIdRef.current[id]
+        }
       }
     })
     appRef.current?.render()

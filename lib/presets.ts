@@ -4,12 +4,14 @@ export type TemplateId =
   | 'roll' | 'jump' | 'pop' | 'path' | 'shake' | 'pulse' | 'spin' | 'counter' | 'pan_zoom'
   | 'fade_in' | 'slide_in' | 'grow_in' | 'shrink_in' | 'spin_in' | 'twist_in' | 'move_scale_in'
   | 'fade_out' | 'slide_out' | 'grow_out' | 'shrink_out' | 'spin_out' | 'twist_out' | 'move_scale_out'
+  | 'mask_center'
 
 export interface PresetResult {
   position?: TimelineKeyframe<Vec2>[]
   scale?: TimelineKeyframe<number>[]
   rotation?: TimelineKeyframe<number>[]
   opacity?: TimelineKeyframe<number>[]
+  maskScale?: TimelineKeyframe<number>[]
   duration: number
   meta?: {
     rollDistance?: number // normalized/pixel offset for roll
@@ -517,6 +519,19 @@ const panZoomPreset = (
   }
 }
 
+// Mask Center: vertical expansion from horizontal line to full circle
+const maskCenterPreset = (duration: number = 1000): PresetResult => ({
+  duration,
+  position: [],
+  scale: [],
+  rotation: [],
+  opacity: [],
+  maskScale: [
+    { time: 0, value: 0, easing: 'linear' },
+    { time: duration, value: 1, easing: 'linear' },
+  ],
+})
+
 export const PRESET_BUILDERS = {
   roll: rollPreset,
   jump: jumpPreset,
@@ -524,6 +539,7 @@ export const PRESET_BUILDERS = {
   shake: shakePreset,
   pulse: pulsePreset,
   spin: spinPreset,
+  mask_center: maskCenterPreset,
   // Animations
   fade_in: fadeInPreset,
   slide_in: slideInPreset,

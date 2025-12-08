@@ -723,6 +723,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           scale: [],
           rotation: [],
           opacity: [],
+          maskScale: [],
           paths: []
         }
 
@@ -840,6 +841,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
              preset = PRESET_BUILDERS.pulse(clip.parameters?.pulseScale ?? prev.pulseScale, clip.parameters?.pulseSpeed ?? prev.pulseSpeed, clip.duration)
             } else if (clip.template === 'spin') {
               preset = PRESET_BUILDERS.spin(clip.parameters?.spinSpeed ?? prev.spinSpeed, clip.parameters?.spinDirection ?? prev.spinDirection, clip.duration)
+            } else if (clip.template === 'mask_center') {
+               preset = PRESET_BUILDERS.mask_center(clip.duration)
             } else if ([
               'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in',
               'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out'
@@ -1070,6 +1073,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             scale: mergeKeyframes(newTrack.scale ?? [], mergedScale, undefined, 'replace'),
             rotation: mergeKeyframes(newTrack.rotation ?? [], mergedRotation, isInOutAnimation ? undefined : clipBaseState.rotation, isInOutAnimation ? 'replace' : 'add'),
             opacity: mergeKeyframes(newTrack.opacity ?? [], preset.opacity, isInOutAnimation ? undefined : clipBaseState.opacity, isInOutAnimation ? 'replace' : 'multiply'),
+            maskScale: mergeKeyframes(newTrack.maskScale ?? [], preset.maskScale, undefined, 'replace'),
           }
           
            // Update prevClipEnd for next iteration
@@ -1497,13 +1501,29 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         const finalOpacity = mergeFrames(clearedTrack.opacity, mappedOpacity).sort((a, b) => a.time - b.time)
         
         const finalPosition = mergeFrames(clearedTrack.position, mappedPosition).sort((a, b) => a.time - b.time)
-        
+
+        // For mask_center, ignore template speed and map directly to the clip duration
+        const maskScaleTime = template === 'mask_center'
+          ? (t: number) => {
+              const clipDuration = duration
+              const presetDuration = preset.duration || clipDuration || 1
+              return (t * clipDuration) / presetDuration
+            }
+          : scaleTime
+        const mappedMaskScale =
+          preset.maskScale?.map((f: TimelineKeyframe<number>) => ({
+            ...f,
+            time: startOffset + maskScaleTime(f.time),
+            clipId: newClipId,
+          })) ?? []
+
         return {
           ...track,
           position: finalPosition,
           scale: mergeFrames(clearedTrack.scale, mappedScale).sort((a, b) => a.time - b.time),
           rotation: mergeFrames(clearedTrack.rotation, mappedRotation).sort((a, b) => a.time - b.time),
           opacity: finalOpacity,
+          maskScale: mergeFrames(clearedTrack.maskScale, mappedMaskScale).sort((a, b) => a.time - b.time),
         }
       })
 
@@ -1644,6 +1664,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           scale: [],
           rotation: [],
           opacity: [],
+          maskScale: [],
           paths: []
         }
 
@@ -1789,7 +1810,6 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
            }
             else if (clip.template === 'pan_zoom') {
               // Pan & Zoom: use target region for zoom in + hold + zoom out
-              console.log('[ADD_CLIP] Building pan_zoom preset with params:', clip.parameters)
               preset = PRESET_BUILDERS.pan_zoom(
                 clip.duration ?? 2000,
                 clip.parameters?.panZoomEndRegion,
@@ -1797,7 +1817,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
                 clip.parameters?.panZoomEasing,
                 clip.parameters?.panZoomIntensity ?? 1.5
               )
-              console.log('[ADD_CLIP] Built pan_zoom preset:', preset)
+            } else if (clip.template === 'mask_center') {
+              preset = PRESET_BUILDERS.mask_center(clip.duration)
             }
 
           if (!preset) return
@@ -1955,6 +1976,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
               scale: mergeKeyframes(newTrack.scale ?? [], mergedScale, undefined, 'replace'),
               rotation: mergeKeyframes(newTrack.rotation ?? [], mergedRotation, isInOutAnimation ? undefined : clipBaseState.rotation, isInOutAnimation ? 'replace' : 'add'),
               opacity: mergeKeyframes(newTrack.opacity ?? [], preset.opacity, isInOutAnimation ? undefined : clipBaseState.opacity, isInOutAnimation ? 'replace' : 'multiply'),
+              maskScale: mergeKeyframes(newTrack.maskScale ?? [], preset.maskScale, undefined, 'replace'),
             }
             
            prevClipEnd = end
@@ -2452,6 +2474,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         scale: [{ time: 0, value: baseScale }],
         rotation: [{ time: 0, value: baseRot }],
         opacity: [{ time: 0, value: baseOpacity }],
+        maskScale: [],
         paths: [],
       }
 
@@ -2574,6 +2597,9 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             )
 
             break
+          case 'mask_center':
+            built = PRESET_BUILDERS.mask_center(duration)
+            break
           default:
             console.warn(`Unknown template: ${clip.template}`)
             return
@@ -2591,6 +2617,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           scale: addFrames(track.scale, shift(built.scale)),
           rotation: addFrames(track.rotation, shift(built.rotation)),
           opacity: addFrames(track.opacity, shift(built.opacity)),
+          maskScale: addFrames(track.maskScale, shift(built.maskScale)),
           // Paths are not part of PresetResult, they're handled separately
         }
       })
@@ -2605,6 +2632,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         scale: sortFrames(ensureZero(track.scale ?? [], baseScale)),
         rotation: sortFrames(ensureZero(track.rotation ?? [], baseRot)),
         opacity: sortFrames(ensureZero(track.opacity ?? [], baseOpacity)),
+        maskScale: sortFrames(track.maskScale ?? []), // Don't force zero keyframe for mask if empty
       }
 
       nextTracks.push(track)

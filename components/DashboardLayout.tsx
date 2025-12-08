@@ -163,6 +163,7 @@ interface DashboardLayoutProps {
   onAddClickMarker?: (layerId: string) => void
   // Pan & Zoom animation
   onAddPanZoom?: (layerId: string) => void
+  onAddMaskCenter?: (layerId: string) => void
   // History
   canUndo?: boolean
   canRedo?: boolean
@@ -246,6 +247,7 @@ export default function DashboardLayout({
   selectedClipId,
   onAddClickMarker,
   onAddPanZoom,
+  onAddMaskCenter,
   canUndo,
   canRedo,
   onUndo,
@@ -1285,6 +1287,27 @@ export default function DashboardLayout({
                         </svg>
                       </div>
                       <span className="text-[11px] font-medium text-neutral-300">Pan & Zoom</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (!selectedLayerId) return
+                        onAddMaskCenter?.(selectedLayerId)
+                      }}
+                      disabled={!selectedLayerId}
+                      className={cn(
+                        "flex flex-col items-center justify-center gap-2 p-4 rounded-lg border transition-all",
+                        selectedLayerId
+                          ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/50 cursor-pointer"
+                          : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
+                      )}
+                    >
+                      <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 text-purple-400">
+                           <circle cx="12" cy="12" r="3" />
+                           <circle cx="12" cy="12" r="8" strokeDasharray="4 4" />
+                        </svg>
+                      </div>
+                      <span className="text-[11px] font-medium text-neutral-300">Mask Center</span>
                     </button>
                   </>
                 )}
