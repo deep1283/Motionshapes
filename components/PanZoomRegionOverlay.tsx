@@ -20,6 +20,7 @@ interface PanZoomRegionOverlayProps {
   offsetY: number
   targetRegion: PanZoomRegion
   onUpdateTargetRegion: (region: PanZoomRegion) => void
+  onClickBackdrop?: () => void
 }
 
 export function PanZoomRegionOverlay({
@@ -28,6 +29,7 @@ export function PanZoomRegionOverlay({
   offsetY,
   targetRegion,
   onUpdateTargetRegion,
+  onClickBackdrop,
 }: PanZoomRegionOverlayProps) {
   const { width, height } = canvasBounds
   
@@ -159,6 +161,12 @@ export function PanZoomRegionOverlay({
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerLeave={handlePointerUp}
+      onPointerDown={(e) => {
+        // If clicking directly on the overlay container (backdrop), trigger callback
+        if (e.target === e.currentTarget) {
+          onClickBackdrop?.()
+        }
+      }}
     >
       <svg className="h-full w-full" style={{ pointerEvents: 'none' }}>
         <g style={{ pointerEvents: 'auto' }}>

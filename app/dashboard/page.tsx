@@ -989,6 +989,12 @@ function DashboardContent() {
     setSelectedClipId('')
     setSelectedTemplate('')  // Clear template to prevent accidentally applying it to the layer
     setShowSelectShapeHint(false)
+    
+    // Move playhead to layer's startTime so the shape is visible
+    const track = tracks.find(t => t.layerId === id)
+    if (track?.startTime !== undefined) {
+      timeline.setCurrentTime(track.startTime)
+    }
   }
 
   const handleDeselectShape = () => {
@@ -1174,8 +1180,8 @@ function DashboardContent() {
       // Select the layer (shape) that owns this clip
       setSelectedLayerId(clipData.layerId)
       
-      // Note: Don't move playhead automatically - let user control it
-      // timeline.setCurrentTime(clipData.start ?? 0)
+      // Move playhead to the start of the clip so the shape is visible
+      timeline.setCurrentTime(clipData.start ?? 0)
       
       // Load the clip's parameters into the global controls
       if (clipData.parameters?.templateSpeed) {

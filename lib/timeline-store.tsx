@@ -191,12 +191,13 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       startTime: (() => {
         // Auto-sequencing: Start after the last clip ends
         // But if there are no clips, start at 0
+        // Add 5ms gap between shapes for slight visual separation
         const maxEndTime = state.tracks.reduce((max, t) => {
           const start = t.startTime ?? 0
           const dur = t.duration ?? 0
           return Math.max(max, start + dur)
         }, 0)
-        return maxEndTime
+        return maxEndTime > 0 ? maxEndTime + 5 : 0  // Add 5ms gap if not first shape
       })(),
       duration: 2000, // Default 2s duration
       position: [
