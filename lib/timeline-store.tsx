@@ -847,6 +847,10 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
                preset = PRESET_BUILDERS.mask_center(clip.duration)
             } else if (clip.template === 'mask_top') {
                preset = PRESET_BUILDERS.mask_top(clip.duration)
+            } else if (clip.template === 'mask_center_out') {
+               preset = PRESET_BUILDERS.mask_center_out(clip.duration)
+            } else if (clip.template === 'mask_top_out') {
+               preset = PRESET_BUILDERS.mask_top_out(clip.duration)
             } else if ([
               'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in',
               'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out'
@@ -1506,8 +1510,9 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         
         const finalPosition = mergeFrames(clearedTrack.position, mappedPosition).sort((a, b) => a.time - b.time)
 
-        // For mask_center/mask_top, ignore template speed and map directly to the clip duration
-        const maskScaleTime = (template === 'mask_center' || template === 'mask_top')
+        // For mask templates, ignore template speed and map directly to the clip duration
+        const isMaskTemplate = ['mask_center', 'mask_top', 'mask_center_out', 'mask_top_out'].includes(template)
+        const maskScaleTime = isMaskTemplate
           ? (t: number) => {
               const clipDuration = options?.targetDuration || preset.duration || 1000
               const presetDuration = preset.duration || clipDuration || 1
@@ -1825,6 +1830,10 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
               preset = PRESET_BUILDERS.mask_center(clip.duration)
             } else if (clip.template === 'mask_top') {
               preset = PRESET_BUILDERS.mask_top(clip.duration)
+            } else if (clip.template === 'mask_center_out') {
+              preset = PRESET_BUILDERS.mask_center_out(clip.duration)
+            } else if (clip.template === 'mask_top_out') {
+              preset = PRESET_BUILDERS.mask_top_out(clip.duration)
             }
 
           if (!preset) return
@@ -2608,6 +2617,12 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             break
           case 'mask_top':
             built = PRESET_BUILDERS.mask_top(duration)
+            break
+          case 'mask_center_out':
+            built = PRESET_BUILDERS.mask_center_out(duration)
+            break
+          case 'mask_top_out':
+            built = PRESET_BUILDERS.mask_top_out(duration)
             break
           default:
             console.warn(`Unknown template: ${clip.template}`)

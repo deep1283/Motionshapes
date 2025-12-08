@@ -73,6 +73,8 @@ export type TemplateId =
   | 'pan_zoom'
   | 'mask_center'
   | 'mask_top'
+  | 'mask_center_out'
+  | 'mask_top_out'
 
 export interface TemplateClip {
   id: string
