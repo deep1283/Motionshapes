@@ -2719,6 +2719,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             onUpdateTargetRegion={(newTargetRegion) => {
               onUpdatePanZoomRegions?.(panZoomClip.id, newTargetRegion)
             }}
+            onClickBackdrop={onCanvasBackgroundClick}
           />
         )
       })()}
