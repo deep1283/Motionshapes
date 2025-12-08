@@ -164,6 +164,7 @@ interface DashboardLayoutProps {
   // Pan & Zoom animation
   onAddPanZoom?: (layerId: string) => void
   onAddMaskCenter?: (layerId: string) => void
+  onAddMaskTop?: (layerId: string) => void
   // History
   canUndo?: boolean
   canRedo?: boolean
@@ -248,6 +249,7 @@ export default function DashboardLayout({
   onAddClickMarker,
   onAddPanZoom,
   onAddMaskCenter,
+  onAddMaskTop,
   canUndo,
   canRedo,
   onUndo,
@@ -1308,6 +1310,30 @@ export default function DashboardLayout({
                         </svg>
                       </div>
                       <span className="text-[11px] font-medium text-neutral-300">Mask Center</span>
+                    </button>
+                    
+                    {/* Mask Top Button */}
+                    <button
+                      onClick={() => {
+                        if (selectedLayerId) {
+                          onAddMaskTop?.(selectedLayerId)
+                        }
+                      }}
+                      disabled={!selectedLayerId}
+                      className={cn(
+                        "flex flex-col items-center justify-center gap-2 p-4 rounded-lg border transition-all",
+                        selectedLayerId
+                          ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/50 cursor-pointer"
+                          : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
+                      )}
+                    >
+                      <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 text-purple-400">
+                           <path d="M12 4 L4 12 L20 12 Z" />
+                           <circle cx="12" cy="14" r="6" strokeDasharray="4 4" />
+                        </svg>
+                      </div>
+                      <span className="text-[11px] font-medium text-neutral-300">Mask Top</span>
                     </button>
                   </>
                 )}
@@ -2485,6 +2511,168 @@ export default function DashboardLayout({
                       max={6000}
                       step={100}
                       value={selectedClipDuration ?? 2000}
+                      onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
+                      className="w-full accent-violet-500"
+                    />
+                  </div>
+                </>
+              )
+            })()}
+            
+            {/* Mask Center Controls */}
+            {selectedTemplate === 'mask_center' && selectedClipId && (() => {
+              const maskClip = templateClips.find(c => c.id === selectedClipId && c.template === 'mask_center')
+              if (!maskClip) return null
+              const maskAngle = maskClip.parameters?.maskAngle ?? 0
+              
+              const presetAngles = [
+                { angle: 0, icon: '—', label: 'Horizontal' },
+                { angle: 90, icon: '|', label: 'Vertical' },
+                { angle: 45, icon: '╲', label: 'Diagonal' },
+                { angle: 135, icon: '╱', label: 'Diagonal' },
+              ]
+              
+              return (
+                <>
+                  {/* Angle Selection */}
+                  <div className="mb-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-semibold text-neutral-200">Angle</span>
+                      <span className="text-[10px] text-neutral-400">{maskAngle}°</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {presetAngles.map((preset) => (
+                        <button
+                          key={preset.angle}
+                          onClick={() => {
+                            if (selectedLayerId) {
+                              timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
+                                parameters: { ...maskClip.parameters, maskAngle: preset.angle }
+                              })
+                            }
+                          }}
+                          title={preset.label}
+                          className={cn(
+                            "flex items-center justify-center w-8 h-8 rounded-md border transition-all text-sm font-bold",
+                            maskAngle === preset.angle
+                              ? "border-violet-500 bg-violet-500/20 text-violet-300"
+                              : "border-white/10 bg-white/5 text-neutral-400 hover:bg-white/10 hover:border-violet-500/50"
+                          )}
+                        >
+                          {preset.icon}
+                        </button>
+                      ))}
+                      <input
+                        type="number"
+                        min={0}
+                        max={360}
+                        step={1}
+                        value={maskAngle}
+                        onChange={(e) => {
+                          if (selectedLayerId) {
+                            timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
+                              parameters: { ...maskClip.parameters, maskAngle: Number(e.target.value) % 360 }
+                            })
+                          }
+                        }}
+                        className="w-12 bg-neutral-800 border border-white/10 rounded-md px-2 py-1 text-[11px] text-white text-center"
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* Duration */}
+                  <div className="mb-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-semibold text-neutral-200">Duration</span>
+                      <span className="text-[10px] text-neutral-400">{((selectedClipDuration ?? 1000) / 1000).toFixed(2)}s</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={100}
+                      max={5000}
+                      step={100}
+                      value={selectedClipDuration ?? 1000}
+                      onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
+                      className="w-full accent-violet-500"
+                    />
+                  </div>
+                </>
+              )
+            })()}
+            
+            {/* Mask Top Controls */}
+            {selectedTemplate === 'mask_top' && selectedClipId && (() => {
+              const maskClip = templateClips.find(c => c.id === selectedClipId && c.template === 'mask_top')
+              if (!maskClip) return null
+              const maskAngle = maskClip.parameters?.maskAngle ?? 0
+              
+              const presetAngles = [
+                { angle: 0, icon: '—', label: 'Horizontal' },
+                { angle: 90, icon: '|', label: 'Vertical' },
+                { angle: 45, icon: '╲', label: 'Diagonal' },
+                { angle: 135, icon: '╱', label: 'Diagonal' },
+              ]
+              
+              return (
+                <>
+                  {/* Angle Selection */}
+                  <div className="mb-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-semibold text-neutral-200">Angle</span>
+                      <span className="text-[10px] text-neutral-400">{maskAngle}°</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {presetAngles.map((preset) => (
+                        <button
+                          key={preset.angle}
+                          onClick={() => {
+                            if (selectedLayerId) {
+                              timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
+                                parameters: { ...maskClip.parameters, maskAngle: preset.angle }
+                              })
+                            }
+                          }}
+                          title={preset.label}
+                          className={cn(
+                            "flex items-center justify-center w-8 h-8 rounded-md border transition-all text-sm font-bold",
+                            maskAngle === preset.angle
+                              ? "border-violet-500 bg-violet-500/20 text-violet-300"
+                              : "border-white/10 bg-white/5 text-neutral-400 hover:bg-white/10 hover:border-violet-500/50"
+                          )}
+                        >
+                          {preset.icon}
+                        </button>
+                      ))}
+                      <input
+                        type="number"
+                        min={0}
+                        max={360}
+                        step={1}
+                        value={maskAngle}
+                        onChange={(e) => {
+                          if (selectedLayerId) {
+                            timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
+                              parameters: { ...maskClip.parameters, maskAngle: Number(e.target.value) % 360 }
+                            })
+                          }
+                        }}
+                        className="w-12 bg-neutral-800 border border-white/10 rounded-md px-2 py-1 text-[11px] text-white text-center"
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* Duration */}
+                  <div className="mb-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-semibold text-neutral-200">Duration</span>
+                      <span className="text-[10px] text-neutral-400">{((selectedClipDuration ?? 1000) / 1000).toFixed(2)}s</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={100}
+                      max={5000}
+                      step={100}
+                      value={selectedClipDuration ?? 1000}
                       onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
                       className="w-full accent-violet-500"
                     />
