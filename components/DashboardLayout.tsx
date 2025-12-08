@@ -3,13 +3,14 @@
 import React, { useState, useEffect, useRef } from 'react'
 import Image from 'next/image'
 import type { SVGProps } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
-import { 
-  Layout, 
-  Settings, 
-  LogOut, 
-  Plus, 
-  Minus, 
+import {
+  Layout,
+  Settings,
+  LogOut,
+  Plus,
+  Minus,
   ChevronLeft,
   Play,
   Share2,
@@ -1646,6 +1647,34 @@ export default function DashboardLayout({
           <div className="flex flex-1 items-center justify-center p-8 md:p-12 overflow-visible relative">
              {/* Grid Background */}
              <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff03_1px,transparent_1px),linear-gradient(to_bottom,#ffffff03_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none" />
+             
+             {/* Fit to Canvas Button - Floating in top-right */}
+             <AnimatePresence>
+               {selectedLayerId && (
+                 <motion.button
+                   initial={{ opacity: 0, y: -20 }}
+                   animate={{ opacity: 1, y: 0 }}
+                   exit={{ opacity: 0, y: -10 }}
+                   transition={{ duration: 0.3, ease: "easeOut" }}
+                   onClick={() => {
+                     const layer = layers.find(l => l.id === selectedLayerId)
+                     if (layer) {
+                       // Resize to canvas dimensions
+                       onUpdateLayerSize?.(selectedLayerId, canvasWidth, canvasHeight)
+                       // Center on canvas (positions are normalized 0-1, so center is 0.5, 0.5)
+                       onUpdateLayerPosition?.(selectedLayerId, 0.5, 0.5)
+                     }
+                   }}
+                   className="absolute top-4 right-4 z-30 flex items-center gap-2 px-4 py-2 bg-neutral-900/80 backdrop-blur-md border border-white/10 hover:border-purple-500/50 hover:shadow-[0_0_20px_-5px_rgba(168,85,247,0.3)] text-neutral-200 hover:text-white text-xs font-medium rounded-full shadow-2xl group"
+                 >
+                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5 text-neutral-400 group-hover:text-purple-400 transition-colors">
+                     <rect x="3" y="3" width="18" height="18" rx="2" />
+                     <path d="M8 8h8v8H8z" strokeDasharray="2 2" />
+                   </svg>
+                   Fit to Canvas
+                 </motion.button>
+               )}
+             </AnimatePresence>
              
              {/* MotionCanvas - Fills entire workspace */}
               <div 
