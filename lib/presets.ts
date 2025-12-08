@@ -1,7 +1,7 @@
 import { TimelineKeyframe, Vec2 } from '@/lib/timeline'
 
 export type TemplateId =
-  | 'roll' | 'jump' | 'pop' | 'path' | 'shake' | 'pulse' | 'spin'
+  | 'roll' | 'jump' | 'pop' | 'path' | 'shake' | 'pulse' | 'spin' | 'counter'
   | 'fade_in' | 'slide_in' | 'grow_in' | 'shrink_in' | 'spin_in' | 'twist_in' | 'move_scale_in'
   | 'fade_out' | 'slide_out' | 'grow_out' | 'shrink_out' | 'spin_out' | 'twist_out' | 'move_scale_out'
 

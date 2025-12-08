@@ -58,6 +58,12 @@ type TimelineState = {
       pulseSpeed?: number
       spinSpeed?: number
       spinDirection?: 1 | -1
+      // Counter animation parameters
+      counterStart?: number
+      counterEnd?: number
+      counterPrefix?: string
+      counterSuffix?: string
+      counterDecimals?: number
       pathPoints?: Vec2[]
       pathLength?: number
       layerBase?: {
@@ -1139,6 +1145,10 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             ? PRESET_BUILDERS.pulse(options?.parameters?.pulseScale ?? state.pulseScale, options?.parameters?.pulseSpeed ?? state.pulseSpeed, options?.targetDuration)
           : template === 'spin'
             ? PRESET_BUILDERS.spin(options?.parameters?.spinSpeed ?? state.spinSpeed, options?.parameters?.spinDirection ?? state.spinDirection, options?.targetDuration)
+          : template === 'counter'
+            // Counter doesn't use keyframes - it updates text content during render
+            // Just return a minimal "preset" with duration info
+            ? { duration: options?.targetDuration ?? 2000, segments: [] }
             : [
                 'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in',
                 'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out'
