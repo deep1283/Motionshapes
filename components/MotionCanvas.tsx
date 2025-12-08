@@ -289,6 +289,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   const playhead = useTimeline((s) => s.currentTime)
   const clickMarkers = useTimeline((s) => s.clickMarkers)
   const templateClips = useTimeline((s) => s.templateClips)
+  const effectClips = useTimeline((s) => s.effectClips)
   const sampledTimeline = useMemo(() => sampleTimeline(timelineTracks, playhead), [timelineTracks, playhead])
   const timelineActions = useTimelineActions()
   
@@ -647,69 +648,79 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     appRef.current?.render()
   }
 
-  // Update filters when layers/effects change
+  // Update filters based on effect clips timing (not layer.effects toggle)
   useEffect(() => {
     layers.forEach(layer => {
-      const effects = layer.effects || []
+      // Check if the parent layer is visible at current playhead
+      const layerTrack = timelineTracks.find(t => t.layerId === layer.id)
+      const layerStart = layerTrack?.startTime ?? 0
+      const layerDuration = layerTrack?.duration ?? 2000
+      const isLayerVisible = playhead >= layerStart && playhead <= layerStart + layerDuration
+      
+      // Get effect clips for this layer that are currently active 
+      // (playhead within clip duration AND parent layer is visible)
+      const activeEffectClips = effectClips.filter(clip => 
+        clip.layerId === layer.id &&
+        isLayerVisible &&
+        playhead >= clip.start &&
+        playhead <= clip.start + clip.duration
+      )
+      
       const filters: PIXI.Filter[] = []
       
-      effects.forEach(effect => {
-        if (!effect.isEnabled) return
-        
+      activeEffectClips.forEach(clip => {
         try {
-          if (effect.type === 'glow') {
+          if (clip.effectType === 'glow') {
             filters.push(new GlowFilter({ 
-              distance: 15, 
-              outerStrength: effect.params.intensity ?? 0,
+              distance: clip.params.glowDistance ?? 15, 
+              outerStrength: clip.params.glowIntensity ?? 2,
               innerStrength: 0,
-              color: 0xffffff,
+              color: clip.params.glowColor ?? 0xffffff,
               quality: 0.1,
               knockout: false,
             }))
-          } else if (effect.type === 'dropShadow') {
+          } else if (clip.effectType === 'dropShadow') {
             filters.push(new DropShadowFilter({
-              distance: effect.params.distance ?? 5,
-              blur: effect.params.blur ?? 2,
-              rotation: effect.params.rotation ?? 45,
-              alpha: effect.params.alpha ?? 0.5,
+              distance: 5,
+              blur: 2,
+              rotation: 45,
+              alpha: 0.5,
               color: 0x000000
             } as any))
-          } else if (effect.type === 'blur') {
-             const f = new PIXI.BlurFilter()
-             f.blur = effect.params.strength ?? 0
-             filters.push(f)
-          } else if (effect.type === 'glitch') {
+          } else if (clip.effectType === 'blur') {
+            const f = new PIXI.BlurFilter()
+            f.blur = clip.params.blurStrength ?? 4
+            filters.push(f)
+          } else if (clip.effectType === 'glitch') {
             filters.push(new GlitchFilter({
-              slices: effect.params.slices ?? 5,
-              offset: effect.params.offset ?? 10,
+              slices: 5,
+              offset: 10,
               direction: 0,
               fillMode: 0,
               average: false,
               seed: Math.random()
             }))
-          } else if (effect.type === 'pixelate') {
-            const pixelSize = effect.params.size ?? 10
+          } else if (clip.effectType === 'pixelate') {
+            const pixelSize = 10
             filters.push(new PixelateFilter(pixelSize))
           }
         } catch (e) {
-          console.error('Failed to create filter', effect.type, e)
+          console.error('Failed to create filter', clip.effectType, e)
         }
       })
       
       filtersByLayerIdRef.current[layer.id] = filters
       
-      // Handle Particles
-      // Get current emitters for this layer
+      // Handle Particles (sparkles, confetti) - also based on effect clips timing
       const currentEmitters = emittersByLayerIdRef.current[layer.id] || []
       const activeEffectTypes = new Set<string>()
       
-      effects.forEach(effect => {
-        if (!effect.isEnabled) return
-        if (effect.type !== 'sparkles' && effect.type !== 'confetti') return
+      activeEffectClips.forEach(clip => {
+        if (clip.effectType !== 'sparkles' && clip.effectType !== 'confetti') return
         
-        activeEffectTypes.add(effect.type)
+        activeEffectTypes.add(clip.effectType)
         
-        let emitter = currentEmitters.find(e => (e as any)._effectType === effect.type)
+        let emitter = currentEmitters.find(e => (e as any)._effectType === clip.effectType)
         
         if (!emitter) {
            const container = new PIXI.Container()
@@ -724,34 +735,27 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
              
              emitter = new SimpleParticleEmitter(
                container,
-               effect.type as 'sparkles' | 'confetti',
+               clip.effectType as 'sparkles' | 'confetti',
                texture
              )
-             ;(emitter as any)._effectType = effect.type
+             ;(emitter as any)._effectType = clip.effectType
              ;(emitter as any)._container = container
              
-             // Add to array and update ref immediately
              currentEmitters.push(emitter)
              emittersByLayerIdRef.current[layer.id] = currentEmitters
            }
         }
         
         if (emitter) {
-           // Ensure container is on stage (in case stage was cleared)
            const container = (emitter as any)._container
            if (container && !container.parent && appRef.current) {
               appRef.current.stage.addChild(container)
            }
 
-           // Update params
-           if (effect.params.density !== undefined) {
-             emitter.frequency = (effect.type === 'sparkles' ? 0.008 : 0.05) / effect.params.density
-           }
-           if (effect.params.speed !== undefined) {
-             emitter.speedMultiplier = effect.params.speed
+           if (clip.params.particleSpeed !== undefined) {
+             emitter.speedMultiplier = clip.params.particleSpeed
            }
            
-           // Update position to match layer
            const g = graphicsByIdRef.current[layer.id]
            if (g) {
               emitter.updateOwnerPos(g.x, g.y)
@@ -768,19 +772,16 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
               (e as any)._container.destroy()
            }
         })
-        // Update ref with remaining emitters
         emittersByLayerIdRef.current[layer.id] = currentEmitters.filter(e => activeEffectTypes.has((e as any)._effectType))
       }
 
-      // Apply immediately
+      // Apply filters
       const g = graphicsByIdRef.current[layer.id]
       if (g) {
-         // We don't handle off-canvas logic here, just base effects
-         // The render loop will merge them
          g.filters = filters.length > 0 ? filters : null
       }
     })
-  }, [layers])
+  }, [layers, effectClips, playhead, timelineTracks])
 
   // Update particles loop
   useEffect(() => {

@@ -44,6 +44,7 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
   const popCollapse = useTimeline((s) => s.popCollapse)
   const templateClips = useTimeline((s) => s.templateClips)
   const clickMarkers = useTimeline((s) => s.clickMarkers)
+  const effectClips = useTimeline((s) => s.effectClips)
   const timeline = useTimelineActions()
   const MIN_TIMELINE_MS = 5000 // 5 seconds minimum for free playhead movement
   const safeDuration = Math.max(MIN_TIMELINE_MS, Number.isFinite(duration) ? duration : MIN_TIMELINE_MS)
@@ -462,9 +463,30 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
     const handleUp = () => {
        const state = layerMoveStateRef.current
        if (state && state.currentStart !== undefined) {
+         const delta = state.currentStart - state.baseStart
+         
+         // Update the layer's start time
          timeline.updateLayer(state.layerId, {
            startTime: state.currentStart
          })
+         
+         // Move all template clips for this layer by the same delta
+         templateClips
+           .filter(c => c.layerId === state.layerId)
+           .forEach(clip => {
+             timeline.updateTemplateClip(state.layerId, clip.id, {
+               start: clip.start + delta
+             })
+           })
+         
+         // Move all effect clips for this layer by the same delta
+         effectClips
+           .filter(c => c.layerId === state.layerId)
+           .forEach(clip => {
+             timeline.updateEffectClip(clip.id, {
+               start: clip.start + delta
+             })
+           })
        }
        setIsMovingLayer(false)
        setOptimisticLayer(null)
@@ -907,6 +929,98 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
                       </div>
                     )
                   })}
+
+                  {/* Effect Clip Rows - Render after template clips */}
+                  {!isCollapsed && effectClips
+                    .filter((c) => c.layerId === layer.id)
+                    .map((clip) => {
+                      const left = (clip.start / safeDuration) * 100
+                      const width = Math.max(2, (clip.duration / safeDuration) * 100)
+                      
+                      return (
+                        <div key={clip.id} className="flex h-8 border-t border-white/5 hover:bg-white/[0.02] transition-colors">
+                          {/* Effect Label Column */}
+                          <div className="w-[200px] border-r border-white/5 flex items-center px-8">
+                            <span className="text-[10px] text-neutral-400 truncate capitalize select-none">
+                              ✨ {clip.effectType}
+                            </span>
+                          </div>
+                          
+                          {/* Effect Track Area */}
+                          <div className="flex-1 relative cursor-default border-l border-white/5">
+                            {/* Grid lines for effect row */}
+                            <div className="absolute inset-0 pointer-events-none opacity-20">
+                              <div className="flex h-full w-full">
+                                {Array.from({ length: Math.max(2, Math.ceil(safeDuration / 1000) + 1) }).map((_, i) => {
+                                  const gridLeft = (i * 1000) / safeDuration * 100
+                                  return (
+                                    <div key={i} className="absolute top-0 bottom-0 border-l border-white/10" style={{ left: `${gridLeft}%` }} />
+                                  )
+                                })}
+                              </div>
+                            </div>
+
+                            {/* Effect Clip Bar */}
+                            <div
+                              className="absolute top-1/2 -translate-y-1/2 h-6 rounded-md border px-2 text-[10px] text-white flex items-center gap-1 shadow-lg overflow-hidden transition-all bg-gradient-to-r from-purple-500/40 to-purple-600/40 border-purple-500/50 hover:brightness-110 cursor-grab"
+                              style={{ left: `${left}%`, width: `${width}%` }}
+                              onPointerDown={(e) => {
+                                e.stopPropagation()
+                                const rect = e.currentTarget.parentElement?.getBoundingClientRect()
+                                if (!rect) return
+                                const startX = e.clientX
+                                const baseStart = clip.start
+                                
+                                const onMove = (ev: PointerEvent) => {
+                                  const pxPerMs = rect.width / safeDuration
+                                  const deltaMs = (ev.clientX - startX) / pxPerMs
+                                  const newStart = Math.max(0, baseStart + deltaMs)
+                                  timeline.updateEffectClip(clip.id, { start: newStart })
+                                }
+                                
+                                const onUp = () => {
+                                  window.removeEventListener('pointermove', onMove)
+                                  window.removeEventListener('pointerup', onUp)
+                                }
+                                
+                                window.addEventListener('pointermove', onMove)
+                                window.addEventListener('pointerup', onUp)
+                              }}
+                            >
+                              <span className="font-semibold capitalize truncate select-none">✨ {clip.effectType}</span>
+                              {/* Resize Handle */}
+                              <div
+                                className="absolute right-0 top-0 h-full w-3 cursor-col-resize bg-white/15 z-10 hover:bg-white/30 transition-colors"
+                                onPointerDown={(e) => {
+                                  e.stopPropagation()
+                                  const rect = e.currentTarget.parentElement?.parentElement?.getBoundingClientRect()
+                                  if (!rect) return
+                                  const startX = e.clientX
+                                  const baseDuration = clip.duration
+                                  
+                                  const onMove = (ev: PointerEvent) => {
+                                    const pxPerMs = rect.width / safeDuration
+                                    const deltaMs = (ev.clientX - startX) / pxPerMs
+                                    const newDuration = Math.max(100, baseDuration + deltaMs)
+                                    timeline.updateEffectClip(clip.id, { duration: newDuration })
+                                  }
+                                  
+                                  const onUp = () => {
+                                    window.removeEventListener('pointermove', onMove)
+                                    window.removeEventListener('pointerup', onUp)
+                                  }
+                                  
+                                  window.addEventListener('pointermove', onMove)
+                                  window.addEventListener('pointerup', onUp)
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })
+                  }
                 </div>
               )
             })}
