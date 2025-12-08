@@ -682,9 +682,9 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         }
 
         if (g) {
-          // Check which mask type is active
-          const maskCenterClip = templateClips.find(c => c.layerId === id && c.template === 'mask_center')
-          const maskTopClip = templateClips.find(c => c.layerId === id && c.template === 'mask_top')
+          // Check which mask type is active (include both IN and OUT versions)
+          const maskCenterClip = templateClips.find(c => c.layerId === id && (c.template === 'mask_center' || c.template === 'mask_center_out'))
+          const maskTopClip = templateClips.find(c => c.layerId === id && (c.template === 'mask_top' || c.template === 'mask_top_out'))
           const activeClip = maskCenterClip || maskTopClip
           const isMaskTop = !!maskTopClip
           
@@ -714,7 +714,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             mask.pivot.set(0, -maskHeight / 2)
             
             // Position at top edge of shape (accounting for pivot offset)
-            const offsetAmount = (layerHeight / 2) * state.scale
+            // For diagonal angles, offset more to ensure mask edge is outside the corner
+            const offsetAmount = (layerHeight / 2) * state.scale * rotationFactor
             // Calculate offset in rotated direction
             const offsetX = Math.sin(angleRad) * offsetAmount
             const offsetY = -Math.cos(angleRad) * offsetAmount

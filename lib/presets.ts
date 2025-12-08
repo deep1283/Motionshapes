@@ -4,7 +4,7 @@ export type TemplateId =
   | 'roll' | 'jump' | 'pop' | 'path' | 'shake' | 'pulse' | 'spin' | 'counter' | 'pan_zoom'
   | 'fade_in' | 'slide_in' | 'grow_in' | 'shrink_in' | 'spin_in' | 'twist_in' | 'move_scale_in'
   | 'fade_out' | 'slide_out' | 'grow_out' | 'shrink_out' | 'spin_out' | 'twist_out' | 'move_scale_out'
-  | 'mask_center' | 'mask_top'
+  | 'mask_center' | 'mask_top' | 'mask_center_out' | 'mask_top_out'
 
 export interface PresetResult {
   position?: TimelineKeyframe<Vec2>[]
@@ -545,6 +545,32 @@ const maskTopPreset = (duration: number = 1000): PresetResult => ({
   ],
 })
 
+// Mask Center Out: disappears into center
+const maskCenterOutPreset = (duration: number = 1000): PresetResult => ({
+  duration,
+  position: [],
+  scale: [],
+  rotation: [],
+  opacity: [],
+  maskScale: [
+    { time: 0, value: 1, easing: 'linear' },
+    { time: duration, value: 0, easing: 'linear' },
+  ],
+})
+
+// Mask Top Out: disappears into top edge
+const maskTopOutPreset = (duration: number = 1000): PresetResult => ({
+  duration,
+  position: [],
+  scale: [],
+  rotation: [],
+  opacity: [],
+  maskScale: [
+    { time: 0, value: 1, easing: 'linear' },
+    { time: duration, value: 0, easing: 'linear' },
+  ],
+})
+
 export const PRESET_BUILDERS = {
   roll: rollPreset,
   jump: jumpPreset,
@@ -554,6 +580,8 @@ export const PRESET_BUILDERS = {
   spin: spinPreset,
   mask_center: maskCenterPreset,
   mask_top: maskTopPreset,
+  mask_center_out: maskCenterOutPreset,
+  mask_top_out: maskTopOutPreset,
   // Animations
   fade_in: fadeInPreset,
   slide_in: slideInPreset,
