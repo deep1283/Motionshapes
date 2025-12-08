@@ -30,6 +30,7 @@ type ShapeKind =
   | 'comment'
   | 'share'
   | 'cursor'
+  | 'counter'
 
 interface Layer {
   id: string
@@ -51,6 +52,11 @@ interface Layer {
   fontFamily?: string     // Font family name (e.g. "Inter")
   fontSize?: number       // Font size in pixels
   fontWeight?: number     // Font weight (400, 500, 600, 700)
+  // Counter properties
+  isCounter?: boolean     // Whether this is a counter layer
+  counterStart?: number   // Starting number
+  counterEnd?: number     // Ending number
+  counterPrefix?: string  // Currency prefix (e.g. "$")
 }
 
 export default function DashboardPage() {
@@ -635,6 +641,7 @@ function DashboardContent() {
     comment: { width: 100, height: 100 },
     share: { width: 100, height: 100 },
     cursor: { width: 100, height: 100 },
+    counter: { width: 200, height: 60 },
   }
 
   const handleAddShape = (shapeKind: ShapeKind = 'circle') => {
@@ -806,6 +813,46 @@ function DashboardContent() {
     setTemplateVersion((v) => v + 1)
   }
 
+  const handleAddCounter = () => {
+    const newLayer: Layer = {
+      id: crypto.randomUUID(),
+      type: 'text',
+      shapeKind: 'counter',
+      x: 0.5,
+      y: 0.5,
+      width: 200,
+      height: 60,
+      scale: 1,
+      fillColor: 0xffffff,
+      rotation: 0,
+      text: '0',
+      fontFamily: 'Inter',
+      fontSize: 72,
+      fontWeight: 700,
+      // Counter specific
+      isCounter: true,
+      counterStart: 0,
+      counterEnd: 100,
+      counterPrefix: '',
+    }
+
+    setLayers((prev) => [...prev, newLayer])
+    setSelectedLayerId(newLayer.id)
+    pushSnapshot()
+    // Create track with visibility bar - counter animation is driven by this bar's duration
+    timeline.ensureTrack(newLayer.id, {
+      position: { x: newLayer.x, y: newLayer.y },
+      scale: newLayer.scale,
+      rotation: 0,
+      opacity: 1,
+    })
+    // No addTemplateClip - counter animation uses the visibility bar duration directly
+    lastLayerBaseRef.current[newLayer.id] = { x: newLayer.x, y: newLayer.y, scale: newLayer.scale }
+    setLayerOrder((prev) => [...prev, newLayer.id])
+    setSelectedTemplate('')
+    setTemplateVersion((v) => v + 1)
+  }
+
   const handleUpdateLayerPosition = (id: string, x: number, y: number) => {
     const nx = Math.max(0, Math.min(1, x))
     const ny = Math.max(0, Math.min(1, y))
@@ -896,6 +943,36 @@ function DashboardContent() {
       prev.map((layer) =>
         layer.id === id
           ? { ...layer, fontFamily }
+          : layer
+      )
+    )
+  }
+
+  const handleUpdateLayerCounterStart = (id: string, counterStart: number) => {
+    setLayers((prev) =>
+      prev.map((layer) =>
+        layer.id === id
+          ? { ...layer, counterStart }
+          : layer
+      )
+    )
+  }
+
+  const handleUpdateLayerCounterEnd = (id: string, counterEnd: number) => {
+    setLayers((prev) =>
+      prev.map((layer) =>
+        layer.id === id
+          ? { ...layer, counterEnd }
+          : layer
+      )
+    )
+  }
+
+  const handleUpdateLayerCounterPrefix = (id: string, counterPrefix: string) => {
+    setLayers((prev) =>
+      prev.map((layer) =>
+        layer.id === id
+          ? { ...layer, counterPrefix }
           : layer
       )
     )
@@ -1360,6 +1437,7 @@ function DashboardContent() {
         onAddShape={handleAddShape}
         onAddSvg={handleAddSvg}
         onAddText={handleAddText}
+        onAddCounter={handleAddCounter}
         onImportImage={handleImportImage}
         onStartDrawPath={handleStartDrawPath}
         onStartDrawLine={handleStartDrawLine}
@@ -1410,6 +1488,9 @@ function DashboardContent() {
         onUpdateLayerFontSize={handleUpdateLayerFontSize}
         onUpdateLayerColor={handleUpdateLayerColor}
         onUpdateLayerFontFamily={handleUpdateLayerFontFamily}
+        onUpdateCounterStart={handleUpdateLayerCounterStart}
+        onUpdateCounterEnd={handleUpdateLayerCounterEnd}
+        onUpdateCounterPrefix={handleUpdateLayerCounterPrefix}
         selectedClipDuration={selectedClipDuration}
         onClipDurationChange={handleClipDurationChange}
         onClipClick={(clip) => {
@@ -1429,6 +1510,7 @@ function DashboardContent() {
             timeline.addClickMarker(layerId)
           }
         }}
+        onSelectLayer={handleSelectLayer}
       >
         <MotionCanvas 
           template={selectedTemplate} 

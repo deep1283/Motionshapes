@@ -45,6 +45,7 @@ import { TemplatePreview } from '@/components/TemplatePreview'
 import TimelinePanel from '@/components/TimelinePanel'
 import FontPicker from '@/components/FontPicker'
 import { ExploreShapesModal } from '@/components/ExploreShapesModal'
+import { useTimeline, useTimelineActions } from '@/lib/timeline-store'
 
 export type BackgroundSettings = {
   mode: 'solid' | 'gradient'
@@ -74,6 +75,7 @@ type ShapeKind =
   | 'comment'
   | 'share'
   | 'cursor'
+  | 'counter'
 
 interface DashboardLayoutProps {
   children: React.ReactNode
@@ -100,6 +102,11 @@ interface DashboardLayoutProps {
     fontSize?: number;
     fillColor?: number;
     fontFamily?: string;
+    // Counter properties
+    isCounter?: boolean;
+    counterStart?: number;
+    counterEnd?: number;
+    counterPrefix?: string;
   }>
   layerOrder?: string[]
   onReorderLayers?: (order: string[]) => void
@@ -166,6 +173,12 @@ interface DashboardLayoutProps {
   onUpdateLayerColor?: (id: string, color: number) => void
   onUpdateLayerFontFamily?: (id: string, fontFamily: string) => void
   onRedo?: () => void
+  onSelectLayer?: (layerId: string) => void
+  // Counter
+  onAddCounter?: () => void
+  onUpdateCounterStart?: (id: string, value: number) => void
+  onUpdateCounterEnd?: (id: string, value: number) => void
+  onUpdateCounterPrefix?: (id: string, value: string) => void
 }
 
 export default function DashboardLayout({ 
@@ -241,9 +254,17 @@ export default function DashboardLayout({
   onUpdateLayerFontSize,
   onUpdateLayerColor,
   onUpdateLayerFontFamily,
+  onSelectLayer,
+  // Counter
+  onAddCounter,
+  onUpdateCounterStart,
+  onUpdateCounterEnd,
+  onUpdateCounterPrefix,
 }: DashboardLayoutProps) {
   const router = useRouter()
   const supabase = createClient()
+  const templateClips = useTimeline((s) => s.templateClips)
+  const timeline = useTimelineActions()
   const [showBackgroundPanel, setShowBackgroundPanel] = useState(false)
   const [activeTab, setActiveTab] = useState<'templates' | 'shapes' | 'effects' | 'animations'>('shapes')
   const [animationType, setAnimationType] = useState<'in' | 'out' | 'custom'>('in')
@@ -1224,6 +1245,20 @@ export default function DashboardLayout({
                       </div>
                       <span className="text-[11px] font-medium text-neutral-300">Click</span>
                     </button>
+                    <button
+                      onClick={() => {
+                        onAddCounter?.()
+                      }}
+                      className={cn(
+                        "flex flex-col items-center justify-center gap-2 p-4 rounded-lg border transition-all",
+                        "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/50 cursor-pointer"
+                      )}
+                    >
+                      <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center text-[10px] font-bold text-purple-400">
+                        123
+                      </div>
+                      <span className="text-[11px] font-medium text-neutral-300">Counter</span>
+                    </button>
                   </>
                 )}
               </div>
@@ -1714,8 +1749,8 @@ export default function DashboardLayout({
             </div>
           )}
 
-          {/* Text Controls - Only show for text layers */}
-          {selectedLayerId && layers.find(l => l.id === selectedLayerId)?.type === 'text' && (
+          {/* Text Controls - Only show for regular text layers (NOT counters) */}
+          {selectedLayerId && layers.find(l => l.id === selectedLayerId)?.type === 'text' && !layers.find(l => l.id === selectedLayerId)?.isCounter && (
             <div className="mb-6 space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-neutral-400">Text</span>
@@ -1784,25 +1819,15 @@ export default function DashboardLayout({
                       const c = layers.find(l => l.id === selectedLayerId)?.fillColor ?? 0xffffff
                       return c.toString(16).toUpperCase().padStart(6, '0')
                     })()}
-                    key={selectedLayerId}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && selectedLayerId) {
-                        const hex = e.currentTarget.value.replace('#', '')
-                        const numColor = parseInt(hex, 16)
-                        if (!isNaN(numColor)) {
-                          onUpdateLayerColor?.(selectedLayerId, numColor)
-                        }
-                      }
-                    }}
-                    onBlur={(e) => {
+                    key={`color-${selectedLayerId}`}
+                    onChange={(e) => {
                       if (!selectedLayerId) return
-                      const hex = e.currentTarget.value.replace('#', '')
-                      const numColor = parseInt(hex, 16)
-                      if (!isNaN(numColor)) {
+                      const val = e.target.value.replace(/[^0-9A-Fa-f]/g, '')
+                      if (val.length === 6) {
+                        const numColor = parseInt(val, 16)
                         onUpdateLayerColor?.(selectedLayerId, numColor)
                       }
                     }}
-                    placeholder="FFFFFF"
                     maxLength={6}
                     className="flex-1 min-w-0 rounded bg-neutral-800 px-3 py-2.5 text-sm text-white font-mono focus:outline-none focus:ring-1 focus:ring-purple-500"
                   />
@@ -1819,6 +1844,84 @@ export default function DashboardLayout({
                   />
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Counter Controls - Only show for counter layers */}
+          {selectedLayerId && layers.find(l => l.id === selectedLayerId)?.isCounter && (
+            <div className="mb-6 space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-neutral-400">Counter</span>
+              </div>
+              
+              {/* Start Value */}
+              <div className="space-y-2">
+                <span className="text-[10px] uppercase text-neutral-500">Start Value</span>
+                <input
+                  type="number"
+                  value={layers.find(l => l.id === selectedLayerId)?.counterStart ?? 0}
+                  onChange={(e) => {
+                    if (!selectedLayerId) return
+                    onUpdateCounterStart?.(selectedLayerId, Number(e.target.value))
+                  }}
+                  className="w-full rounded bg-neutral-800 px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-purple-500"
+                />
+              </div>
+
+              {/* End Value */}
+              <div className="space-y-2">
+                <span className="text-[10px] uppercase text-neutral-500">End Value</span>
+                <input
+                  type="number"
+                  value={layers.find(l => l.id === selectedLayerId)?.counterEnd ?? 100}
+                  onChange={(e) => {
+                    if (!selectedLayerId) return
+                    onUpdateCounterEnd?.(selectedLayerId, Number(e.target.value))
+                  }}
+                  className="w-full rounded bg-neutral-800 px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-purple-500"
+                />
+              </div>
+
+              {/* Currency Prefix */}
+              <div className="space-y-2">
+                <span className="text-[10px] uppercase text-neutral-500">Currency Prefix</span>
+                <select
+                  value={layers.find(l => l.id === selectedLayerId)?.counterPrefix ?? ''}
+                  onChange={(e) => {
+                    if (!selectedLayerId) return
+                    onUpdateCounterPrefix?.(selectedLayerId, e.target.value)
+                  }}
+                  className="w-full rounded bg-neutral-800 px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-purple-500"
+                >
+                  <option value="">None</option>
+                  <option value="$">$ (USD)</option>
+                  <option value="€">€ (EUR)</option>
+                  <option value="£">£ (GBP)</option>
+                  <option value="¥">¥ (JPY/CNY)</option>
+                  <option value="₹">₹ (INR)</option>
+                  <option value="₩">₩ (KRW)</option>
+                </select>
+              </div>
+
+              {/* Font Size */}
+              <div className="space-y-2">
+                <span className="text-[10px] uppercase text-neutral-500">Font Size</span>
+                <input
+                  type="number"
+                  min="12"
+                  max="500"
+                  value={layers.find(l => l.id === selectedLayerId)?.fontSize ?? 72}
+                  onChange={(e) => {
+                    if (!selectedLayerId) return
+                    onUpdateLayerFontSize?.(selectedLayerId, Number(e.target.value))
+                  }}
+                  className="w-full rounded bg-neutral-800 px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-purple-500"
+                />
+              </div>
+
+              <p className="text-[10px] text-neutral-500 italic">
+                Drag the purple bar to adjust duration. Counter will count {(layers.find(l => l.id === selectedLayerId)?.counterStart ?? 0) > (layers.find(l => l.id === selectedLayerId)?.counterEnd ?? 100) ? 'down' : 'up'}.
+              </p>
             </div>
           )}
 
@@ -2130,6 +2233,99 @@ export default function DashboardLayout({
                 </div>
               </>
             )}
+            {selectedTemplate === 'counter' && (
+              <>
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-semibold text-neutral-200">Start Value</span>
+                  </div>
+                  <input
+                    type="number"
+                    defaultValue={0}
+                    className="w-full bg-neutral-800 border border-white/10 rounded-md px-2 py-1 text-[11px] text-white"
+                    onChange={(e) => {
+                      const clip = templateClips.find(c => c.id === selectedClipId)
+                      if (clip && selectedLayerId) {
+                        timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
+                          parameters: { ...clip.parameters, counterStart: Number(e.target.value) }
+                        })
+                      }
+                    }}
+                  />
+                </div>
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-semibold text-neutral-200">End Value</span>
+                  </div>
+                  <input
+                    type="number"
+                    defaultValue={100}
+                    className="w-full bg-neutral-800 border border-white/10 rounded-md px-2 py-1 text-[11px] text-white"
+                    onChange={(e) => {
+                      const clip = templateClips.find(c => c.id === selectedClipId)
+                      if (clip && selectedLayerId) {
+                        timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
+                          parameters: { ...clip.parameters, counterEnd: Number(e.target.value) }
+                        })
+                      }
+                    }}
+                  />
+                </div>
+                <div className="mb-4 flex gap-2">
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-semibold text-neutral-200">Prefix</span>
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="$"
+                      className="w-full bg-neutral-800 border border-white/10 rounded-md px-2 py-1 text-[11px] text-white"
+                      onChange={(e) => {
+                        const clip = templateClips.find(c => c.id === selectedClipId)
+                        if (clip && selectedLayerId) {
+                          timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
+                            parameters: { ...clip.parameters, counterPrefix: e.target.value }
+                          })
+                        }
+                      }}
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-semibold text-neutral-200">Suffix</span>
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="+"
+                      className="w-full bg-neutral-800 border border-white/10 rounded-md px-2 py-1 text-[11px] text-white"
+                      onChange={(e) => {
+                        const clip = templateClips.find(c => c.id === selectedClipId)
+                        if (clip && selectedLayerId) {
+                          timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
+                            parameters: { ...clip.parameters, counterSuffix: e.target.value }
+                          })
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-semibold text-neutral-200">Duration</span>
+                    <span className="text-[10px] text-neutral-400">{((selectedClipDuration ?? 2000) / 1000).toFixed(2)}s</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={500}
+                    max={10000}
+                    step={100}
+                    value={selectedClipDuration ?? 2000}
+                    onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
+                    className="w-full accent-violet-500"
+                  />
+                </div>
+              </>
+            )}
             
             {/* Effect Controls */}
             {activeTab === 'effects' && activeEffectId && (
@@ -2388,6 +2584,7 @@ export default function DashboardLayout({
           onCancelPath={onCancelPath}
           pathPointCount={pathPointCount}
           onClipClick={onClipClick}
+          onSelectLayer={onSelectLayer}
         />
       </div>
       
