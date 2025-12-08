@@ -35,6 +35,7 @@ export interface LayerTracks {
   scale?: TimelineKeyframe<number>[]
   rotation?: TimelineKeyframe<number>[]
   opacity?: TimelineKeyframe<number>[]
+  maskScale?: TimelineKeyframe<number>[] // Controls the scale of the circle mask
   paths?: PathClip[]
 }
 
@@ -43,6 +44,7 @@ export interface SampledLayerState {
   scale: number
   rotation: number
   opacity: number
+  maskScale?: number // If defined, apply a circle mask scaled by this value
   activePathId?: string
 }
 
@@ -51,6 +53,7 @@ export const DEFAULT_LAYER_STATE: SampledLayerState = {
   scale: 1,
   rotation: 0,
   opacity: 1,
+  maskScale: undefined,
 }
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
@@ -174,6 +177,7 @@ export const sampleLayerTracks = (
   const scale = sampleNumberTrack(layer.scale, time, defaults.scale)
   const rotation = sampleNumberTrack(layer.rotation, time, defaults.rotation)
   const opacity = sampleNumberTrack(layer.opacity, time, defaults.opacity)
+  const maskScale = sampleNumberTrack(layer.maskScale, time, defaults.maskScale ?? 0) // Default to 0 if undefined? No, fallback handles it.
 
   let pathResult: Vec2 | null = null
   let activePathId: string | undefined
@@ -193,6 +197,7 @@ export const sampleLayerTracks = (
     scale,
     rotation,
     opacity,
+    maskScale: layer.maskScale ? maskScale : undefined, // Only set if track exists
     activePathId,
   }
 }

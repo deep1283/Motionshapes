@@ -1588,6 +1588,35 @@ function DashboardContent() {
           timeline.setCurrentTime(lastEnd)
           pushSnapshot()
         }}
+        onAddMaskCenter={(layerId) => {
+          console.log('[PAGE] onAddMaskCenter called for layer:', layerId)
+          const layer = layers.find(l => l.id === layerId)
+          if (!layer) return
+          
+          const now = timeline.getState().currentTime
+          const duration = 1000 // 1 second
+          
+          const layerClips = templateClips.filter(c => c.layerId === layerId)
+          const lastEnd = layerClips.length
+            ? Math.max(...layerClips.map(c => (c.start ?? 0) + (c.duration ?? 0)))
+            : now
+            
+          const clipId = timeline.addTemplateClip(
+            layerId,
+            'mask_center',
+            lastEnd,
+            duration,
+            {},
+            layer.scale ?? 1,
+            { position: { x: layer.x, y: layer.y }, scale: layer.scale ?? 1 }
+          )
+          
+          setSelectedTemplate('mask_center')
+          setSelectedClipId(clipId)
+          timeline.setPlaying(false)
+          timeline.setCurrentTime(lastEnd)
+          pushSnapshot()
+        }}
         onSelectLayer={handleSelectLayer}
       >
         <MotionCanvas 
