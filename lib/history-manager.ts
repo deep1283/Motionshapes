@@ -20,6 +20,7 @@ export type ShapeKind =
   | 'comment'
   | 'share'
   | 'cursor'
+  | 'counter'
 
 // Layer type (from dashboard)
 export interface Layer {
@@ -53,6 +54,7 @@ export type TemplateId =
   | 'shake'
   | 'pulse'
   | 'spin'
+  | 'counter'
   | 'fade_in'
   | 'fade_out'
   | 'slide_in'

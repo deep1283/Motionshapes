@@ -29,6 +29,8 @@ export interface PathClip {
 
 export interface LayerTracks {
   layerId: string
+  startTime?: number // ms - The "birth" time of the layer
+  duration?: number // ms - The lifespan of the layer
   position?: TimelineKeyframe<Vec2>[]
   scale?: TimelineKeyframe<number>[]
   rotation?: TimelineKeyframe<number>[]

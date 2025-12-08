@@ -20,7 +20,7 @@ interface MotionCanvasProps {
   layers?: Array<{
     id: string
     type?: 'shape' | 'image' | 'svg' | 'text'
-    shapeKind: 'circle' | 'square' | 'heart' | 'star' | 'triangle' | 'pill' | 'like' | 'comment' | 'share' | 'cursor'
+    shapeKind: 'circle' | 'square' | 'heart' | 'star' | 'triangle' | 'pill' | 'like' | 'comment' | 'share' | 'cursor' | 'counter'
     x: number
     y: number
     width: number
@@ -35,6 +35,11 @@ interface MotionCanvasProps {
     fontFamily?: string
     fontSize?: number
     fontWeight?: number
+    // Counter properties
+    isCounter?: boolean
+    counterStart?: number
+    counterEnd?: number
+    counterPrefix?: string
     effects?: Array<{
       id: string
       type: string
@@ -283,6 +288,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   const timelineTracks = useTimeline((s) => s.tracks)
   const playhead = useTimeline((s) => s.currentTime)
   const clickMarkers = useTimeline((s) => s.clickMarkers)
+  const templateClips = useTimeline((s) => s.templateClips)
   const sampledTimeline = useMemo(() => sampleTimeline(timelineTracks, playhead), [timelineTracks, playhead])
   const timelineActions = useTimelineActions()
   
@@ -322,8 +328,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     
     // Check if playhead crossed any click markers
     clickMarkers.forEach((marker) => {
-      const crossed = (prevTime <= marker.time && currentTime >= marker.time) ||
-                      (prevTime >= marker.time && currentTime <= marker.time && currentTime < 100) // Reset case
+      // Only trigger when playhead moves FORWARD across the marker time
+      const crossed = prevTime < marker.time && currentTime >= marker.time
       
       if (crossed && !triggeredMarkersRef.current.has(marker.id)) {
         triggeredMarkersRef.current.add(marker.id)
@@ -389,8 +395,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       }
     })
     
-    // Reset all markers when playhead goes back to start
-    if (currentTime < 50 && prevTime > 100) {
+    // Reset all markers when playhead is at start or jumps back to start
+    if (currentTime < 50) {
       triggeredMarkersRef.current.clear()
     }
   }, [playhead, clickMarkers, renderLayers, canvasBounds])
@@ -603,11 +609,25 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       if (g && Number.isFinite(canvasPosX)) g.x = canvasPosX
       if (g && Number.isFinite(canvasPosY)) g.y = canvasPosY
       if (g && g.scale) g.scale.set(finalScale)
+      
+      // Calculate strict visibility based on timeline clips
+      // If playhead < startTime or playhead > startTime + duration, alpha = 0
+      const trackStartTime = track?.startTime ?? 0
+      const trackDuration = track?.duration ?? 2000
+      const isVisibleInTime = playhead >= trackStartTime && playhead <= trackStartTime + trackDuration
+      
+      let finalOpacity = state.opacity
+      if (!isVisibleInTime) {
+        finalOpacity = 0
+      }
+      
+      g.alpha = hasOpacityAnim ? finalOpacity : (isVisibleInTime ? 1 : 0)
+
+      // Sync rotation
       // For rotation: layer.rotation is the base, animation rotation is additive
       const baseRotationRad = ((layerData?.rotation ?? 0) * Math.PI) / 180
       const animRotation = hasRotationAnim ? state.rotation : 0
       if (g) g.rotation = baseRotationRad + animRotation
-      if (g) g.alpha = hasOpacityAnim ? state.opacity : 1 // Default opacity is 1
       
       // Apply filters (Effects + Off-canvas Blur)
       if (g) {
@@ -1520,7 +1540,32 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             wordWrapWidth: textBoxWidth,
           })
           
-          const text = new PIXI.Text({ text: layer.text, style: textStyle })
+          // For counter layers, compute the initial display value based on current playhead
+          let initialText = layer.text
+          if (layer.isCounter) {
+            const track = timelineTracks.find(t => t.layerId === layer.id)
+            const startTime = track?.startTime ?? 0
+            const duration = track?.duration ?? 2000
+            const startValue = layer.counterStart ?? 0
+            const endValue = layer.counterEnd ?? 100
+            const prefix = layer.counterPrefix ?? ''
+            
+            if (playhead >= startTime && playhead <= startTime + duration) {
+              const rawProgress = (playhead - startTime) / duration
+              const k = 4.5
+              const t = rawProgress * 3.6
+              const easedProgress = 1 - (1 + k * t / 5) * Math.exp(-k * t / 2)
+              const clampedProgress = Math.min(1, Math.max(0, easedProgress))
+              const currentValue = startValue + (endValue - startValue) * clampedProgress
+              initialText = `${prefix}${Math.round(currentValue)}`
+            } else if (playhead < startTime) {
+              initialText = `${prefix}${startValue}`
+            } else {
+              initialText = `${prefix}${endValue}`
+            }
+          }
+          
+          const text = new PIXI.Text({ text: initialText, style: textStyle })
           text.anchor.set(0.5)
           container.addChild(text)
           
@@ -2150,11 +2195,71 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           if (textObj && 'text' in textObj) {
             let textChanged = false
             
-            // Update text content
-            if (layer.text !== undefined && textObj.text !== layer.text) {
-              textObj.text = layer.text
-              textChanged = true
-              needsRender = true
+            // Check if this is a counter layer (uses visibility bar for animation)
+            if (layer.isCounter) {
+              // Get track for this layer to find visibility bar timing
+              // Duration is controlled by resizing the purple bar
+              const track = timelineTracks.find(t => t.layerId === layer.id)
+              const startTime = track?.startTime ?? 0
+              const duration = track?.duration ?? 2000
+              
+              // Check if playhead is within the visibility bar
+              if (playhead >= startTime && playhead <= startTime + duration) {
+                // Calculate progress within the visibility bar (0 to 1)
+                const rawProgress = (playhead - startTime) / duration
+                
+                // Spring physics easing (like React Bits CountUp / Framer Motion useSpring)
+                // Based on: damping = 20 + 40 * (1 / duration), stiffness = 100 * (1 / duration)
+                // This creates a critically damped spring that settles smoothly without bounce
+                // Approximated using exponential decay: 1 - (1 + k*t) * e^(-k*t)
+                const k = 4.5 // decay factor (lower = slower settle, was 5)
+                const t = rawProgress * 3.6 // scale time for spring response (was 4)
+                const easedProgress = 1 - (1 + k * t / 5) * Math.exp(-k * t / 2)
+                
+                // Clamp to 0-1 range
+                const clampedProgress = Math.min(1, Math.max(0, easedProgress))
+                
+                // Get counter parameters from layer
+                const startValue = layer.counterStart ?? 0
+                const endValue = layer.counterEnd ?? 100
+                const prefix = layer.counterPrefix ?? ''
+                
+                // Calculate current value (handles count up AND count down)
+                const currentValue = startValue + (endValue - startValue) * clampedProgress
+                
+                // Format the number (integers)
+                const formattedValue = Math.round(currentValue).toString()
+                const counterText = `${prefix}${formattedValue}`
+                
+                if (textObj.text !== counterText) {
+                  textObj.text = counterText
+                  textChanged = true
+                  needsRender = true
+                }
+              } else if (playhead < startTime) {
+                // Before animation: show start value
+                const counterText = `${layer.counterPrefix ?? ''}${layer.counterStart ?? 0}`
+                if (textObj.text !== counterText) {
+                  textObj.text = counterText
+                  textChanged = true
+                  needsRender = true
+                }
+              } else {
+                // After animation: show end value
+                const counterText = `${layer.counterPrefix ?? ''}${layer.counterEnd ?? 100}`
+                if (textObj.text !== counterText) {
+                  textObj.text = counterText
+                  textChanged = true
+                  needsRender = true
+                }
+              }
+            } else {
+              // Regular text layer - update text content
+              if (layer.text !== undefined && textObj.text !== layer.text) {
+                textObj.text = layer.text
+                textChanged = true
+                needsRender = true
+              }
             }
             // Update font size
             if (layer.fontSize !== undefined && textObj.style && textObj.style.fontSize !== layer.fontSize) {
@@ -2432,7 +2537,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     if (needsRender) {
       appRef.current?.render()
     }
-  }, [renderLayers, isReady, layers])
+  }, [renderLayers, isReady, layers, playhead, timelineTracks])
 
   return (
     <div className="relative h-full w-full overflow-visible rounded-lg" onPointerDown={handleCanvasPointerDown}>
