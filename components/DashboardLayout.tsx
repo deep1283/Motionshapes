@@ -1711,12 +1711,43 @@ export default function DashboardLayout({
                {/* Canvas Label */}
                <div
                  data-canvas-label
-                 className="absolute -top-7 left-0 flex items-center gap-2 cursor-pointer select-none pointer-events-auto z-20"
+                 className="absolute -top-10 left-0 flex flex-col cursor-pointer select-none pointer-events-auto z-20"
                  onClick={handleLabelClick}
                  onPointerDown={handleLabelPointerDown}
                >
-                 <Play className={`h-3.5 w-3.5 ${isCanvasSelected ? 'text-purple-400' : 'text-neutral-500'}`} />
-                 <span className={`text-sm font-medium ${isCanvasSelected ? 'text-purple-300' : 'text-neutral-500'}`}>Canvas</span>
+                 <div className="flex items-center gap-2">
+                   <Play className={`h-3.5 w-3.5 ${isCanvasSelected ? 'text-purple-400' : 'text-neutral-500'}`} />
+                   <span className={`text-sm font-medium ${isCanvasSelected ? 'text-purple-300' : 'text-neutral-500'}`}>Canvas</span>
+                 </div>
+                 <span className="text-[10px] text-neutral-500 ml-5">{canvasWidth}×{canvasHeight}</span>
+               </div>
+               
+               {/* Aspect Ratio Presets - Right side */}
+               <div className="absolute -top-7 right-0 flex items-center gap-1 select-none pointer-events-auto z-20">
+                 {[
+                   { label: '9:16', width: 270, height: 480 },
+                   { label: '16:9', width: 640, height: 360 },
+                   { label: '4:3', width: 533, height: 400 },
+                   { label: '1:1', width: 450, height: 450 },
+                 ].map((preset) => (
+                   <button
+                     key={preset.label}
+                     onClick={() => {
+                       setCanvasWidth(preset.width)
+                       setCanvasHeight(preset.height)
+                       localStorage.setItem('canvasWidth', preset.width.toString())
+                       localStorage.setItem('canvasHeight', preset.height.toString())
+                     }}
+                     className={cn(
+                       "px-2 py-0.5 text-[10px] font-medium rounded transition-all",
+                       canvasWidth === preset.width && canvasHeight === preset.height
+                         ? "bg-purple-500/30 text-purple-300 border border-purple-500/50"
+                         : "bg-white/5 text-neutral-400 border border-white/10 hover:bg-white/10 hover:text-neutral-200"
+                     )}
+                   >
+                     {preset.label}
+                   </button>
+                 ))}
                </div>
 
                {/* Viewport Frame - Visual border only, clicks pass through */}
