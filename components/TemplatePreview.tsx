@@ -215,6 +215,50 @@ export const TemplatePreview: React.FC<TemplatePreviewProps> = ({
             transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 0.5, ease: "backIn" }}
           />
         )
+      // Mask Animations (IN)
+      case 'mask_center':
+        return (
+          <div className="relative h-8 w-8 overflow-hidden rounded-md bg-neutral-800 flex items-center justify-center">
+             <motion.div
+                className="w-full bg-neutral-400 absolute left-0 right-0"
+                initial={{ height: "0%" }}
+                animate={{ height: ["0%", "100%"] }}
+                transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 0.5, ease: "easeOut" }}
+             />
+          </div>
+        )
+      case 'mask_top':
+        return (
+          <div className="relative h-8 w-8 overflow-hidden rounded-md bg-neutral-800">
+             <motion.div
+                className="w-full bg-neutral-400 absolute top-0 left-0 right-0"
+                animate={{ height: ["0%", "100%"] }}
+                transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 0.5, ease: "easeOut" }}
+             />
+          </div>
+        )
+      // Mask Animations (OUT)
+      case 'mask_center_out':
+        return (
+          <div className="relative h-8 w-8 overflow-hidden rounded-md bg-neutral-800 flex items-center justify-center">
+             <motion.div
+                className="w-full bg-neutral-400 absolute left-0 right-0"
+                initial={{ height: "100%" }}
+                animate={{ height: ["100%", "0%"] }}
+                transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 0.5, ease: "easeIn" }}
+             />
+          </div>
+        )
+      case 'mask_top_out':
+        return (
+          <div className="relative h-8 w-8 overflow-hidden rounded-md bg-neutral-800">
+             <motion.div
+                className="w-full bg-neutral-400 absolute top-0 left-0 right-0"
+                animate={{ height: ["100%", "0%"] }}
+                transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 0.5, ease: "easeIn" }}
+             />
+          </div>
+        )
       default:
         return <div className="h-8 w-8 rounded-full bg-neutral-400" />
     }
