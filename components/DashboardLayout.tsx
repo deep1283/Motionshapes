@@ -1107,7 +1107,7 @@ export default function DashboardLayout({
                       : "text-neutral-400 hover:text-neutral-200 hover:bg-white/5"
                   )}
                 >
-                  Custom
+                  Other
                 </button>
               </div>
 
@@ -1174,6 +1174,22 @@ export default function DashboardLayout({
                       isSelected={selectedTemplate === 'move_scale_in'}
                       onClick={() => onSelectTemplate('move_scale_in')}
                     />
+
+                    <div className="col-span-full mb-1 mt-4">
+                      <h3 className="text-[11px] font-semibold text-neutral-300">Mask</h3>
+                    </div>
+                    <TemplatePreview
+                      id="mask_center"
+                      name="Mask Center"
+                      isSelected={false}
+                      onClick={() => selectedLayerId && onAddMaskCenter?.(selectedLayerId)}
+                    />
+                    <TemplatePreview
+                      id="mask_top"
+                      name="Mask Top"
+                      isSelected={false}
+                      onClick={() => selectedLayerId && onAddMaskTop?.(selectedLayerId)}
+                    />
                   </>
                 )}
                 {animationType === 'out' && (
@@ -1235,6 +1251,22 @@ export default function DashboardLayout({
                       isSelected={selectedTemplate === 'move_scale_out'}
                       onClick={() => onSelectTemplate('move_scale_out')}
                     />
+
+                    <div className="col-span-full mb-1 mt-4">
+                      <h3 className="text-[11px] font-semibold text-neutral-300">Mask</h3>
+                    </div>
+                    <TemplatePreview
+                      id="mask_center_out"
+                      name="Mask Center Out"
+                      isSelected={false}
+                      onClick={() => selectedLayerId && onAddMaskCenterOut?.(selectedLayerId)}
+                    />
+                    <TemplatePreview
+                      id="mask_top_out"
+                      name="Mask Top Out"
+                      isSelected={false}
+                      onClick={() => selectedLayerId && onAddMaskTopOut?.(selectedLayerId)}
+                    />
                   </>
                 )}
                 {animationType === 'custom' && (
@@ -1295,101 +1327,10 @@ export default function DashboardLayout({
                       </div>
                       <span className="text-[11px] font-medium text-neutral-300">Pan & Zoom</span>
                     </button>
-                    <button
-                      onClick={() => {
-                        if (!selectedLayerId) return
-                        onAddMaskCenter?.(selectedLayerId)
-                      }}
-                      disabled={!selectedLayerId}
-                      className={cn(
-                        "flex flex-col items-center justify-center gap-2 p-4 rounded-lg border transition-all",
-                        selectedLayerId
-                          ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/50 cursor-pointer"
-                          : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
-                      )}
-                    >
-                      <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 text-purple-400">
-                           <circle cx="12" cy="12" r="3" />
-                           <circle cx="12" cy="12" r="8" strokeDasharray="4 4" />
-                        </svg>
-                      </div>
-                      <span className="text-[11px] font-medium text-neutral-300">Mask Center</span>
-                    </button>
+
                     
-                    {/* Mask Top Button */}
-                    <button
-                      onClick={() => {
-                        if (selectedLayerId) {
-                          onAddMaskTop?.(selectedLayerId)
-                        }
-                      }}
-                      disabled={!selectedLayerId}
-                      className={cn(
-                        "flex flex-col items-center justify-center gap-2 p-4 rounded-lg border transition-all",
-                        selectedLayerId
-                          ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/50 cursor-pointer"
-                          : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
-                      )}
-                    >
-                      <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 text-purple-400">
-                           <path d="M12 4 L4 12 L20 12 Z" />
-                           <circle cx="12" cy="14" r="6" strokeDasharray="4 4" />
-                        </svg>
-                      </div>
-                      <span className="text-[11px] font-medium text-neutral-300">Mask Top</span>
-                    </button>
                     
-                    {/* Mask Center Out Button */}
-                    <button
-                      onClick={() => {
-                        if (selectedLayerId) {
-                          onAddMaskCenterOut?.(selectedLayerId)
-                        }
-                      }}
-                      disabled={!selectedLayerId}
-                      className={cn(
-                        "flex flex-col items-center justify-center gap-2 p-4 rounded-lg border transition-all",
-                        selectedLayerId
-                          ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/50 cursor-pointer"
-                          : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
-                      )}
-                    >
-                      <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 text-purple-400">
-                           <circle cx="12" cy="12" r="3" />
-                           <circle cx="12" cy="12" r="8" strokeDasharray="4 4" />
-                           <path d="M8 8 L16 16 M16 8 L8 16" strokeWidth="1.5" />
-                        </svg>
-                      </div>
-                      <span className="text-[11px] font-medium text-neutral-300">Mask Center Out</span>
-                    </button>
-                    
-                    {/* Mask Top Out Button */}
-                    <button
-                      onClick={() => {
-                        if (selectedLayerId) {
-                          onAddMaskTopOut?.(selectedLayerId)
-                        }
-                      }}
-                      disabled={!selectedLayerId}
-                      className={cn(
-                        "flex flex-col items-center justify-center gap-2 p-4 rounded-lg border transition-all",
-                        selectedLayerId
-                          ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/50 cursor-pointer"
-                          : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
-                      )}
-                    >
-                      <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 text-purple-400">
-                           <path d="M12 4 L4 12 L20 12 Z" />
-                           <circle cx="12" cy="14" r="6" strokeDasharray="4 4" />
-                           <path d="M8 14 L16 14" strokeWidth="1.5" />
-                        </svg>
-                      </div>
-                      <span className="text-[11px] font-medium text-neutral-300">Mask Top Out</span>
-                    </button>
+
                   </>
                 )}
               </div>
