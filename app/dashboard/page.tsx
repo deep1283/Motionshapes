@@ -748,6 +748,108 @@ function DashboardContent() {
     reader.readAsDataURL(file)
   }
 
+  const handleAIGenerateImage = async (prompt: string) => {
+    console.log('=== handleAIGenerateImage CALLED ===', prompt)
+    try {
+      const res = await fetch('/api/gemini/generate-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt })
+      })
+      
+      console.log('Fetch response status:', res.status)
+      
+      if (!res.ok) {
+        throw new Error(await res.text())
+      }
+      
+      const data = await res.json()
+      console.log('API response data:', { hasImageUrl: !!data.imageUrl, imageUrlLength: data.imageUrl?.length })
+      
+      if (data.imageUrl) {
+        // Create new layer with generated image
+        const newLayer: Layer = {
+          id: crypto.randomUUID(),
+          type: 'image',
+          shapeKind: 'circle', // Required placeholder
+          x: 0.5,
+          y: 0.5,
+          width: 300,
+          height: 300,
+          scale: 1, // Default scale like imported images
+          fillColor: 0xffffff,
+          rotation: 0,
+          imageUrl: data.imageUrl,
+        }
+        
+        console.log('Created newLayer:', { id: newLayer.id, type: newLayer.type, hasImageUrl: !!newLayer.imageUrl })
+        
+        setLayers((prev) => {
+          console.log('setLayers called, prev length:', prev.length)
+          return [...prev, newLayer]
+        })
+        setLayerOrder((prev) => [...prev, newLayer.id])
+        setSelectedLayerId(newLayer.id)
+        
+        const track = timeline.ensureTrack(newLayer.id, {
+          position: { x: newLayer.x, y: newLayer.y },
+          scale: newLayer.scale,
+          rotation: 0,
+          opacity: 1,
+        })
+        
+        console.log('Track created:', track)
+        
+        // Jump playhead to the start of the new clip so it's visible
+        if (track && typeof track.startTime === 'number') {
+          console.log('Setting playhead to:', track.startTime)
+          timeline.setCurrentTime(track.startTime)
+        }
+        
+        // Trigger canvas re-render
+        setTemplateVersion((v) => v + 1)
+      }
+    } catch (error) {
+      console.error('AI Generation failed', error)
+      alert('Failed to generate image. Please try again.')
+    }
+  }
+
+  const handleAIEditImage = async (layerId: string, prompt: string) => {
+    const layer = layers.find(l => l.id === layerId)
+    if (!layer || !layer.imageUrl) return
+
+    try {
+      const res = await fetch('/api/gemini/generate-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          prompt,
+          baseImage: layer.imageUrl 
+        })
+      })
+      
+      if (!res.ok) {
+        throw new Error(await res.text())
+      }
+      
+      const data = await res.json()
+      if (data.imageUrl) {
+        // Update layer with new image
+        setLayers((prev) =>
+          prev.map((l) =>
+            l.id === layerId
+              ? { ...l, imageUrl: data.imageUrl }
+              : l
+          )
+        )
+      }
+    } catch (error) {
+      console.error('AI Edit failed', error)
+      alert('Failed to edit image. Please try again.')
+    }
+  }
+
   // Handle adding SVG from Iconify
   const handleAddSvg = (iconName: string, svgUrl: string) => {
     // Request larger SVG (256px) with white color for crisp rendering on dark background
@@ -1521,6 +1623,8 @@ function DashboardContent() {
         selectedLayerScale={layers.find(l => l.id === selectedLayerId)?.scale ?? 1}
         onSelectedLayerScaleChange={handleScaleChange}
         onUpdateLayerPosition={handleUpdateLayerPosition}
+        onAIGenerateImage={handleAIGenerateImage}
+        onAIEditImage={handleAIEditImage}
         onUpdateLayerRotation={handleUpdateLayerRotation}
         onUpdateLayerSize={handleUpdateLayerSize}
         onUpdateLayerText={handleUpdateLayerText}
