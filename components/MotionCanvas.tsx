@@ -592,6 +592,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         positionFrames.some((kf) => kf.time > 0) ||
         positionFrames.length > 1 ||
         (track?.paths?.length ?? 0) > 0
+      
       const hasRotationAnim = (track?.rotation?.length ?? 0) > 1
       const scaleFrames = track?.scale ?? []
       const hasScaleAnim =
