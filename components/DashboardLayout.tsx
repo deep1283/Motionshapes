@@ -36,7 +36,8 @@ import {
   Wand2,
   Undo,
   Redo,
-  Type
+  Type,
+  Sparkles
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
@@ -186,6 +187,8 @@ interface DashboardLayoutProps {
   onUpdateCounterStart?: (id: string, value: number) => void
   onUpdateCounterEnd?: (id: string, value: number) => void
   onUpdateCounterPrefix?: (id: string, value: string) => void
+  onAIGenerateImage?: (prompt: string) => Promise<void>
+  onAIEditImage?: (layerId: string, prompt: string) => Promise<void>
 }
 
 export default function DashboardLayout({ 
@@ -267,11 +270,14 @@ export default function DashboardLayout({
   onUpdateLayerColor,
   onUpdateLayerFontFamily,
   onSelectLayer,
+
   // Counter
   onAddCounter,
   onUpdateCounterStart,
   onUpdateCounterEnd,
   onUpdateCounterPrefix,
+  onAIGenerateImage,
+  onAIEditImage,
 }: DashboardLayoutProps) {
   const router = useRouter()
   const supabase = createClient()
@@ -281,7 +287,15 @@ export default function DashboardLayout({
   const [activeTab, setActiveTab] = useState<'templates' | 'shapes' | 'effects' | 'animations'>('shapes')
   const [animationType, setAnimationType] = useState<'in' | 'out' | 'custom'>('in')
   const [showExploreModal, setShowExploreModal] = useState(false)
+
   const [showTextColorPicker, setShowTextColorPicker] = useState(false)
+  
+  // AI State
+  const [showAIModal, setShowAIModal] = useState(false)
+  const [aiPrompt, setAiPrompt] = useState('')
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false)
+  const [aiMode, setAiMode] = useState<'generate' | 'edit'>('generate')
+  const [aiEditLayerId, setAiEditLayerId] = useState<string | null>(null)
 
   /* Buffered Input Component */
   interface BufferedInputProps {
@@ -1389,6 +1403,37 @@ export default function DashboardLayout({
                   Shapes
                 </h2>
                 
+                {/* Generate/Modify Image Button - Context Sensitive */}
+                {(() => {
+                  const selectedLayer = layers.find(l => l.id === selectedLayerId)
+                  const isImageSelected = selectedLayer?.type === 'image' && !!(selectedLayer as any)?.imageUrl
+                  
+                  return (
+                    <div className="mb-4 px-2">
+                      <button
+                        onClick={() => {
+                          if (isImageSelected) {
+                            setAiMode('edit')
+                            setAiEditLayerId(selectedLayerId ?? null)
+                          } else {
+                            setAiMode('generate')
+                          }
+                          setAiPrompt('')
+                          setShowAIModal(true)
+                        }}
+                        className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border transition-all duration-300 text-sm font-medium ${
+                          isImageSelected
+                            ? 'bg-gradient-to-r from-amber-600/20 to-orange-600/20 border-amber-500/30 text-amber-300 hover:from-amber-600/30 hover:to-orange-600/30 hover:border-amber-500/50 hover:text-white'
+                            : 'bg-gradient-to-r from-blue-600/20 to-cyan-600/20 border-blue-500/30 text-blue-300 hover:from-blue-600/30 hover:to-cyan-600/30 hover:border-blue-500/50 hover:text-white'
+                        }`}
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        {isImageSelected ? 'Modify Image' : 'Generate Image'}
+                      </button>
+                    </div>
+                  )
+                })()}
+
                 {/* Explore Shapes Button */}
                 <div className="mb-4 px-2">
                   <button
@@ -2069,6 +2114,7 @@ export default function DashboardLayout({
               </p>
             </div>
           )}
+
 
           <div className="space-y-4">
             <div className="flex items-center gap-2 text-[11px] font-semibold text-neutral-200 px-2">
@@ -3161,6 +3207,92 @@ export default function DashboardLayout({
           setShowExploreModal(false)
         }}
       />
+
+      {/* AI Prompt Modal */}
+      <AnimatePresence>
+        {showAIModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-lg overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-900 shadow-2xl"
+            >
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                    <Sparkles className="h-5 w-5 text-blue-400" />
+                    {aiMode === 'generate' ? 'Generate Image' : 'Modify Image'}
+                  </h3>
+                  <button
+                    onClick={() => setShowAIModal(false)}
+                    className="rounded-full p-1 text-neutral-400 hover:bg-white/10 hover:text-white"
+                  >
+                    <Plus className="h-5 w-5 rotate-45" />
+                  </button>
+                </div>
+                
+                <div className="mb-6">
+                  <textarea
+                    value={aiPrompt}
+                    onChange={(e) => setAiPrompt(e.target.value)}
+                    placeholder={aiMode === 'generate' 
+                      ? "Describe the image you want to generate..." 
+                      : "Describe how you want to modify this image..."}
+                    className="w-full h-32 rounded-xl bg-neutral-950 p-4 text-sm text-white placeholder-neutral-500 border border-neutral-800 focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 outline-none resize-none"
+                    autoFocus
+                  />
+                </div>
+                
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={() => setShowAIModal(false)}
+                    className="px-4 py-2 rounded-lg text-sm font-medium text-neutral-400 hover:text-white hover:bg-white/5 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!aiPrompt.trim()) return
+                      
+                      setIsGeneratingAI(true)
+                      try {
+                        if (aiMode === 'generate') {
+                          await onAIGenerateImage?.(aiPrompt)
+                        } else {
+                          if (aiEditLayerId) {
+                            await onAIEditImage?.(aiEditLayerId, aiPrompt)
+                          }
+                        }
+                        setShowAIModal(false)
+                        setAiPrompt('')
+                      } catch (error) {
+                        console.error('AI Error:', error)
+                      } finally {
+                        setIsGeneratingAI(false)
+                      }
+                    }}
+                    disabled={isGeneratingAI || !aiPrompt.trim()}
+                    className="flex items-center gap-2 px-6 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {isGeneratingAI ? (
+                      <>
+                        <Wand2 className="h-4 w-4 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4" />
+                        Generate
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
