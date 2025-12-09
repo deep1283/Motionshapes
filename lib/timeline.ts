@@ -197,7 +197,7 @@ export const sampleLayerTracks = (
     scale,
     rotation,
     opacity,
-    maskScale: layer.maskScale ? maskScale : undefined, // Only set if track exists
+    maskScale: layer.maskScale && layer.maskScale.length > 0 ? maskScale : undefined, // Only set if track has actual keyframes
     activePathId,
   }
 }
