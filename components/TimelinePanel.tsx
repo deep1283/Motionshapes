@@ -382,12 +382,47 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
       if (!state || !rect) return
       const pxPerMs = rect.width / safeDuration
       const deltaMs = (ev.clientX - state.startX) / pxPerMs
-      const nextStart = Math.max(0, Math.round(state.baseStart + deltaMs))
-      state.currentStart = nextStart
+      let nextStart = Math.max(0, Math.round(state.baseStart + deltaMs))
+      const clipEnd = nextStart + state.duration
+      
+      // Magnetic snap threshold (50ms)
+      const SNAP_THRESHOLD = 50
+      
+      // Collect all snap points from layers and other clips
+      const snapPoints: number[] = []
+      
+      // Add layer start/end points
+      tracks.forEach(track => {
+        snapPoints.push(track.startTime ?? 0)
+        snapPoints.push((track.startTime ?? 0) + (track.duration ?? 2000))
+      })
+      
+      // Add other template clip start/end points
+      templateClips.forEach(clip => {
+        if (clip.id !== state.clipId) {
+          snapPoints.push(clip.start ?? 0)
+          snapPoints.push((clip.start ?? 0) + (clip.duration ?? 1000))
+        }
+      })
+      
+      // Try to snap clip start
+      for (const snapPoint of snapPoints) {
+        if (Math.abs(nextStart - snapPoint) <= SNAP_THRESHOLD) {
+          nextStart = snapPoint
+          break
+        }
+        // Try to snap clip end
+        if (Math.abs(clipEnd - snapPoint) <= SNAP_THRESHOLD) {
+          nextStart = snapPoint - state.duration
+          break
+        }
+      }
+      
+      state.currentStart = Math.max(0, nextStart)
       
       setOptimisticClip({
         id: state.clipId,
-        start: nextStart,
+        start: state.currentStart,
         duration: state.duration,
       })
     }
@@ -421,41 +456,47 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
       
       const pxPerMs = rect.width / safeDuration
       const deltaMs = (ev.clientX - state.startX) / pxPerMs
-      const nextStart = Math.max(0, Math.round(state.baseStart + deltaMs))
+      let nextStart = Math.max(0, Math.round(state.baseStart + deltaMs))
       
-      state.currentStart = nextStart
-      
-      // We need to fetch the duration to keep the object complete
-      // Since duration doesn't change during MOVE, retrieving from optimistic or store would be tricky
-      // But we can infer it or pass it. For now, let's assume we can get it from the store or optimistic state?
-      // Actually, we should store duration in ref too if needed. But let's just update start.
-      // Wait, setOptimisticLayer needs duration too.
-      // Let's add duration to the moveStateRef in previous step? 
-      // Or just find the track again. But hooks inside loops are bad.
-      // Simplest: `optimisticLayer` already has it if initialized?
-      // Actually, we updated handleLayerDragStart but forgot to store duration in ref.
-      // Let's assume we stored it or can pass it.
-      // FIX: Upstream I should have stored duration in Ref.
-      // Let's just fix the Ref type first? No, too much backtracking.
-      // Let's just pass `duration` into the ref in `handleLayerDragStart` - wait I can't change that now easily without another replace.
-      // Okay, I will try to read it from `tracks` here? No hooks in callbacks.
-      // I'll update the Ref type in the *next* block if needed, but for now let's just use what we have.
-      // Actually, I can just use `optimisticLayer?.duration`?
-      // Let's assume the previous step added it?
-      // Let's look at previous step replaced content:
-      // handleLayerDragStart takes (e, layerId, start, duration).
-      // But it sets `layerMoveStateRef.current = { layerId, startX, baseStart, currentStart }`. 
-      // It DOES NOT store duration.
-      // This is a problem. I need duration to call `setOptimisticLayer`.
-      
-      // I will fix `handleLayerDragStart` to store duration in the ref in THIS step by redefining the ref and handler if needed?
-      // Or I can just access the current track from `tracks`? `tracks` is available in scope!
       const track = tracks.find(t => t.layerId === state.layerId)
       const duration = track?.duration ?? 2000
+      const layerEnd = nextStart + duration
+      
+      // Magnetic snap threshold (50ms)
+      const SNAP_THRESHOLD = 50
+      
+      // Collect snap points from other layers AND template clips
+      const snapPoints: number[] = []
+      tracks.forEach(t => {
+        if (t.layerId !== state.layerId) {
+          snapPoints.push(t.startTime ?? 0)
+          snapPoints.push((t.startTime ?? 0) + (t.duration ?? 2000))
+        }
+      })
+      
+      // Add template clip edges (including transition clips)
+      templateClips.forEach(clip => {
+        snapPoints.push(clip.start ?? 0)
+        snapPoints.push((clip.start ?? 0) + (clip.duration ?? 1000))
+      })
+      
+      // Try to snap layer start or end
+      for (const snapPoint of snapPoints) {
+        if (Math.abs(nextStart - snapPoint) <= SNAP_THRESHOLD) {
+          nextStart = snapPoint
+          break
+        }
+        if (Math.abs(layerEnd - snapPoint) <= SNAP_THRESHOLD) {
+          nextStart = snapPoint - duration
+          break
+        }
+      }
+      
+      state.currentStart = Math.max(0, nextStart)
 
       setOptimisticLayer({
         layerId: state.layerId,
-        startTime: nextStart,
+        startTime: state.currentStart,
         duration: duration
       })
     }

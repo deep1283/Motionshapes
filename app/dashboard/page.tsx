@@ -2059,15 +2059,22 @@ function DashboardContent() {
           
           const fromEnd = (fromTrack?.startTime ?? 0) + (fromTrack?.duration ?? 2000)
           const toStart = toTrack?.startTime ?? 0
+          const toDuration = toTrack?.duration ?? 2000
           
-          // Transition duration (0.55s feels smooth)
-          const transitionDuration = 550
+          // Position transition to start exactly where Image 2 starts
+          // and cover 100% of Image 2's duration
+          let transitionStart: number
+          let transitionDuration: number
           
-          // Center the transition at the boundary/overlap point between the two layers
-          // If there's an overlap, center in the overlap region
-          // If there's a gap, center at the midpoint
-          const overlapCenter = (fromEnd + toStart) / 2
-          const transitionStart = Math.max(0, overlapCenter - transitionDuration / 2)
+          if (fromEnd > toStart) {
+            // There's an overlap - start at toStart and cover 100% of TO layer
+            transitionStart = toStart
+            transitionDuration = toDuration
+          } else {
+            // No overlap (gap between layers) - use default 0.55s at the boundary
+            transitionDuration = 550
+            transitionStart = Math.max(0, fromEnd - transitionDuration / 2)
+          }
           
           // Map transition type to template name
           const templateName = `transition_${transitionType}` as any
