@@ -5,7 +5,7 @@ export type TemplateId =
   | 'fade_in' | 'slide_in' | 'grow_in' | 'shrink_in' | 'spin_in' | 'twist_in' | 'move_scale_in'
   | 'fade_out' | 'slide_out' | 'grow_out' | 'shrink_out' | 'spin_out' | 'twist_out' | 'move_scale_out'
   | 'mask_center' | 'mask_top' | 'mask_center_out' | 'mask_top_out'
-  | 'typewriter' | 'bounce_in' | 'bounce_out' // Text animations
+  | 'typewriter' | 'bounce_in' | 'bounce_out' | 'scramble' // Text animations
 
 export interface PresetResult {
   position?: TimelineKeyframe<Vec2>[]
@@ -609,6 +609,15 @@ const bounceOutPreset = (duration: number = BOUNCE_IN_DURATION): PresetResult =>
   } as any,
 })
 
+const scramblePreset = (duration: number = 2000): PresetResult => ({
+  duration,
+  scale: [],
+  opacity: [],
+  meta: {
+    textAnimation: 'scramble',
+  } as any,
+})
+
 export const PRESET_BUILDERS = {
   roll: rollPreset,
   jump: jumpPreset,
@@ -641,6 +650,7 @@ export const PRESET_BUILDERS = {
   typewriter: typewriterPreset,
   bounce_in: bounceInPreset,
   bounce_out: bounceOutPreset,
+  scramble: scramblePreset,
 } as const
 
 export type PresetBuilderMap = typeof PRESET_BUILDERS

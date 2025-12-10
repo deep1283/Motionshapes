@@ -256,7 +256,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   const emittersByLayerIdRef = useRef<Record<string, SimpleParticleEmitter[]>>({})
   const iconTextureCacheRef = useRef<Record<string, PIXI.Texture>>({})
   const spritesByIdRef = useRef<Record<string, PIXI.Sprite>>({})
-  const textsByIdRef = useRef<Record<string, { text: PIXI.Text; fullText: string; layerId: string; hasTypewriter: boolean; parts?: PIXI.Text[] }>>({})
+  const textsByIdRef = useRef<Record<string, { text: PIXI.Text; fullText: string; layerId: string; hasTypewriter: boolean; parts?: PIXI.Text[]; originalChars?: string[] }>>({})
   const resizeHandlesRef = useRef<Record<string, PIXI.Graphics[]>>({})
   const handlesByIdRef = useRef<Record<string, PIXI.Graphics[]>>({}) // For text layer resize handles
   const spotlightOverlayRef = useRef<PIXI.Graphics | null>(null) // For pan_zoom spotlight blur effect
@@ -1761,12 +1761,13 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           const text = new PIXI.Text({ text: finalText, style: textStyle })
           text.anchor.set(0.5)
           
-          // BOUNCE IN/OUT: Split text implementation
+          // BOUNCE IN/OUT/SCRAMBLE: Split text implementation
           const bounceInClip = templateClips.find(c => c.layerId === layer.id && c.template === 'bounce_in')
           const bounceOutClip = templateClips.find(c => c.layerId === layer.id && c.template === 'bounce_out')
+          const scrambleClip = templateClips.find(c => c.layerId === layer.id && c.template === 'scramble')
           let parts: PIXI.Text[] | undefined
           
-          if ((bounceInClip || bounceOutClip) && layer.text) {
+          if ((bounceInClip || bounceOutClip || scrambleClip) && layer.text) {
              text.visible = false // Hide main text
              parts = []
              const fullText = layer.text
@@ -1831,6 +1832,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
              // 2. Render Characters with proper spacing
              const totalContentHeight = lines.length * lineHeight
              let currentY = -totalContentHeight / 2
+             const originalChars: string[] = [] // Track original characters for scramble animation
              
              lines.forEach((line) => {
                  let currentX = -line.width / 2 // Center aligned
@@ -1850,11 +1852,17 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
                      
                      container.addChild(charText)
                      parts?.push(charText)
+                     originalChars.push(char) // Store original character
                      
                      currentX += charWidth
                  }
                  currentY += lineHeight
              })
+             
+             // Store originalChars for scramble animation
+             if (parts) {
+                (parts as any).originalChars = originalChars
+             }
           }
 
           container.addChild(text) 
@@ -2591,18 +2599,30 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
                 }
               }
 
-              // Update bounce_in parts animation
+              // Update bounce_in/out/scramble parts animation
               const bounceInClip = templateClips.find(c => c.layerId === layer.id && c.template === 'bounce_in')
               const bounceOutClip = templateClips.find(c => c.layerId === layer.id && c.template === 'bounce_out')
+              const scrambleClip = templateClips.find(c => c.layerId === layer.id && c.template === 'scramble')
               
-              if ((bounceInClip || bounceOutClip) && textWrapper?.parts) {
+              if ((bounceInClip || bounceOutClip || scrambleClip) && textWrapper?.parts) {
                 const stagger = 80 // ms per letter
                 const letterDuration = 1000 
                 const c4 = (2 * Math.PI) / 3
                 
+                // Scramble character pool
+                const scrambleChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%&*<>?'
+                const scrambleStagger = 100 // ms between each letter settling
+                const scrambleSpeed = 50 // ms between random character changes
+                
+                // Get stored originalChars
+                const originalChars = (textWrapper.parts as any).originalChars as string[] | undefined
+                
                 textWrapper.parts.forEach((part: PIXI.Text, i: number) => {
                    let scale = 1
                    let alpha = 1
+                   
+                   // Get the original character for this position
+                   const originalChar = originalChars?.[i] ?? ''
 
                    // Bounce In
                    if (bounceInClip) {
@@ -2647,6 +2667,51 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
                          
                          // Simple linear fade out
                          alpha *= (1 - progress)
+                      }
+                   }
+                   
+                   // Scramble animation (reveal with scrambling)
+                   if (scrambleClip) {
+                      const start = scrambleClip.start ?? 0
+                      const clipDuration = scrambleClip.duration ?? 2000
+                      const numParts = textWrapper.parts?.length ?? 1
+                      
+                      // Calculate timing based on clip duration
+                      // Last letter should settle exactly at clip end
+                      // Add initial delay so animation starts from nothing
+                      const initialDelay = Math.max(50, clipDuration * 0.05) // 5% initial "nothing" delay
+                      const availableTime = clipDuration - initialDelay
+                      
+                      const scrambleRatio = 0.25 // 25% of time spent on each letter scrambling
+                      
+                      // For N letters: last letter settles at: start + initialDelay + (N-1)*stagger + scrambleDuration = start + clipDuration
+                      const dynamicScrambleDuration = Math.max(80, availableTime * scrambleRatio / Math.max(1, numParts))
+                      const dynamicStagger = numParts > 1 
+                        ? (availableTime - dynamicScrambleDuration) / (numParts - 1)
+                        : availableTime - dynamicScrambleDuration
+                      
+                      // Each letter starts scrambling at a staggered time (with initial delay)
+                      const letterStartTime = start + initialDelay + i * dynamicStagger
+                      const letterSettleTime = letterStartTime + dynamicScrambleDuration
+                      
+                      // Scramble speed also scales with duration (slower when stretched)
+                      const dynamicScrambleSpeed = Math.max(30, dynamicScrambleDuration / 6)
+                      
+                      if (playhead < letterStartTime) {
+                         // Before this letter starts - hide it
+                         alpha *= 0
+                         scale *= 0
+                      } else if (playhead >= letterSettleTime) {
+                         // This letter has settled - show correct character
+                         part.text = originalChar
+                         // alpha and scale stay at 1 (visible)
+                      } else {
+                         // Currently scrambling this letter
+                         // Show random character cycling
+                         const cycleIndex = Math.floor(playhead / dynamicScrambleSpeed)
+                         const charIndex = (cycleIndex + i * 7) % scrambleChars.length
+                         part.text = scrambleChars[charIndex]
+                         // Visible during scramble
                       }
                    }
                    
