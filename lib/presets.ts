@@ -5,6 +5,7 @@ export type TemplateId =
   | 'fade_in' | 'slide_in' | 'grow_in' | 'shrink_in' | 'spin_in' | 'twist_in' | 'move_scale_in'
   | 'fade_out' | 'slide_out' | 'grow_out' | 'shrink_out' | 'spin_out' | 'twist_out' | 'move_scale_out'
   | 'mask_center' | 'mask_top' | 'mask_center_out' | 'mask_top_out'
+  | 'typewriter' // Text animations
 
 export interface PresetResult {
   position?: TimelineKeyframe<Vec2>[]
@@ -570,6 +571,22 @@ const maskTopOutPreset = (duration: number = 1000): PresetResult => ({
     { time: duration, value: 0, easing: 'linear' },
   ],
 })
+// Typewriter: reveals text character by character
+export const TYPEWRITER_BASE_DURATION = 2000
+
+const typewriterPreset = (duration: number = TYPEWRITER_BASE_DURATION, showCursor: boolean = true): PresetResult => ({
+  duration,
+  // Typewriter doesn't use standard keyframes - it's handled specially in MotionCanvas
+  // The progress (0-1) determines how many characters are visible
+  opacity: [
+    { time: 0, value: 1 },
+    { time: duration, value: 1 },
+  ],
+  meta: {
+    textAnimation: 'typewriter',
+    showCursor,
+  } as any,
+})
 
 export const PRESET_BUILDERS = {
   roll: rollPreset,
@@ -599,6 +616,8 @@ export const PRESET_BUILDERS = {
   twist_out: twistOutPreset,
   move_scale_out: moveScaleOutPreset,
   pan_zoom: panZoomPreset,
+  // Text animations
+  typewriter: typewriterPreset,
 } as const
 
 export type PresetBuilderMap = typeof PRESET_BUILDERS

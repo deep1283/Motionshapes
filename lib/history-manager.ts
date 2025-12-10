@@ -75,6 +75,7 @@ export type TemplateId =
   | 'mask_top'
   | 'mask_center_out'
   | 'mask_top_out'
+  | 'typewriter' // Text animations
 
 export interface TemplateClip {
   id: string
@@ -114,6 +115,9 @@ export interface TemplateClip {
     panZoomBlurIntensity?: number // Blur intensity (0 = no blur, 10 = max blur)
     // Mask Center parameters
     maskAngle?: number // Angle in degrees (0 = horizontal, 90 = vertical)
+    // Text animation parameters
+    textAnimation?: 'typewriter' | 'wave' | 'bounce'
+    showCursor?: boolean
   }
 }
 

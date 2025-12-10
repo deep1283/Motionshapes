@@ -81,6 +81,9 @@ type TimelineState = {
       panZoomBlurIntensity?: number // Blur intensity (0 = no blur, 10 = max blur)
       // Mask Center parameters
       maskAngle?: number // Angle in degrees (0 = horizontal, 90 = vertical)
+      // Text animation parameters
+      textAnimation?: 'typewriter' | 'wave' | 'bounce'
+      showCursor?: boolean
     }
   }>
   // Click markers for click animation effect
