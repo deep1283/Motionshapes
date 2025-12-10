@@ -256,7 +256,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   const emittersByLayerIdRef = useRef<Record<string, SimpleParticleEmitter[]>>({})
   const iconTextureCacheRef = useRef<Record<string, PIXI.Texture>>({})
   const spritesByIdRef = useRef<Record<string, PIXI.Sprite>>({})
-  const textsByIdRef = useRef<Record<string, { text: PIXI.Text; fullText: string; layerId: string; hasTypewriter: boolean }>>({})
+  const textsByIdRef = useRef<Record<string, { text: PIXI.Text; fullText: string; layerId: string; hasTypewriter: boolean; parts?: PIXI.Text[] }>>({})
   const resizeHandlesRef = useRef<Record<string, PIXI.Graphics[]>>({})
   const handlesByIdRef = useRef<Record<string, PIXI.Graphics[]>>({}) // For text layer resize handles
   const spotlightOverlayRef = useRef<PIXI.Graphics | null>(null) // For pan_zoom spotlight blur effect
@@ -952,78 +952,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     updateGraphicsFromTimeline()
   }, [orderedLayers, layers, selectedLayerId])
 
-  // Update typewriter text using PIXI ticker for smooth playback
-  useEffect(() => {
-    const app = appRef.current
-    if (!app || !isReady) return
-    
-    console.log('[TYPEWRITER_TICKER] Setting up ticker')
-    
-    const updateTypewriter = () => {
-      // Get current playhead from timeline store
-      const currentPlayhead = timelineActions.getState().currentTime
-      const isPlaying = timelineActions.getState().isPlaying
-      
-      if (Object.keys(textsByIdRef.current).length === 0) return
-      
-      // Log every 500ms worth of updates (only when we have text refs)
-      if (Math.floor(currentPlayhead) % 500 === 0) {
-        console.log('[TYPEWRITER_TICKER] Tick - playhead:', currentPlayhead, 'isPlaying:', isPlaying, 'textRefs:', Object.keys(textsByIdRef.current).length)
-      }
-      
-      Object.values(textsByIdRef.current).forEach(({ text, fullText, layerId }) => {
-        // Check if there's a typewriter clip for this layer
-        const clips = timelineActions.getState().templateClips
-        const typewriterClip = clips.find(
-          (c: { layerId: string; template: string }) => c.layerId === layerId && c.template === 'typewriter'
-        )
-        
-        if (!typewriterClip) return
-        
-        const clipStart = typewriterClip.start ?? 0
-        const clipDuration = typewriterClip.duration ?? 2000
-        const clipEnd = clipStart + clipDuration
-        const totalChars = fullText.length
-        
-        let displayText: string
-        let showCursor = false
-        
-        if (currentPlayhead < clipStart) {
-          // Before clip starts - show nothing
-          displayText = ''
-        } else if (currentPlayhead >= clipEnd) {
-          // After clip ends - show full text
-          displayText = fullText
-        } else {
-          // During clip - reveal characters progressively
-          const progress = (currentPlayhead - clipStart) / clipDuration
-          const charsToShow = Math.floor(progress * totalChars)
-          displayText = fullText.substring(0, charsToShow)
-          showCursor = typewriterClip.parameters?.showCursor !== false
-        }
-        
-        // Add blinking cursor (blink every 500ms)
-        const cursorChar = Math.floor(currentPlayhead / 500) % 2 === 0 && showCursor ? '|' : ''
-        const newText = displayText + cursorChar
-        
-        // Only update if text changed (avoid unnecessary renders)
-        if (text.text !== newText) {
-          console.log('[TYPEWRITER_TICKER] Updating text from:', text.text, 'to:', newText, 'textObjId:', layerId)
-          text.text = newText
-          console.log('[TYPEWRITER_TICKER] After assignment, text.text is now:', text.text)
-          // Force immediate render after text update
-          const app = appRef.current
-          if (app) app.render()
-        }
-      })
-    }
-    
-    app.ticker.add(updateTypewriter)
-    
-    return () => {
-      app.ticker?.remove(updateTypewriter)
-    }
-  }, [isReady, timelineActions])
+  // Note: Typewriter animation is now handled in the playhead useEffect (around line 2520)
+  // which updates text.text directly based on playhead position, similar to counter animations
 
   useEffect(() => {
     const app = appRef.current
@@ -1830,7 +1760,104 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           
           const text = new PIXI.Text({ text: finalText, style: textStyle })
           text.anchor.set(0.5)
-          container.addChild(text)
+          
+          // BOUNCE IN/OUT: Split text implementation
+          const bounceInClip = templateClips.find(c => c.layerId === layer.id && c.template === 'bounce_in')
+          const bounceOutClip = templateClips.find(c => c.layerId === layer.id && c.template === 'bounce_out')
+          let parts: PIXI.Text[] | undefined
+          
+          if ((bounceInClip || bounceOutClip) && layer.text) {
+             text.visible = false // Hide main text
+             parts = []
+             const fullText = layer.text
+             // BOUNCE IN: Split text implementation
+             // We need to manually calculate layout to match PIXI's wrapping
+             const wrapWidth = textBoxWidth
+             const fontSize = layer.fontSize || 48
+             const lineHeight = fontSize * 1.2
+             
+             // Create a measurement style WITHOUT wordWrap (critical for accurate width measurement)
+             const measureStyle = new PIXI.TextStyle({
+               fontFamily: layer.fontFamily || 'Inter',
+               fontSize: layer.fontSize || 48,
+               fontWeight: String(layer.fontWeight || 600) as PIXI.TextStyleFontWeight,
+               fill: layer.fillColor ?? 0xffffff,
+               wordWrap: false, // IMPORTANT: No wrapping for measurement
+             })
+             
+             // Measure space width upfront (important for proper spacing)
+             const spaceTemp = new PIXI.Text({ text: 'M M', style: measureStyle })
+             const mTemp = new PIXI.Text({ text: 'MM', style: measureStyle })
+             const spaceWidth = spaceTemp.width - mTemp.width
+             spaceTemp.destroy()
+             mTemp.destroy()
+             
+             // 1. Tokenize and Wrap (matching PIXI's wordWrap behavior)
+             const paragraphs = fullText.split('\n')
+             const lines: { text: string; width: number }[] = []
+             
+             paragraphs.forEach(paragraph => {
+                const words = paragraph.split(' ')
+                if (words.length === 0) {
+                   lines.push({ text: '', width: 0 })
+                   return
+                }
+                
+                let currentLine = words[0]
+                
+                for (let i = 1; i < words.length; i++) {
+                   const word = words[i]
+                   const testLine = currentLine + ' ' + word
+                   const temp = new PIXI.Text({ text: testLine, style: measureStyle })
+                   const w = temp.width
+                   temp.destroy()
+                   
+                   if (w > wrapWidth) {
+                      // Push current line and start new one
+                      const lineTemp = new PIXI.Text({ text: currentLine, style: measureStyle })
+                      lines.push({ text: currentLine, width: lineTemp.width })
+                      lineTemp.destroy()
+                      currentLine = word
+                   } else {
+                      currentLine = testLine
+                   }
+                }
+                // Push the last line
+                const t = new PIXI.Text({ text: currentLine, style: measureStyle })
+                lines.push({ text: currentLine, width: t.width })
+                t.destroy()
+             })
+             
+             // 2. Render Characters with proper spacing
+             const totalContentHeight = lines.length * lineHeight
+             let currentY = -totalContentHeight / 2
+             
+             lines.forEach((line) => {
+                 let currentX = -line.width / 2 // Center aligned
+                 
+                 for (let i = 0; i < line.text.length; i++) {
+                     const char = line.text[i]
+                     const charStyle = new PIXI.TextStyle(textStyle)
+                     
+                     const charText = new PIXI.Text({ text: char, style: charStyle })
+                     charText.anchor.set(0.5)
+                     
+                     // Use proper width for space characters
+                     const charWidth = char === ' ' ? spaceWidth : charText.width
+                     
+                     charText.x = currentX + charWidth / 2
+                     charText.y = currentY + lineHeight / 2
+                     
+                     container.addChild(charText)
+                     parts?.push(charText)
+                     
+                     currentX += charWidth
+                 }
+                 currentY += lineHeight
+             })
+          }
+
+          container.addChild(text) 
           
           // Use text's intrinsic width/height (local dimensions, not global bounds)
           const boxWidth = Math.max(textBoxWidth, text.width)
@@ -1847,7 +1874,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           
           // Store references for typewriter animation updates
           graphicsByIdRef.current[layer.id] = container as any
-          textsByIdRef.current[layer.id] = { text, fullText: initialText, layerId: layer.id, hasTypewriter: hasTypewriterClip }
+          textsByIdRef.current[layer.id] = { text, fullText: initialText, layerId: layer.id, hasTypewriter: hasTypewriterClip, parts }
           
           // Add outline
           const outline = new PIXI.Graphics()
@@ -2455,7 +2482,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       if (layer.type === 'text') {
         const container = g
         if (container && container.children && container.children.length > 0) {
-          const textObj = container.children[0] as PIXI.Text
+          const textWrapper = textsByIdRef.current[layer.id]
+          const textObj = textWrapper?.text
           if (textObj && 'text' in textObj) {
             let textChanged = false
             
@@ -2561,6 +2589,71 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
                   textChanged = true
                   needsRender = true
                 }
+              }
+
+              // Update bounce_in parts animation
+              const bounceInClip = templateClips.find(c => c.layerId === layer.id && c.template === 'bounce_in')
+              const bounceOutClip = templateClips.find(c => c.layerId === layer.id && c.template === 'bounce_out')
+              
+              if ((bounceInClip || bounceOutClip) && textWrapper?.parts) {
+                const stagger = 80 // ms per letter
+                const letterDuration = 1000 
+                const c4 = (2 * Math.PI) / 3
+                
+                textWrapper.parts.forEach((part: PIXI.Text, i: number) => {
+                   let scale = 1
+                   let alpha = 1
+
+                   // Bounce In
+                   if (bounceInClip) {
+                      const start = bounceInClip.start ?? 0
+                      const letterStart = start + i * stagger
+                      const relativeTime = playhead - letterStart
+                      const progress = Math.max(0, Math.min(1, relativeTime / letterDuration))
+
+                      if (relativeTime < 0) {
+                         scale *= 0
+                         alpha *= 0
+                      } else {
+                         const x = progress
+                         const ease = x === 0 ? 0 : x === 1 ? 1 : Math.pow(2, -10 * x) * Math.sin((x * 10 - 0.75) * c4) + 1
+                         scale *= ease
+                         // Opacity fades in over 10%
+                         alpha *= Math.min(1, progress * 10)
+                      }
+                   }
+
+                   // Bounce Out
+                   if (bounceOutClip) {
+                      const start = bounceOutClip.start ?? 0
+                      const letterStart = start + i * stagger
+                      const relativeTime = playhead - letterStart
+                      const progress = Math.max(0, Math.min(1, relativeTime / letterDuration))
+                      
+                      if (relativeTime < 0) {
+                        // Before exit starts: no impact (multiplier 1)
+                      } else if (progress >= 1) {
+                         scale *= 0
+                         alpha *= 0
+                      } else {
+                         // Use 1 - ElasticOut(progress) for immediate action "Bounce Drop"
+                         // This creates a bounce that diminishes towards 0
+                         const x = progress
+                         const ease = x === 0 ? 0 : x === 1 ? 1 : Math.pow(2, -10 * x) * Math.sin((x * 10 - 0.75) * c4) + 1
+                         
+                         // 1 - ease goes 1 -> 0. 
+                         // Use Math.abs to handle negative overshoot (prevents flipping)
+                         scale *= Math.abs(1 - ease)
+                         
+                         // Simple linear fade out
+                         alpha *= (1 - progress)
+                      }
+                   }
+                   
+                   part.scale.set(scale)
+                   part.alpha = alpha
+                })
+                needsRender = true
               }
             }
             // Update font size

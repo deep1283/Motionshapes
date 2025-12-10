@@ -5,7 +5,7 @@ export type TemplateId =
   | 'fade_in' | 'slide_in' | 'grow_in' | 'shrink_in' | 'spin_in' | 'twist_in' | 'move_scale_in'
   | 'fade_out' | 'slide_out' | 'grow_out' | 'shrink_out' | 'spin_out' | 'twist_out' | 'move_scale_out'
   | 'mask_center' | 'mask_top' | 'mask_center_out' | 'mask_top_out'
-  | 'typewriter' // Text animations
+  | 'typewriter' | 'bounce_in' | 'bounce_out' // Text animations
 
 export interface PresetResult {
   position?: TimelineKeyframe<Vec2>[]
@@ -588,6 +588,27 @@ const typewriterPreset = (duration: number = TYPEWRITER_BASE_DURATION, showCurso
   } as any,
 })
 
+export const BOUNCE_IN_DURATION = 1000
+
+const bounceInPreset = (duration: number = BOUNCE_IN_DURATION): PresetResult => ({
+  duration,
+  // Scale/Opacity are handled by MotionCanvas per-letter
+  scale: [],
+  opacity: [],
+  meta: {
+    textAnimation: 'bounce_in',
+  } as any,
+})
+
+const bounceOutPreset = (duration: number = BOUNCE_IN_DURATION): PresetResult => ({
+  duration,
+  scale: [],
+  opacity: [],
+  meta: {
+    textAnimation: 'bounce_out',
+  } as any,
+})
+
 export const PRESET_BUILDERS = {
   roll: rollPreset,
   jump: jumpPreset,
@@ -618,6 +639,8 @@ export const PRESET_BUILDERS = {
   pan_zoom: panZoomPreset,
   // Text animations
   typewriter: typewriterPreset,
+  bounce_in: bounceInPreset,
+  bounce_out: bounceOutPreset,
 } as const
 
 export type PresetBuilderMap = typeof PRESET_BUILDERS

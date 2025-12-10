@@ -82,7 +82,7 @@ type TimelineState = {
       // Mask Center parameters
       maskAngle?: number // Angle in degrees (0 = horizontal, 90 = vertical)
       // Text animation parameters
-      textAnimation?: 'typewriter' | 'wave' | 'bounce'
+      textAnimation?: 'typewriter' | 'wave' | 'bounce' | 'bounce_in'
       showCursor?: boolean
     }
   }>
@@ -745,8 +745,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           if (index === 0) {
              // Check if this is an In/Out animation
              const isInOutAnimation = [
-               'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in',
-               'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out'
+               'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in', 'bounce_in',
+               'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out', 'bounce_out'
              ].includes(clip.template)
              
              if (isInOutAnimation) {
@@ -855,8 +855,9 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             } else if (clip.template === 'mask_top_out') {
                preset = PRESET_BUILDERS.mask_top_out(clip.duration)
             } else if ([
-              'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in',
-              'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out'
+              'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in', 'bounce_in',
+              'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out',
+              'bounce_in'
             ].includes(clip.template)) {
               // @ts-ignore
               preset = PRESET_BUILDERS[clip.template](clip.duration)
@@ -985,11 +986,11 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
            // But for other properties, we need a base to add to.
 
           const isInOutAnimation = [
-            'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in',
+            'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in', 'bounce_in',
             'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out'
           ].includes(clip.template)
 
-          const isInAnimation = ['fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in'].includes(clip.template)
+          const isInAnimation = ['fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in', 'bounce_in'].includes(clip.template)
           const isOutAnimation = ['fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out'].includes(clip.template)
 
           let mergedPosition = isInOutAnimation && preset.position
@@ -1266,7 +1267,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             // Just return a minimal "preset" with duration info
             ? { duration: options?.targetDuration ?? 2000, segments: [] }
             : [
-                'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in',
+                'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in', 'bounce_in',
                 'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out'
               ].includes(template)
               // @ts-ignore
@@ -1429,7 +1430,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           ]
         } else if (!append && startOffset === 0) {
           const isInOutAnimation = [
-            'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in',
+            'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in', 'bounce_in',
             'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out'
           ].includes(template)
           
@@ -1493,7 +1494,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           })) ?? []
 
         const isInOutAnimation = [
-          'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in',
+          'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in', 'bounce_in',
           'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out'
         ].includes(template)
 
@@ -1785,8 +1786,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
            } else if (clip.template === 'spin') {
              preset = PRESET_BUILDERS.spin(clip.parameters?.spinSpeed ?? prev.spinSpeed, clip.parameters?.spinDirection ?? prev.spinDirection, clip.duration)
            } else if ([
-             'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in',
-             'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out'
+             'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in', 'bounce_in',
+             'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out', 'bounce_out'
            ].includes(clip.template)) {
              // @ts-ignore
              preset = PRESET_BUILDERS[clip.template](clip.duration)
@@ -1900,9 +1901,9 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
               newTrack.rotation = [{ time: 0, value: clipBaseState.rotation }]
             }
 
-            const isInOutAnimation = [ 'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in', 'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out' ].includes(clip.template)
+            const isInOutAnimation = [ 'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in', 'bounce_in', 'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out' ].includes(clip.template)
 
-            const isInAnimation = ['fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in'].includes(clip.template)
+            const isInAnimation = ['fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in', 'bounce_in'].includes(clip.template)
             const isOutAnimation = ['fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out'].includes(clip.template)
 
             let mergedPosition = isInOutAnimation && preset.position

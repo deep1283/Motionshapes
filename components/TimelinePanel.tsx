@@ -772,7 +772,7 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
                         {isCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                       </div>
                       <span className="text-[11px] font-medium text-neutral-200 truncate select-none flex-1">
-                        {layer.type === 'image' ? 'Image' : (layer.shapeKind ? `${layer.shapeKind.charAt(0).toUpperCase()}${layer.shapeKind.slice(1)}` : 'Layer')} {idx + 1}
+                        {layer.type === 'text' ? 'Text' : layer.type === 'image' ? 'Image' : (layer.shapeKind ? `${layer.shapeKind.charAt(0).toUpperCase()}${layer.shapeKind.slice(1)}` : 'Layer')} {idx + 1}
                       </span>
                     </div>
                     <div className="flex-1 relative border-l border-white/5">
