@@ -1533,8 +1533,56 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             clipId: newClipId,
           })) ?? []
 
+        // NEW: Store raw offset keyframes for additive blending
+        // Times are relative to clip start (0-based), values are pure offsets
+        const rawPositionKeyframes = preset.position?.map((f: TimelineKeyframe<Vec2>) => ({
+          ...f,
+          time: scaleTime(f.time), // Time relative to clip start, not absolute
+          clipId: newClipId,
+        })) ?? []
+
+        const rawScaleKeyframes = preset.scale?.map((f: TimelineKeyframe<number>) => ({
+          ...f,
+          time: scaleTime(f.time),
+          clipId: newClipId,
+        })) ?? []
+
+        const rawRotationKeyframes = preset.rotation?.map((f: TimelineKeyframe<number>) => ({
+          ...f,
+          time: scaleTime(f.time),
+          clipId: newClipId,
+        })) ?? []
+
+        const rawOpacityKeyframes = preset.opacity?.map((f: TimelineKeyframe<number>) => ({
+          ...f,
+          time: scaleTime(f.time),
+          clipId: newClipId,
+        })) ?? []
+
+        const rawMaskScaleKeyframes = preset.maskScale?.map((f: TimelineKeyframe<number>) => ({
+          ...f,
+          time: maskScaleTime(f.time),
+          clipId: newClipId,
+        })) ?? []
+
+        // Merge new clip keyframes into existing clipKeyframes
+        const existingClipKeyframes = track.clipKeyframes ?? {}
+        const newClipKeyframes = {
+          ...existingClipKeyframes,
+          [newClipId]: {
+            position: rawPositionKeyframes.length > 0 ? rawPositionKeyframes : undefined,
+            scale: rawScaleKeyframes.length > 0 ? rawScaleKeyframes : undefined,
+            rotation: rawRotationKeyframes.length > 0 ? rawRotationKeyframes : undefined,
+            opacity: rawOpacityKeyframes.length > 0 ? rawOpacityKeyframes : undefined,
+            maskScale: rawMaskScaleKeyframes.length > 0 ? rawMaskScaleKeyframes : undefined,
+          },
+        }
+
         return {
           ...track,
+          // NEW: Per-clip keyframes for additive blending
+          clipKeyframes: newClipKeyframes,
+          // LEGACY: Merged arrays for backward compatibility
           position: finalPosition,
           scale: mergeFrames(clearedTrack.scale, mappedScale).sort((a, b) => a.time - b.time),
           rotation: mergeFrames(clearedTrack.rotation, mappedRotation).sort((a, b) => a.time - b.time),
@@ -2146,8 +2194,12 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           })
         }
         
+        // Also remove from clipKeyframes
+        const { [clipId]: removed, ...remainingClipKeyframes } = track.clipKeyframes ?? {}
+        
         return {
           ...track,
+          clipKeyframes: remainingClipKeyframes,
           position: filterKeyframes(track.position),
           scale: filterKeyframes(track.scale),
           rotation: filterKeyframes(track.rotation),

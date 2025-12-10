@@ -27,10 +27,28 @@ export interface PathClip {
   easing?: Easing
 }
 
+// NEW: Per-clip keyframe storage for additive blending
+// Keyframes here are OFFSETS (not absolute values)
+// Position: offset from {0,0}
+// Scale: multiplier from 1
+// Rotation: offset from 0
+export interface ClipKeyframes {
+  position?: TimelineKeyframe<Vec2>[]
+  scale?: TimelineKeyframe<number>[]
+  rotation?: TimelineKeyframe<number>[]
+  opacity?: TimelineKeyframe<number>[]
+  maskScale?: TimelineKeyframe<number>[]
+}
+
 export interface LayerTracks {
   layerId: string
   startTime?: number // ms - The "birth" time of the layer
   duration?: number // ms - The lifespan of the layer
+  
+  // NEW: Per-clip keyframe storage (clipId -> keyframes)
+  clipKeyframes?: Record<string, ClipKeyframes>
+  
+  // LEGACY: Merged keyframe arrays (keep for backward compatibility)
   position?: TimelineKeyframe<Vec2>[]
   scale?: TimelineKeyframe<number>[]
   rotation?: TimelineKeyframe<number>[]
@@ -168,6 +186,124 @@ export const samplePathClip = (clip: PathClip, time: number): Vec2 | null => {
   return samplePathPoint(clip.points, eased)
 }
 
+// Minimal clip info needed for additive sampling
+export interface ClipInfo {
+  id: string
+  start: number
+  duration: number
+}
+
+// NEW: Additive sampling using per-clip keyframes
+export const sampleLayerTracksAdditive = (
+  layer: LayerTracks,
+  clips: ClipInfo[], // Template clips for this layer
+  time: number,
+  defaults: SampledLayerState
+): SampledLayerState => {
+  // If no clipKeyframes, fall back to legacy sampling
+  if (!layer.clipKeyframes || Object.keys(layer.clipKeyframes).length === 0) {
+    return sampleLayerTracks(layer, time, defaults)
+  }
+
+  // Get the layer's BASE state from legacy keyframes at time 0
+  // This is the user's positioned shape BEFORE any animations
+  const layerBasePosition = layer.position?.[0]?.value ?? defaults.position
+  const layerBaseScale = layer.scale?.[0]?.value ?? defaults.scale
+  const layerBaseRotation = layer.rotation?.[0]?.value ?? defaults.rotation
+  const layerBaseOpacity = layer.opacity?.[0]?.value ?? defaults.opacity
+  const layerBaseMaskScale = layer.maskScale?.[0]?.value ?? defaults.maskScale
+
+  // Start with layer's base state (not the default)
+  let pos = { ...layerBasePosition }
+  let scale = layerBaseScale
+  let rotation = layerBaseRotation
+  let opacity = layerBaseOpacity
+  let maskScale = layerBaseMaskScale
+
+  // Process each clip (sorted by start time for deterministic order)
+  const sortedClips = [...clips].sort((a, b) => a.start - b.start)
+
+  for (const clip of sortedClips) {
+    const clipKf = layer.clipKeyframes[clip.id]
+    if (!clipKf) continue
+
+    const clipStart = clip.start
+    const clipEnd = clipStart + clip.duration
+    const clipDuration = clip.duration
+
+    // Determine local time within clip (0 to duration)
+    let localTime: number
+    let isActive = false
+    let isEnded = false
+
+    if (time >= clipStart && time <= clipEnd) {
+      // Currently within clip
+      localTime = time - clipStart
+      isActive = true
+    } else if (time > clipEnd) {
+      // Clip has ended - use final offset (carry forward)
+      localTime = clipDuration
+      isEnded = true
+    } else {
+      // Before clip starts - no contribution
+      continue
+    }
+
+    // Sample this clip's keyframes at local time
+    if (clipKf.position) {
+      const offset = sampleVec2Track(clipKf.position, localTime, { x: 0, y: 0 })
+      pos.x += offset.x
+      pos.y += offset.y
+    }
+
+    if (clipKf.rotation) {
+      const offset = sampleNumberTrack(clipKf.rotation, localTime, 0)
+      rotation += offset
+    }
+
+    if (clipKf.scale) {
+      // Scale is multiplicative - sample relative to 1
+      const factor = sampleNumberTrack(clipKf.scale, localTime, 1)
+      scale *= factor
+    }
+
+    if (clipKf.opacity && (isActive || isEnded)) {
+      // Opacity: use the clip's value directly (not additive)
+      const clipOpacity = sampleNumberTrack(clipKf.opacity, localTime, 1)
+      opacity *= clipOpacity
+    }
+
+    if (clipKf.maskScale && (isActive || isEnded)) {
+      const clipMaskScale = sampleNumberTrack(clipKf.maskScale, localTime, 0)
+      maskScale = clipMaskScale // Mask takes precedence, not additive
+    }
+  }
+
+  // Handle paths (unchanged)
+  let pathResult: Vec2 | null = null
+  let activePathId: string | undefined
+  if (layer.paths && layer.paths.length > 0) {
+    for (const clip of layer.paths) {
+      const p = samplePathClip(clip, time)
+      if (p) {
+        pathResult = p
+        activePathId = clip.id
+        break
+      }
+    }
+  }
+
+  return {
+    position: pathResult ?? pos,
+    scale,
+    rotation,
+    opacity,
+    maskScale: maskScale !== undefined && maskScale > 0 ? maskScale : undefined,
+    activePathId,
+  }
+}
+
+// LEGACY: Original sampling for backward compatibility
 export const sampleLayerTracks = (
   layer: LayerTracks,
   time: number,
@@ -177,7 +313,7 @@ export const sampleLayerTracks = (
   const scale = sampleNumberTrack(layer.scale, time, defaults.scale)
   const rotation = sampleNumberTrack(layer.rotation, time, defaults.rotation)
   const opacity = sampleNumberTrack(layer.opacity, time, defaults.opacity)
-  const maskScale = sampleNumberTrack(layer.maskScale, time, defaults.maskScale ?? 0) // Default to 0 if undefined? No, fallback handles it.
+  const maskScale = sampleNumberTrack(layer.maskScale, time, defaults.maskScale ?? 0)
 
   let pathResult: Vec2 | null = null
   let activePathId: string | undefined
@@ -197,11 +333,31 @@ export const sampleLayerTracks = (
     scale,
     rotation,
     opacity,
-    maskScale: layer.maskScale && layer.maskScale.length > 0 ? maskScale : undefined, // Only set if track has actual keyframes
+    maskScale: layer.maskScale && layer.maskScale.length > 0 ? maskScale : undefined,
     activePathId,
   }
 }
 
+// NEW: Additive sampling with clip info
+export const sampleTimelineAdditive = (
+  layers: LayerTracks[],
+  clips: ClipInfo[], // All template clips
+  time: number,
+  defaults: SampledLayerState = DEFAULT_LAYER_STATE
+): Record<string, SampledLayerState> => {
+  const result: Record<string, SampledLayerState> = {}
+  layers.forEach((layer) => {
+    // Filter clips for this specific layer
+    const layerClips = clips.filter(c => {
+      // Check if clip belongs to this layer by matching clipId in clipKeyframes
+      return layer.clipKeyframes && layer.clipKeyframes[c.id]
+    })
+    result[layer.layerId] = sampleLayerTracksAdditive(layer, layerClips, time, defaults)
+  })
+  return result
+}
+
+// LEGACY: Original sampling for backward compatibility
 export const sampleTimeline = (
   layers: LayerTracks[],
   time: number,

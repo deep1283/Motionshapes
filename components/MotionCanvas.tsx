@@ -5,7 +5,7 @@ import type { PointerEvent as ReactPointerEvent } from 'react'
 import * as PIXI from 'pixi.js'
 import 'pixi.js/app' // ensure Application plugins (ticker/resize) are registered
 import 'pixi.js/events' // enable pointer events
-import { sampleTimeline } from '@/lib/timeline'
+import { sampleTimeline, sampleTimelineAdditive, ClipInfo } from '@/lib/timeline'
 import { useTimeline, useTimelineActions } from '@/lib/timeline-store'
 import { GlowFilter } from 'pixi-filters'
 import { DropShadowFilter } from 'pixi-filters'
@@ -297,7 +297,15 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   const clickMarkers = useTimeline((s) => s.clickMarkers)
   const templateClips = useTimeline((s) => s.templateClips)
   const effectClips = useTimeline((s) => s.effectClips)
-  const sampledTimeline = useMemo(() => sampleTimeline(timelineTracks, playhead), [timelineTracks, playhead])
+  // Convert template clips to ClipInfo for additive sampling
+  const clipInfos: ClipInfo[] = useMemo(() => 
+    templateClips.map(c => ({ id: c.id, start: c.start ?? 0, duration: c.duration ?? 1000 })),
+    [templateClips]
+  )
+  const sampledTimeline = useMemo(
+    () => sampleTimelineAdditive(timelineTracks, clipInfos, playhead),
+    [timelineTracks, clipInfos, playhead]
+  )
   const timelineActions = useTimelineActions()
   const isPlaying = useTimeline((s) => s.isPlaying)
   
