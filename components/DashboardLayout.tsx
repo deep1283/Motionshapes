@@ -196,6 +196,7 @@ interface DashboardLayoutProps {
   onAddTypewriter?: (layerId: string) => void
   onAddBounceIn?: (layerId: string) => void
   onAddBounceOut?: (layerId: string) => void
+  onAddScramble?: (layerId: string) => void
 }
 
 export default function DashboardLayout({ 
@@ -292,6 +293,7 @@ export default function DashboardLayout({
   onAddTypewriter,
   onAddBounceIn,
   onAddBounceOut,
+  onAddScramble,
 }: DashboardLayoutProps) {
   const router = useRouter()
   const supabase = createClient()
@@ -1426,6 +1428,30 @@ export default function DashboardLayout({
                         </svg>
                       </div>
                       <span className="text-[11px] font-medium text-neutral-300">Bounce Out</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (!selectedLayerId) return
+                        onAddScramble?.(selectedLayerId)
+                      }}
+                      disabled={!selectedLayerId || selectedLayer?.type !== 'text'}
+                      className={cn(
+                        "flex flex-col items-center justify-center gap-2 p-4 rounded-lg border transition-all",
+                        selectedLayerId && selectedLayer?.type === 'text'
+                          ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/50 cursor-pointer"
+                          : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
+                      )}
+                    >
+                      <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 text-purple-400">
+                          <path d="M3 7h3m0 0l2-2m-2 2l2 2" />
+                          <path d="M21 7h-3m0 0l-2-2m2 2l-2 2" />
+                          <path d="M3 17h3m0 0l2-2m-2 2l2 2" />
+                          <path d="M21 17h-3m0 0l-2-2m2 2l-2 2" />
+                          <rect x="8" y="5" width="8" height="14" rx="1" />
+                        </svg>
+                      </div>
+                      <span className="text-[11px] font-medium text-neutral-300">Scramble</span>
                     </button>
 
                   </>

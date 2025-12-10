@@ -1963,6 +1963,38 @@ function DashboardContent() {
           timeline.setCurrentTime(lastEnd)
           pushSnapshot()
         }}
+        onAddScramble={(layerId) => {
+          const layer = layers.find(l => l.id === layerId)
+          if (!layer || layer.type !== 'text') return
+          
+          const now = timeline.getState().currentTime
+          const textLength = layer.text?.length ?? 10
+          // Duration based on text length: ~150ms per character + 500ms base
+          const duration = Math.max(1500, 500 + textLength * 150)
+          
+          const layerClips = templateClips.filter(c => c.layerId === layerId)
+          const lastEnd = layerClips.length
+            ? Math.max(...layerClips.map(c => (c.start ?? 0) + (c.duration ?? 0)))
+            : now
+            
+          const clipId = timeline.addTemplateClip(
+            layerId,
+            'scramble',
+            lastEnd,
+            duration,
+            {
+              textAnimation: 'scramble',
+            },
+            layer.scale ?? 1,
+            { position: { x: layer.x, y: layer.y }, scale: layer.scale ?? 1 }
+          )
+          
+          setSelectedTemplate('scramble')
+          setSelectedClipId(clipId)
+          timeline.setPlaying(false)
+          timeline.setCurrentTime(lastEnd)
+          pushSnapshot()
+        }}
         onSelectLayer={handleSelectLayer}
       >
         <MotionCanvas 

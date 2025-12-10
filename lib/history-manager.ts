@@ -75,7 +75,7 @@ export type TemplateId =
   | 'mask_top'
   | 'mask_center_out'
   | 'mask_top_out'
-  | 'typewriter' | 'bounce_in' | 'bounce_out' // Text animations
+  | 'typewriter' | 'bounce_in' | 'bounce_out' | 'scramble' // Text animations
 
 export interface TemplateClip {
   id: string
@@ -116,7 +116,7 @@ export interface TemplateClip {
     // Mask Center parameters
     maskAngle?: number // Angle in degrees (0 = horizontal, 90 = vertical)
     // Text animation parameters
-    textAnimation?: 'typewriter' | 'wave' | 'bounce' | 'bounce_in'
+    textAnimation?: 'typewriter' | 'bounce_in' | 'bounce_out' | 'scramble'
     showCursor?: boolean
   }
 }

@@ -82,7 +82,7 @@ type TimelineState = {
       // Mask Center parameters
       maskAngle?: number // Angle in degrees (0 = horizontal, 90 = vertical)
       // Text animation parameters
-      textAnimation?: 'typewriter' | 'wave' | 'bounce' | 'bounce_in'
+      textAnimation?: 'typewriter' | 'bounce_in' | 'bounce_out' | 'scramble'
       showCursor?: boolean
     }
   }>
@@ -745,7 +745,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           if (index === 0) {
              // Check if this is an In/Out animation
              const isInOutAnimation = [
-               'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in', 'bounce_in',
+               'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in', 'bounce_in', 'scramble',
                'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out', 'bounce_out'
              ].includes(clip.template)
              
@@ -1786,7 +1786,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
            } else if (clip.template === 'spin') {
              preset = PRESET_BUILDERS.spin(clip.parameters?.spinSpeed ?? prev.spinSpeed, clip.parameters?.spinDirection ?? prev.spinDirection, clip.duration)
            } else if ([
-             'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in', 'bounce_in',
+             'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in', 'bounce_in', 'scramble',
              'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out', 'bounce_out'
            ].includes(clip.template)) {
              // @ts-ignore
