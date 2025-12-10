@@ -256,6 +256,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   const emittersByLayerIdRef = useRef<Record<string, SimpleParticleEmitter[]>>({})
   const iconTextureCacheRef = useRef<Record<string, PIXI.Texture>>({})
   const spritesByIdRef = useRef<Record<string, PIXI.Sprite>>({})
+  const textsByIdRef = useRef<Record<string, { text: PIXI.Text; fullText: string; layerId: string; hasTypewriter: boolean }>>({})
   const resizeHandlesRef = useRef<Record<string, PIXI.Graphics[]>>({})
   const handlesByIdRef = useRef<Record<string, PIXI.Graphics[]>>({}) // For text layer resize handles
   const spotlightOverlayRef = useRef<PIXI.Graphics | null>(null) // For pan_zoom spotlight blur effect
@@ -325,7 +326,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       .filter(c => c.layerId === selectedLayerId && c.template === 'path' && c.parameters?.pathPoints)
       .map(c => ({
         id: c.id,
-        points: c.parameters.pathPoints as Array<{ x: number; y: number }>,
+        points: c.parameters!.pathPoints as Array<{ x: number; y: number }>,
         startTime: c.start ?? 0,
         duration: c.duration ?? 1000,
       }))
@@ -951,6 +952,79 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     updateGraphicsFromTimeline()
   }, [orderedLayers, layers, selectedLayerId])
 
+  // Update typewriter text using PIXI ticker for smooth playback
+  useEffect(() => {
+    const app = appRef.current
+    if (!app || !isReady) return
+    
+    console.log('[TYPEWRITER_TICKER] Setting up ticker')
+    
+    const updateTypewriter = () => {
+      // Get current playhead from timeline store
+      const currentPlayhead = timelineActions.getState().currentTime
+      const isPlaying = timelineActions.getState().isPlaying
+      
+      if (Object.keys(textsByIdRef.current).length === 0) return
+      
+      // Log every 500ms worth of updates (only when we have text refs)
+      if (Math.floor(currentPlayhead) % 500 === 0) {
+        console.log('[TYPEWRITER_TICKER] Tick - playhead:', currentPlayhead, 'isPlaying:', isPlaying, 'textRefs:', Object.keys(textsByIdRef.current).length)
+      }
+      
+      Object.values(textsByIdRef.current).forEach(({ text, fullText, layerId }) => {
+        // Check if there's a typewriter clip for this layer
+        const clips = timelineActions.getState().templateClips
+        const typewriterClip = clips.find(
+          (c: { layerId: string; template: string }) => c.layerId === layerId && c.template === 'typewriter'
+        )
+        
+        if (!typewriterClip) return
+        
+        const clipStart = typewriterClip.start ?? 0
+        const clipDuration = typewriterClip.duration ?? 2000
+        const clipEnd = clipStart + clipDuration
+        const totalChars = fullText.length
+        
+        let displayText: string
+        let showCursor = false
+        
+        if (currentPlayhead < clipStart) {
+          // Before clip starts - show nothing
+          displayText = ''
+        } else if (currentPlayhead >= clipEnd) {
+          // After clip ends - show full text
+          displayText = fullText
+        } else {
+          // During clip - reveal characters progressively
+          const progress = (currentPlayhead - clipStart) / clipDuration
+          const charsToShow = Math.floor(progress * totalChars)
+          displayText = fullText.substring(0, charsToShow)
+          showCursor = typewriterClip.parameters?.showCursor !== false
+        }
+        
+        // Add blinking cursor (blink every 500ms)
+        const cursorChar = Math.floor(currentPlayhead / 500) % 2 === 0 && showCursor ? '|' : ''
+        const newText = displayText + cursorChar
+        
+        // Only update if text changed (avoid unnecessary renders)
+        if (text.text !== newText) {
+          console.log('[TYPEWRITER_TICKER] Updating text from:', text.text, 'to:', newText, 'textObjId:', layerId)
+          text.text = newText
+          console.log('[TYPEWRITER_TICKER] After assignment, text.text is now:', text.text)
+          // Force immediate render after text update
+          const app = appRef.current
+          if (app) app.render()
+        }
+      })
+    }
+    
+    app.ticker.add(updateTypewriter)
+    
+    return () => {
+      app.ticker?.remove(updateTypewriter)
+    }
+  }, [isReady, timelineActions])
+
   useEffect(() => {
     const app = appRef.current
     if (!app) return
@@ -1057,7 +1131,10 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     const centerX = screenWidth / 2
     const centerY = screenHeight / 2
     const tickerCallbacks: Array<(ticker: PIXI.Ticker) => void> = []
+    
     graphicsByIdRef.current = {}
+    textsByIdRef.current = {} // Clear text refs - they'll be repopulated with fresh objects
+    console.log('[LAYER_RENDER] Clearing all refs, starting layer rebuild')
     // templates are driven by timeline keyframes; built-in previews are disabled
     const templateEnabled = false
 
@@ -1668,6 +1745,13 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         
         // Handle Text layers
         if (layer.type === 'text' && layer.text) {
+          // Check if a typewriter clip exists for this layer
+          const hasTypewriterClip = templateClips.some(
+            c => c.layerId === layer.id && c.template === 'typewriter'
+          )
+          
+          console.log('[TEXT_CREATE] Creating text for layer:', layer.id, 'hasTypewriter:', hasTypewriterClip)
+          
           const container = new PIXI.Container()
           
           // Use layer.width as the text box width (wordWrapWidth)
@@ -1709,7 +1793,42 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             }
           }
           
-          const text = new PIXI.Text({ text: initialText, style: textStyle })
+          // Check for typewriter animation
+          const typewriterClip = templateClips.find(
+            c => c.layerId === layer.id && c.template === 'typewriter'
+          )
+          
+          let displayText = initialText
+          let showCursor = false
+          
+          if (typewriterClip) {
+            const clipStart = typewriterClip.start ?? 0
+            const clipDuration = typewriterClip.duration ?? 2000
+            const clipEnd = clipStart + clipDuration
+            const fullText = initialText
+            const totalChars = fullText.length
+            
+            if (playhead < clipStart) {
+              // Before clip starts - show nothing
+              displayText = ''
+            } else if (playhead >= clipEnd) {
+              // After clip ends - show full text
+              displayText = fullText
+            } else {
+              // During clip - reveal characters progressively
+              const progress = (playhead - clipStart) / clipDuration
+              const charsToShow = Math.floor(progress * totalChars)
+              displayText = fullText.substring(0, charsToShow)
+              showCursor = typewriterClip.parameters?.showCursor !== false
+            }
+          }
+          
+          // Add cursor if typewriter is active
+          const finalText = showCursor ? displayText + '|' : displayText
+          
+          console.log('[TEXT_CREATE] Creating PIXI.Text with finalText:', finalText, 'playhead:', playhead, 'hasTypewriter:', !!typewriterClip)
+          
+          const text = new PIXI.Text({ text: finalText, style: textStyle })
           text.anchor.set(0.5)
           container.addChild(text)
           
@@ -1726,8 +1845,9 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           container.cursor = 'grab'
           container.hitArea = new PIXI.Rectangle(-boxWidth / 2, -boxHeight / 2, boxWidth, boxHeight)
           
-          // Store references
+          // Store references for typewriter animation updates
           graphicsByIdRef.current[layer.id] = container as any
+          textsByIdRef.current[layer.id] = { text, fullText: initialText, layerId: layer.id, hasTypewriter: hasTypewriterClip }
           
           // Add outline
           const outline = new PIXI.Graphics()
@@ -2398,11 +2518,49 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
                 }
               }
             } else {
-              // Regular text layer - update text content
-              if (layer.text !== undefined && textObj.text !== layer.text) {
-                textObj.text = layer.text
-                textChanged = true
-                needsRender = true
+              // Check for typewriter animation
+              const typewriterClip = templateClips.find(
+                c => c.layerId === layer.id && c.template === 'typewriter'
+              )
+              
+              if (typewriterClip) {
+                // Typewriter animation - reveal characters progressively
+                const clipStart = typewriterClip.start ?? 0
+                const clipDuration = typewriterClip.duration ?? 2000
+                const clipEnd = clipStart + clipDuration
+                const fullText = layer.text || ''
+                const totalChars = fullText.length
+                
+                let displayText: string
+                let showCursor = false
+                
+                if (playhead < clipStart) {
+                  displayText = ''
+                } else if (playhead >= clipEnd) {
+                  displayText = fullText
+                } else {
+                  const progress = (playhead - clipStart) / clipDuration
+                  const charsToShow = Math.floor(progress * totalChars)
+                  displayText = fullText.substring(0, charsToShow)
+                  showCursor = typewriterClip.parameters?.showCursor !== false
+                }
+                
+                // Add blinking cursor
+                const cursorChar = Math.floor(playhead / 500) % 2 === 0 && showCursor ? '|' : ''
+                const typewriterText = displayText + cursorChar
+                
+                if (textObj.text !== typewriterText) {
+                  textObj.text = typewriterText
+                  textChanged = true
+                  needsRender = true
+                }
+              } else {
+                // Regular text layer - update text content
+                if (layer.text !== undefined && textObj.text !== layer.text) {
+                  textObj.text = layer.text
+                  textChanged = true
+                  needsRender = true
+                }
               }
             }
             // Update font size

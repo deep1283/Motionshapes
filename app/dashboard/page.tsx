@@ -1870,6 +1870,39 @@ function DashboardContent() {
           timeline.setCurrentTime(lastEnd)
           pushSnapshot()
         }}
+        onAddTypewriter={(layerId) => {
+          const layer = layers.find(l => l.id === layerId)
+          if (!layer || layer.type !== 'text') return
+          
+          const now = timeline.getState().currentTime
+          const textLength = layer.text?.length ?? 10
+          // Duration based on text length: ~80ms per character
+          const duration = Math.max(1000, textLength * 80)
+          
+          const layerClips = templateClips.filter(c => c.layerId === layerId)
+          const lastEnd = layerClips.length
+            ? Math.max(...layerClips.map(c => (c.start ?? 0) + (c.duration ?? 0)))
+            : now
+            
+          const clipId = timeline.addTemplateClip(
+            layerId,
+            'typewriter',
+            lastEnd,
+            duration,
+            {
+              showCursor: true,
+              textAnimation: 'typewriter',
+            },
+            layer.scale ?? 1,
+            { position: { x: layer.x, y: layer.y }, scale: layer.scale ?? 1 }
+          )
+          
+          setSelectedTemplate('typewriter')
+          setSelectedClipId(clipId)
+          timeline.setPlaying(false)
+          timeline.setCurrentTime(lastEnd)
+          pushSnapshot()
+        }}
         onSelectLayer={handleSelectLayer}
       >
         <MotionCanvas 
