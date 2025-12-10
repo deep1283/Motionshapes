@@ -6,6 +6,7 @@ export type TemplateId =
   | 'fade_out' | 'slide_out' | 'grow_out' | 'shrink_out' | 'spin_out' | 'twist_out' | 'move_scale_out'
   | 'mask_center' | 'mask_top' | 'mask_center_out' | 'mask_top_out'
   | 'typewriter' | 'bounce_in' | 'bounce_out' | 'scramble' // Text animations
+  | 'transition_fade' | 'transition_slide' | 'transition_zoom' | 'transition_blur' // Unified transitions
 
 export interface PresetResult {
   position?: TimelineKeyframe<Vec2>[]

@@ -76,6 +76,7 @@ export type TemplateId =
   | 'mask_center_out'
   | 'mask_top_out'
   | 'typewriter' | 'bounce_in' | 'bounce_out' | 'scramble' // Text animations
+  | 'transition_fade' | 'transition_slide' | 'transition_zoom' | 'transition_blur' // Unified transitions
 
 export interface TemplateClip {
   id: string

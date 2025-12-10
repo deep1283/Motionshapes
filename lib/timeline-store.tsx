@@ -84,6 +84,9 @@ type TimelineState = {
       // Text animation parameters
       textAnimation?: 'typewriter' | 'bounce_in' | 'bounce_out' | 'scramble'
       showCursor?: boolean
+      // Transition parameters
+      transitionToLayerId?: string
+      transitionType?: 'fade' | 'slide' | 'zoom' | 'blur'
     }
   }>
   // Click markers for click animation effect

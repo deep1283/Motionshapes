@@ -695,6 +695,11 @@ function DashboardContent() {
     setLayerOrder((prev) => [...prev, newLayer.id]) // newest on top
     setSelectedTemplate('') // prevent auto-applying the last template to the new shape
     setTemplateVersion((v) => v + 1)
+    
+    // Move playhead to the start of the new layer
+    const track = timeline.getState().tracks.find(t => t.layerId === newLayer.id)
+    const layerStartTime = track?.startTime ?? 0
+    timeline.setCurrentTime(layerStartTime)
   }
 
   const handleImportImage = async (file: File) => {
@@ -760,6 +765,11 @@ function DashboardContent() {
         setLayerOrder((prev) => [...prev, newLayer.id])
         setSelectedTemplate('')
         setTemplateVersion((v) => v + 1)
+        
+        // Move playhead to the start of the new layer
+        const track = timeline.getState().tracks.find(t => t.layerId === newLayer.id)
+        const layerStartTime = track?.startTime ?? 0
+        timeline.setCurrentTime(layerStartTime)
       }
       img.src = imageUrl
     }
@@ -891,6 +901,11 @@ function DashboardContent() {
     setLayerOrder((prev) => [...prev, newLayer.id])
     setSelectedTemplate('')
     setTemplateVersion((v) => v + 1)
+    
+    // Move playhead to the start of the new layer
+    const track = timeline.getState().tracks.find(t => t.layerId === newLayer.id)
+    const layerStartTime = track?.startTime ?? 0
+    timeline.setCurrentTime(layerStartTime)
   }
 
   // Handle adding Text layer
@@ -925,6 +940,11 @@ function DashboardContent() {
     setLayerOrder((prev) => [...prev, newLayer.id])
     setSelectedTemplate('')
     setTemplateVersion((v) => v + 1)
+    
+    // Move playhead to the start of the new layer
+    const track = timeline.getState().tracks.find(t => t.layerId === newLayer.id)
+    const layerStartTime = track?.startTime ?? 0
+    timeline.setCurrentTime(layerStartTime)
   }
 
   const handleAddCounter = () => {
@@ -1993,6 +2013,83 @@ function DashboardContent() {
           setSelectedClipId(clipId)
           timeline.setPlaying(false)
           timeline.setCurrentTime(lastEnd)
+          pushSnapshot()
+        }}
+        onAddTransition={(fromLayerId, toLayerId, transitionType) => {
+          const fromLayer = layers.find(l => l.id === fromLayerId)
+          if (!fromLayer) return
+          
+          // If toLayerId is empty, auto-find the next layer in timeline order
+          let actualToLayerId = toLayerId
+          if (!toLayerId) {
+            // Get timeline tracks and sort by startTime
+            const tracks = timeline.getState().tracks
+            const fromTrack = tracks.find(t => t.layerId === fromLayerId)
+            const fromEnd = (fromTrack?.startTime ?? 0) + (fromTrack?.duration ?? 2000)
+            
+            // Find a layer that starts at or after the fromLayer ends (or overlaps)
+            // Sort tracks by startTime and find the one that comes after
+            const sortedTracks = [...tracks]
+              .filter(t => t.layerId !== fromLayerId)
+              .sort((a, b) => (a.startTime ?? 0) - (b.startTime ?? 0))
+            
+            // Find the first track that starts near or after the fromLayer's end
+            const nextTrack = sortedTracks.find(t => {
+              const tStart = t.startTime ?? 0
+              const tEnd = tStart + (t.duration ?? 2000)
+              // Either overlaps or starts after
+              return tStart >= (fromTrack?.startTime ?? 0)
+            })
+            
+            if (!nextTrack) {
+              // No next layer found - just return or alert
+              console.log('No layer found to transition to')
+              return
+            }
+            
+            actualToLayerId = nextTrack.layerId
+          }
+          
+          const toLayer = layers.find(l => l.id === actualToLayerId)
+          if (!toLayer) return
+          
+          // Calculate transition timing
+          const fromTrack = timeline.getState().tracks.find(t => t.layerId === fromLayerId)
+          const toTrack = timeline.getState().tracks.find(t => t.layerId === actualToLayerId)
+          
+          const fromEnd = (fromTrack?.startTime ?? 0) + (fromTrack?.duration ?? 2000)
+          const toStart = toTrack?.startTime ?? 0
+          
+          // Transition duration (0.55s feels smooth)
+          const transitionDuration = 550
+          
+          // Center the transition at the boundary/overlap point between the two layers
+          // If there's an overlap, center in the overlap region
+          // If there's a gap, center at the midpoint
+          const overlapCenter = (fromEnd + toStart) / 2
+          const transitionStart = Math.max(0, overlapCenter - transitionDuration / 2)
+          
+          // Map transition type to template name
+          const templateName = `transition_${transitionType}` as any
+          
+          // Create a single unified transition clip on the fromLayer
+          const clipId = timeline.addTemplateClip(
+            fromLayerId,
+            templateName,
+            transitionStart,
+            transitionDuration,
+            {
+              transitionToLayerId: actualToLayerId,
+              transitionType: transitionType,
+            },
+            fromLayer.scale ?? 1,
+            { position: { x: fromLayer.x, y: fromLayer.y }, scale: fromLayer.scale ?? 1 }
+          )
+          
+          setSelectedTemplate(templateName)
+          setSelectedClipId(clipId)
+          timeline.setPlaying(false)
+          timeline.setCurrentTime(transitionStart)
           pushSnapshot()
         }}
         onSelectLayer={handleSelectLayer}

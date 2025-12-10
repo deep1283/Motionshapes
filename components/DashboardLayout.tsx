@@ -197,6 +197,8 @@ interface DashboardLayoutProps {
   onAddBounceIn?: (layerId: string) => void
   onAddBounceOut?: (layerId: string) => void
   onAddScramble?: (layerId: string) => void
+  // Transitions
+  onAddTransition?: (fromLayerId: string, toLayerId: string, transitionType: 'fade' | 'slide' | 'zoom' | 'blur') => void
 }
 
 export default function DashboardLayout({ 
@@ -294,13 +296,14 @@ export default function DashboardLayout({
   onAddBounceIn,
   onAddBounceOut,
   onAddScramble,
+  onAddTransition,
 }: DashboardLayoutProps) {
   const router = useRouter()
   const supabase = createClient()
   const templateClips = useTimeline((s) => s.templateClips)
   const timeline = useTimelineActions()
   const [showBackgroundPanel, setShowBackgroundPanel] = useState(false)
-  const [activeTab, setActiveTab] = useState<'templates' | 'shapes' | 'effects' | 'animations'>('shapes')
+  const [activeTab, setActiveTab] = useState<'templates' | 'shapes' | 'effects' | 'animations' | 'transitions'>('shapes')
   const [animationType, setAnimationType] = useState<'in' | 'out' | 'custom'>('in')
   const [showExploreModal, setShowExploreModal] = useState(false)
 
@@ -972,6 +975,17 @@ export default function DashboardLayout({
             >
               Shapes
             </button>
+            <button
+              onClick={() => setActiveTab('transitions')}
+              className={cn(
+                "flex-1 border-b-2 py-3 text-[11px] font-medium transition-colors",
+                activeTab === 'transitions'
+                  ? "border-violet-500 text-violet-400"
+                  : "border-transparent text-neutral-400 hover:text-neutral-200"
+              )}
+            >
+              Transitions
+            </button>
         </div>
         
         <div className="flex items-center gap-3">
@@ -1606,6 +1620,116 @@ export default function DashboardLayout({
                     Cursor
                   </Button>
                 </div>
+            </div>
+          )}
+
+          {/* Transitions Tab Content */}
+          {activeTab === 'transitions' && (
+            <div className="flex-1 min-h-0 overflow-y-auto pr-1 pb-96">
+              <h2 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-neutral-600 px-2">
+                Transitions
+              </h2>
+              
+              <div className="px-2 mb-4 space-y-4">
+                {/* Info message */}
+                {!selectedLayerId ? (
+                  <p className="text-[10px] text-amber-400/80 flex items-center gap-1.5">
+                    <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                      <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                    </svg>
+                    Select a layer to add transitions
+                  </p>
+                ) : (
+                  <p className="text-[10px] text-neutral-400">
+                    Transition will apply between the selected layer and the next layer
+                  </p>
+                )}
+                
+                {/* Transition types */}
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    className={cn(
+                      "flex flex-col items-center justify-center gap-2 p-4 rounded-xl border transition-all group",
+                      selectedLayerId
+                        ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/30 cursor-pointer"
+                        : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
+                    )}
+                    onClick={() => {
+                      if (selectedLayerId) {
+                        onAddTransition?.(selectedLayerId, '', 'fade')
+                      }
+                    }}
+                    disabled={!selectedLayerId}
+                  >
+                    <svg viewBox="0 0 24 24" className="w-6 h-6 text-neutral-400 group-hover:text-purple-400" fill="none" stroke="currentColor" strokeWidth="1.5">
+                      <circle cx="12" cy="12" r="8" strokeDasharray="4 2" />
+                    </svg>
+                    <span className="text-[10px] font-medium text-neutral-400 group-hover:text-white">Fade</span>
+                  </button>
+                  
+                  <button
+                    className={cn(
+                      "flex flex-col items-center justify-center gap-2 p-4 rounded-xl border transition-all group",
+                      selectedLayerId
+                        ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/30 cursor-pointer"
+                        : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
+                    )}
+                    onClick={() => {
+                      if (selectedLayerId) {
+                        onAddTransition?.(selectedLayerId, '', 'slide')
+                      }
+                    }}
+                    disabled={!selectedLayerId}
+                  >
+                    <svg viewBox="0 0 24 24" className="w-6 h-6 text-neutral-400 group-hover:text-purple-400" fill="none" stroke="currentColor" strokeWidth="1.5">
+                      <path d="M5 12h14M12 5l7 7-7 7" />
+                    </svg>
+                    <span className="text-[10px] font-medium text-neutral-400 group-hover:text-white">Slide</span>
+                  </button>
+                  
+                  <button
+                    className={cn(
+                      "flex flex-col items-center justify-center gap-2 p-4 rounded-xl border transition-all group",
+                      selectedLayerId
+                        ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/30 cursor-pointer"
+                        : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
+                    )}
+                    onClick={() => {
+                      if (selectedLayerId) {
+                        onAddTransition?.(selectedLayerId, '', 'zoom')
+                      }
+                    }}
+                    disabled={!selectedLayerId}
+                  >
+                    <svg viewBox="0 0 24 24" className="w-6 h-6 text-neutral-400 group-hover:text-purple-400" fill="none" stroke="currentColor" strokeWidth="1.5">
+                      <circle cx="12" cy="12" r="3" />
+                      <circle cx="12" cy="12" r="8" />
+                    </svg>
+                    <span className="text-[10px] font-medium text-neutral-400 group-hover:text-white">Zoom</span>
+                  </button>
+                  
+                  <button
+                    className={cn(
+                      "flex flex-col items-center justify-center gap-2 p-4 rounded-xl border transition-all group",
+                      selectedLayerId
+                        ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/30 cursor-pointer"
+                        : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
+                    )}
+                    onClick={() => {
+                      if (selectedLayerId) {
+                        onAddTransition?.(selectedLayerId, '', 'blur')
+                      }
+                    }}
+                    disabled={!selectedLayerId}
+                  >
+                    <svg viewBox="0 0 24 24" className="w-6 h-6 text-neutral-400 group-hover:text-purple-400" fill="none" stroke="currentColor" strokeWidth="1.5">
+                      <circle cx="12" cy="12" r="6" strokeDasharray="2 1" />
+                      <circle cx="12" cy="12" r="9" strokeDasharray="3 2" opacity="0.5" />
+                    </svg>
+                    <span className="text-[10px] font-medium text-neutral-400 group-hover:text-white">Blur</span>
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 

@@ -655,11 +655,83 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       const isVisibleInTime = playhead >= trackStartTime && playhead <= trackStartTime + trackDuration
       
       let finalOpacity = state.opacity
+      let transitionScale = 1
+      
       if (!isVisibleInTime) {
         finalOpacity = 0
+      } else {
+        // Check for unified transition clips that affect this layer
+        // A transition clip can affect this layer as either:
+        // 1. The "from" layer (layerId matches - gets fade OUT)
+        // 2. The "to" layer (transitionToLayerId matches - gets fade IN)
+        
+        const transitionTemplates = ['transition_fade', 'transition_slide', 'transition_zoom', 'transition_blur']
+        
+        templateClips.forEach(clip => {
+          if (!transitionTemplates.includes(clip.template)) return
+          
+          const clipStart = clip.start ?? 0
+          const clipEnd = clipStart + (clip.duration ?? 1000)
+          
+          // Only process if playhead is within this transition
+          if (playhead < clipStart || playhead > clipEnd) return
+          
+          const clipDuration = clip.duration ?? 1000
+          const progress = Math.min(1, Math.max(0, (playhead - clipStart) / clipDuration))
+          
+          // Check if this layer is the "from" layer (fades OUT)
+          if (clip.layerId === id) {
+            // Apply fade OUT effect (1 -> 0)
+            if (clip.template === 'transition_fade') {
+              finalOpacity *= (1 - progress)
+            } else if (clip.template === 'transition_zoom') {
+              transitionScale *= (1 - progress * 0.5) // Scale down to 0.5
+              finalOpacity *= (1 - progress)
+            } else if (clip.template === 'transition_slide') {
+              // Slide out - will need position adjustment too
+              finalOpacity *= (1 - progress)
+            } else if (clip.template === 'transition_blur') {
+              // Blur out - apply blur filter that increases, opacity fades
+              const blurStrength = progress * 15 // 0 to 15 blur
+              const blurFilter = new PIXI.BlurFilter({ strength: blurStrength })
+              if (!g.filters) g.filters = []
+              // Add blur filter for this frame (will be cleared next frame)
+              const existingFilters = Array.isArray(g.filters) ? g.filters.filter(f => !(f instanceof PIXI.BlurFilter)) : []
+              g.filters = [...existingFilters, blurFilter]
+              finalOpacity *= (1 - progress)
+            }
+          }
+          
+          // Check if this layer is the "to" layer (fades IN)
+          if (clip.parameters?.transitionToLayerId === id) {
+            // Apply fade IN effect (0 -> 1)
+            if (clip.template === 'transition_fade') {
+              finalOpacity *= progress
+            } else if (clip.template === 'transition_zoom') {
+              transitionScale *= (0.5 + progress * 0.5) // Scale from 0.5 to 1
+              finalOpacity *= progress
+            } else if (clip.template === 'transition_slide') {
+              // Slide in
+              finalOpacity *= progress
+            } else if (clip.template === 'transition_blur') {
+              // Blur in - start blurred and become clear
+              const blurStrength = (1 - progress) * 15 // 15 to 0 blur
+              const blurFilter = new PIXI.BlurFilter({ strength: blurStrength })
+              if (!g.filters) g.filters = []
+              const existingFilters = Array.isArray(g.filters) ? g.filters.filter(f => !(f instanceof PIXI.BlurFilter)) : []
+              g.filters = [...existingFilters, blurFilter]
+              finalOpacity *= progress
+            }
+          }
+        })
       }
       
-      g.alpha = hasOpacityAnim ? finalOpacity : (isVisibleInTime ? 1 : 0)
+      // Apply transition scale if modified
+      if (transitionScale !== 1) {
+        g.scale.set(finalScale * transitionScale)
+      }
+      
+      g.alpha = hasOpacityAnim ? finalOpacity : (isVisibleInTime ? (finalOpacity < 1 ? finalOpacity : 1) : 0)
 
       // Sync rotation
       // For rotation: layer.rotation is the base, animation rotation is additive
