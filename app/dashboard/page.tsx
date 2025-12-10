@@ -1903,6 +1903,66 @@ function DashboardContent() {
           timeline.setCurrentTime(lastEnd)
           pushSnapshot()
         }}
+        onAddBounceIn={(layerId) => {
+          const layer = layers.find(l => l.id === layerId)
+          if (!layer || layer.type !== 'text') return
+          
+          const now = timeline.getState().currentTime
+          const duration = 1000 // Fixed duration for bounce in
+          
+          const layerClips = templateClips.filter(c => c.layerId === layerId)
+          const lastEnd = layerClips.length
+            ? Math.max(...layerClips.map(c => (c.start ?? 0) + (c.duration ?? 0)))
+            : now
+            
+          const clipId = timeline.addTemplateClip(
+            layerId,
+            'bounce_in',
+            lastEnd,
+            duration,
+            {
+              textAnimation: 'bounce_in',
+            },
+            layer.scale ?? 1,
+            { position: { x: layer.x, y: layer.y }, scale: layer.scale ?? 1 }
+          )
+          
+          setSelectedTemplate('bounce_in')
+          setSelectedClipId(clipId)
+          timeline.setPlaying(false)
+          timeline.setCurrentTime(lastEnd)
+          pushSnapshot()
+        }}
+        onAddBounceOut={(layerId) => {
+          const layer = layers.find(l => l.id === layerId)
+          if (!layer || layer.type !== 'text') return
+          
+          const now = timeline.getState().currentTime
+          const duration = 1000 // Fixed duration for bounce out
+          
+          const layerClips = templateClips.filter(c => c.layerId === layerId)
+          const lastEnd = layerClips.length
+            ? Math.max(...layerClips.map(c => (c.start ?? 0) + (c.duration ?? 0)))
+            : now
+            
+          const clipId = timeline.addTemplateClip(
+            layerId,
+            'bounce_out',
+            lastEnd,
+            duration,
+            {
+              textAnimation: 'bounce_out',
+            },
+            layer.scale ?? 1,
+            { position: { x: layer.x, y: layer.y }, scale: layer.scale ?? 1 }
+          )
+          
+          setSelectedTemplate('bounce_out')
+          setSelectedClipId(clipId)
+          timeline.setPlaying(false)
+          timeline.setCurrentTime(lastEnd)
+          pushSnapshot()
+        }}
         onSelectLayer={handleSelectLayer}
       >
         <MotionCanvas 

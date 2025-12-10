@@ -194,6 +194,8 @@ interface DashboardLayoutProps {
   onSmoothPath?: () => void
   // Text animations
   onAddTypewriter?: (layerId: string) => void
+  onAddBounceIn?: (layerId: string) => void
+  onAddBounceOut?: (layerId: string) => void
 }
 
 export default function DashboardLayout({ 
@@ -288,6 +290,8 @@ export default function DashboardLayout({
   onSmoothPath,
   // Text animations
   onAddTypewriter,
+  onAddBounceIn,
+  onAddBounceOut,
 }: DashboardLayoutProps) {
   const router = useRouter()
   const supabase = createClient()
@@ -1380,6 +1384,48 @@ export default function DashboardLayout({
                         </svg>
                       </div>
                       <span className="text-[11px] font-medium text-neutral-300">Typewriter</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (!selectedLayerId) return
+                        onAddBounceIn?.(selectedLayerId)
+                      }}
+                      disabled={!selectedLayerId || selectedLayer?.type !== 'text'}
+                      className={cn(
+                        "flex flex-col items-center justify-center gap-2 p-4 rounded-lg border transition-all",
+                        selectedLayerId && selectedLayer?.type === 'text'
+                          ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/50 cursor-pointer"
+                          : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
+                      )}
+                    >
+                      <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 text-purple-400">
+                          <path d="M12 3v18" />
+                          <path d="M5 13l7 7 7-7" />
+                        </svg>
+                      </div>
+                      <span className="text-[11px] font-medium text-neutral-300">Bounce In</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (!selectedLayerId) return
+                        onAddBounceOut?.(selectedLayerId)
+                      }}
+                      disabled={!selectedLayerId || selectedLayer?.type !== 'text'}
+                      className={cn(
+                        "flex flex-col items-center justify-center gap-2 p-4 rounded-lg border transition-all",
+                        selectedLayerId && selectedLayer?.type === 'text'
+                          ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/50 cursor-pointer"
+                          : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
+                      )}
+                    >
+                      <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 text-purple-400">
+                          <path d="M12 20V4" />
+                          <path d="M5 11l7-7 7 7" />
+                        </svg>
+                      </div>
+                      <span className="text-[11px] font-medium text-neutral-300">Bounce Out</span>
                     </button>
 
                   </>
