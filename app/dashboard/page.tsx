@@ -12,6 +12,7 @@ import { rollDurationForDistance, jumpHeightForDuration } from '@/lib/presets'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { HistoryManager, type HistorySnapshot } from '@/lib/history-manager'
 import { debounce } from '@/lib/utils'
+import { chaikinSmooth, calculatePathLength } from '@/lib/path-smoothing'
 
 // Dynamically import MotionCanvas to avoid SSR issues with Pixi.js
 const MotionCanvas = dynamic(() => import('@/components/MotionCanvas'), { 
@@ -89,6 +90,11 @@ function DashboardContent() {
 
   const [activeEffectId, setActiveEffectId] = useState<string>('')
   const [showSelectShapeHint, setShowSelectShapeHint] = useState(false)
+  
+  // Smooth path button state
+  const [showSmoothPathButton, setShowSmoothPathButton] = useState(false)
+  const smoothPathTimerRef = useRef<NodeJS.Timeout | null>(null)
+  
   const [background, setBackground] = useState<BackgroundSettings>({
     mode: 'solid',
     solid: '#0f0f0f',
@@ -137,6 +143,18 @@ function DashboardContent() {
     }
   }, [selectedTemplate, selectedLayerId, templateClips, selectedClipId])
 
+  // Sync path overlay when selectedClipId or templateClips changes (handles undo/redo)
+  useEffect(() => {
+    if (!selectedClipId) {
+      return
+    }
+    const clip = templateClips.find(c => c.id === selectedClipId)
+    if (clip?.template === 'path' && clip?.parameters?.pathPoints) {
+      const pts = clip.parameters.pathPoints as Array<{ x: number; y: number }>
+      setActivePathPoints(pts)
+      setPathVersion(v => v + 1)
+    }
+  }, [selectedClipId, templateClips])
   useEffect(() => {
     const checkUser = async () => {
       const supabase = createClient()
@@ -749,7 +767,6 @@ function DashboardContent() {
   }
 
   const handleAIGenerateImage = async (prompt: string) => {
-    console.log('=== handleAIGenerateImage CALLED ===', prompt)
     try {
       const res = await fetch('/api/gemini/generate-image', {
         method: 'POST',
@@ -757,14 +774,11 @@ function DashboardContent() {
         body: JSON.stringify({ prompt })
       })
       
-      console.log('Fetch response status:', res.status)
-      
       if (!res.ok) {
         throw new Error(await res.text())
       }
       
       const data = await res.json()
-      console.log('API response data:', { hasImageUrl: !!data.imageUrl, imageUrlLength: data.imageUrl?.length })
       
       if (data.imageUrl) {
         // Create new layer with generated image
@@ -782,12 +796,7 @@ function DashboardContent() {
           imageUrl: data.imageUrl,
         }
         
-        console.log('Created newLayer:', { id: newLayer.id, type: newLayer.type, hasImageUrl: !!newLayer.imageUrl })
-        
-        setLayers((prev) => {
-          console.log('setLayers called, prev length:', prev.length)
-          return [...prev, newLayer]
-        })
+        setLayers((prev) => [...prev, newLayer])
         setLayerOrder((prev) => [...prev, newLayer.id])
         setSelectedLayerId(newLayer.id)
         
@@ -798,11 +807,8 @@ function DashboardContent() {
           opacity: 1,
         })
         
-        console.log('Track created:', track)
-        
         // Jump playhead to the start of the new clip so it's visible
         if (track && typeof track.startTime === 'number') {
-          console.log('Setting playhead to:', track.startTime)
           timeline.setCurrentTime(track.startTime)
         }
         
@@ -1216,6 +1222,16 @@ function DashboardContent() {
       timeline.setPlaying(false)
       timeline.setCurrentTime(startAt)
       pushSnapshot()
+      
+      // Show smooth path button for 3 seconds
+      if (smoothPathTimerRef.current) {
+        clearTimeout(smoothPathTimerRef.current)
+      }
+      setShowSmoothPathButton(true)
+      smoothPathTimerRef.current = setTimeout(() => {
+        setShowSmoothPathButton(false)
+        smoothPathTimerRef.current = null
+      }, 3000)
     }
   }
 
@@ -1225,6 +1241,45 @@ function DashboardContent() {
     setPathPoints([])
     setActivePathPoints([])
     setPathVersion(v => v + 1)
+  }
+
+  const handleSmoothPath = () => {
+    // Hide the button immediately
+    setShowSmoothPathButton(false)
+    if (smoothPathTimerRef.current) {
+      clearTimeout(smoothPathTimerRef.current)
+      smoothPathTimerRef.current = null
+    }
+    
+    if (!selectedClipId || !selectedLayerId) return
+    
+    // Get the current clip
+    const clips = timeline.getState().templateClips
+    const clip = clips.find(c => c.id === selectedClipId)
+    if (!clip || clip.template !== 'path' || !clip.parameters?.pathPoints) return
+    
+    const originalPoints = clip.parameters.pathPoints as Array<{ x: number; y: number }>
+    if (originalPoints.length < 3) return
+    
+    // Apply Chaikin's smoothing (2 iterations for good results)
+    const smoothedPoints = chaikinSmooth(originalPoints, 2)
+    const newLength = calculatePathLength(smoothedPoints)
+    
+    // Update the clip with smoothed points
+    timeline.updateTemplateClip(selectedLayerId, selectedClipId, {
+      parameters: {
+        ...clip.parameters,
+        pathPoints: smoothedPoints,
+        pathLength: newLength,
+      }
+    })
+    
+    // Update active path points for visual feedback
+    setActivePathPoints(smoothedPoints)
+    setPathVersion(v => v + 1)
+    
+    // Push snapshot for undo support
+    pushSnapshot()
   }
 
   const handlePathPlaybackComplete = () => {
@@ -1275,6 +1330,7 @@ function DashboardContent() {
   const handleClipClick = (clip: { id: string; template: string }) => {
     setSelectedTemplate(clip.template)
     setSelectedClipId(clip.id)
+    timeline.selectClip(clip.id)
     
     // Find the clip data to get its layerId and start time
     const clipData = templateClips.find(c => c.id === clip.id)
@@ -1288,6 +1344,16 @@ function DashboardContent() {
       // Load the clip's parameters into the global controls
       if (clipData.parameters?.templateSpeed) {
         timeline.setTemplateSpeed(clipData.parameters.templateSpeed)
+      }
+      
+      // If it's a path clip, show the path overlay
+      if (clip.template === 'path' && clipData.parameters?.pathPoints) {
+        const pts = clipData.parameters.pathPoints as Array<{ x: number; y: number }>
+        setActivePathPoints(pts)
+        setPathVersion(v => v + 1)
+      } else {
+        // Clear path if selecting a non-path clip
+        setActivePathPoints([])
       }
     }
   }
@@ -1625,6 +1691,8 @@ function DashboardContent() {
         onUpdateLayerPosition={handleUpdateLayerPosition}
         onAIGenerateImage={handleAIGenerateImage}
         onAIEditImage={handleAIEditImage}
+        showSmoothPathButton={showSmoothPathButton}
+        onSmoothPath={handleSmoothPath}
         onUpdateLayerRotation={handleUpdateLayerRotation}
         onUpdateLayerSize={handleUpdateLayerSize}
         onUpdateLayerText={handleUpdateLayerText}
@@ -1636,11 +1704,7 @@ function DashboardContent() {
         onUpdateCounterPrefix={handleUpdateLayerCounterPrefix}
         selectedClipDuration={selectedClipDuration}
         onClipDurationChange={handleClipDurationChange}
-        onClipClick={(clip) => {
-          setSelectedClipId(clip.id)
-          setSelectedTemplate(clip.template)
-          timeline.selectClip(clip.id)
-        }}
+        onClipClick={handleClipClick}
         selectedClipId={selectedClipId}
         onDeselectShape={handleDeselectShape}
         activeEffectId={activeEffectId}
