@@ -189,6 +189,9 @@ interface DashboardLayoutProps {
   onUpdateCounterPrefix?: (id: string, value: string) => void
   onAIGenerateImage?: (prompt: string) => Promise<void>
   onAIEditImage?: (layerId: string, prompt: string) => Promise<void>
+  // Path smoothing
+  showSmoothPathButton?: boolean
+  onSmoothPath?: () => void
 }
 
 export default function DashboardLayout({ 
@@ -278,6 +281,9 @@ export default function DashboardLayout({
   onUpdateCounterPrefix,
   onAIGenerateImage,
   onAIEditImage,
+  // Path smoothing
+  showSmoothPathButton,
+  onSmoothPath,
 }: DashboardLayoutProps) {
   const router = useRouter()
   const supabase = createClient()
@@ -1658,6 +1664,25 @@ export default function DashboardLayout({
                      <path d="M8 8h8v8H8z" strokeDasharray="2 2" />
                    </svg>
                    Fit to Canvas
+                 </motion.button>
+               )}
+             </AnimatePresence>
+
+             {/* Smooth Path Button - Floating on right side */}
+             <AnimatePresence>
+               {showSmoothPathButton && (
+                 <motion.button
+                   initial={{ opacity: 0, x: 20 }}
+                   animate={{ opacity: 1, x: 0 }}
+                   exit={{ opacity: 0, x: 20 }}
+                   transition={{ duration: 0.3, ease: "easeOut" }}
+                   onClick={() => onSmoothPath?.()}
+                   className="absolute top-16 right-4 z-30 flex items-center gap-2 px-4 py-2 bg-green-600/90 backdrop-blur-md border border-green-400/30 hover:border-green-400/60 hover:shadow-[0_0_20px_-5px_rgba(34,197,94,0.4)] text-white text-xs font-medium rounded-full shadow-2xl group"
+                 >
+                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
+                     <path d="M4 20C8 12 12 8 20 4" strokeLinecap="round" />
+                   </svg>
+                   Smooth Path
                  </motion.button>
                )}
              </AnimatePresence>

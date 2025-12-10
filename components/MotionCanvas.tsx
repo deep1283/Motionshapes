@@ -319,9 +319,24 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
 
   const allPathClips = useMemo(() => {
     if (!selectedLayerId) return []
+    
+    // Get paths from new templateClips format
+    const pathsFromTemplateClips = templateClips
+      .filter(c => c.layerId === selectedLayerId && c.template === 'path' && c.parameters?.pathPoints)
+      .map(c => ({
+        id: c.id,
+        points: c.parameters.pathPoints as Array<{ x: number; y: number }>,
+        startTime: c.start ?? 0,
+        duration: c.duration ?? 1000,
+      }))
+    
+    // Also check old timelineTracks format for backward compatibility
     const track = timelineTracks.find((t) => t.layerId === selectedLayerId)
-    return track?.paths ?? []
-  }, [timelineTracks, selectedLayerId])
+    const pathsFromTracks = track?.paths ?? []
+    
+    // Combine both, preferring templateClips format
+    return pathsFromTemplateClips.length > 0 ? pathsFromTemplateClips : pathsFromTracks
+  }, [timelineTracks, templateClips, selectedLayerId])
   
   // For backward compatibility, also keep a reference to the first path
   const currentPathClip = allPathClips[0] ?? null
@@ -641,11 +656,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       let finalOpacity = state.opacity
       if (!isVisibleInTime) {
         finalOpacity = 0
-      }
-      
-      // Debug for image layers
-      if (layer.type === 'image') {
-        console.log('Image Ticker:', id, 'playhead:', playhead, 'trackStart:', trackStartTime, 'trackDur:', trackDuration, 'isVisible:', isVisibleInTime, 'g exists:', !!g, 'alpha will be:', hasOpacityAnim ? finalOpacity : (isVisibleInTime ? 1 : 0))
       }
       
       g.alpha = hasOpacityAnim ? finalOpacity : (isVisibleInTime ? 1 : 0)
@@ -1009,13 +1019,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   // 2. Handle Template Changes (Draw & Animate)
   useEffect(() => {
     if (!isReady || !appRef.current) return
-
-    // DEBUG: Log renderLayers to see if image layers exist
-    console.log('=== MotionCanvas useEffect START ===')
-    console.log('renderLayers count:', renderLayers.length)
-    renderLayers.forEach((l, i) => {
-      console.log(`Layer ${i}:`, { id: l.id, type: l.type, hasImageUrl: !!l.imageUrl })
-    })
 
     templateCompleteCalled.current = false
     const notifyComplete = () => {
@@ -1407,35 +1410,24 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       renderLayers.forEach(async (layer, layerIndex) => {
         // Handle image layers
         if (layer.type === 'image' && layer.imageUrl) {
-          console.log('=== IMAGE LAYER START ===', layer.id)
-          console.log('Layer data:', { type: layer.type, x: layer.x, y: layer.y, width: layer.width, height: layer.height })
-          console.log('ImageUrl length:', layer.imageUrl?.length)
-          
           try {
             // Check cache first to avoid async delay if possible
             let texture = PIXI.Assets.cache.get(layer.imageUrl)
-            console.log('Texture from cache:', !!texture)
             
             if (!texture) {
-              console.log('Loading texture from URL...')
               texture = await PIXI.Assets.load(layer.imageUrl)
-              console.log('Texture loaded:', !!texture)
             }
             
             // Re-check if this layer is still relevant
             if (!graphicsByIdRef.current) {
-              console.log('graphicsByIdRef.current is null, returning')
               return // Component unmounted
             }
 
             // Check if stage was cleared
             if (!app.stage || app.stage.destroyed) {
-              console.log('Stage destroyed, returning')
               return
             }
 
-            console.log('Texture loaded/cached for layer:', layer.id, 'Size:', texture.width, texture.height)
-            
             const container = new PIXI.Container()
             const sprite = new PIXI.Sprite(texture)
             sprite.anchor.set(0.5)
@@ -1445,9 +1437,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             
             const posX = layer.x <= 4 ? layer.x * screenWidth : layer.x
             const posY = layer.y <= 4 ? layer.y * screenHeight : layer.y
-            
-            console.log('Image Layer Pos:', layer.id, posX, posY, 'Screen:', screenWidth, screenHeight)
-            console.log('Container alpha:', container.alpha, 'visible:', container.visible)
 
             container.x = posX
             container.y = posY
@@ -1456,9 +1445,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             container.cursor = 'grab'
             container.hitArea = new PIXI.Rectangle(-layer.width / 2, -layer.height / 2, layer.width, layer.height)
             
-            // Add to stage
-            console.log('Adding container to stage, stage children before:', app.stage.children.length)
-            
             // Explicitly ensure container is visible
             container.alpha = 1
             container.visible = true
@@ -1466,13 +1452,11 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             sprite.visible = true
             
             app.stage.addChild(container)
-            console.log('Stage children after:', app.stage.children.length)
             // Force sort to ensure zIndex is respected after async add
             app.stage.sortChildren()
             
             // Force render after async add
             app.render()
-            console.log('=== IMAGE ADDED AND RENDERED ===')
             
             // Store references
             graphicsByIdRef.current[layer.id] = container as any

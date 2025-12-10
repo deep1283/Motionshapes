@@ -889,7 +889,10 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
                     return (
                       <div key={clip.id} className="flex h-8 border-t border-white/5 hover:bg-white/[0.02] transition-colors">
                         {/* Clip Label Column */}
-                        <div className="w-[200px] border-r border-white/5 flex items-center px-8">
+                        <div 
+                          className="w-[200px] border-r border-white/5 flex items-center px-8 cursor-pointer hover:bg-white/[0.04]"
+                          onClick={() => onClipClick?.({ id: clip.id, template: clip.template as string })}
+                        >
                           <span className="text-[10px] text-neutral-400 truncate capitalize select-none">
                             {clip.template}
                           </span>
