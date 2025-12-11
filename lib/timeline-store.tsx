@@ -89,6 +89,17 @@ type TimelineState = {
       // Transition parameters
       transitionToLayerId?: string
       transitionType?: 'fade' | 'slide' | 'zoom' | 'blur'
+      // Color parameters
+      colorFrom?: number
+      colorTo?: number
+      colorEasing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'
+      // Resize parameters
+      resizeFromWidth?: number
+      resizeFromHeight?: number
+      resizeToWidth?: number
+      resizeToHeight?: number
+      resizeEasing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'
+      resizeAnchor?: 'middle' | 'top' | 'bottom' | 'left' | 'right'
     }
   }>
   // Click markers for click animation effect
@@ -728,7 +739,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         if (!track) return currentTracks
 
         // Reset track to empty/default state, but initialize clipKeyframes for unified sampling
-        const newClipKeyframes: Record<string, { position?: any[]; scale?: any[]; rotation?: any[]; opacity?: any[]; maskScale?: any[] }> = {}
+        const newClipKeyframes: Record<string, { position?: any[]; scale?: any[]; rotation?: any[]; opacity?: any[]; maskScale?: any[]; color?: any[]; width?: any[]; height?: any[] }> = {}
         
         let newTrack: LayerTracks = {
           ...track,
@@ -870,6 +881,22 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             ].includes(clip.template)) {
               // @ts-ignore
               preset = PRESET_BUILDERS[clip.template](clip.duration)
+            } else if (clip.template === 'color') {
+              preset = PRESET_BUILDERS.color(
+                clip.duration,
+                clip.parameters?.colorFrom,
+                clip.parameters?.colorTo,
+                clip.parameters?.colorEasing
+              )
+            } else if (clip.template === 'resize') {
+              preset = PRESET_BUILDERS.resize(
+                clip.duration,
+                clip.parameters?.resizeFromWidth,
+                clip.parameters?.resizeFromHeight,
+                clip.parameters?.resizeToWidth,
+                clip.parameters?.resizeToHeight,
+                clip.parameters?.resizeEasing
+              )
             } else if (clip.template === 'path' && clip.parameters?.pathPoints) {
               newTrack.paths = [
                 ...(newTrack.paths ?? []),
@@ -1104,6 +1131,9 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             rotation: preset.rotation?.map((f: any) => ({ ...f })),
             opacity: preset.opacity?.map((f: any) => ({ ...f })),
             maskScale: preset.maskScale?.map((f: any) => ({ ...f })),
+            color: preset.color?.map((f: any) => ({ ...f })),
+            width: preset.width?.map((f: any) => ({ ...f })),
+            height: preset.height?.map((f: any) => ({ ...f })),
           }
           
            // Update prevClipEnd for next iteration

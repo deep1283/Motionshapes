@@ -307,9 +307,68 @@ export default function DashboardLayout({
   const templateClips = useTimeline((s) => s.templateClips)
   const timeline = useTimelineActions()
   const [showBackgroundPanel, setShowBackgroundPanel] = useState(false)
-  const [activeTab, setActiveTab] = useState<'templates' | 'shapes' | 'effects' | 'animations' | 'transitions'>('shapes')
+  const [activeTab, setActiveTab] = useState<'templates' | 'shapes' | 'effects' | 'animations' | 'transitions' | 'custom'>('shapes')
   const [animationType, setAnimationType] = useState<'in' | 'out' | 'custom'>('in')
   const [showExploreModal, setShowExploreModal] = useState(false)
+  
+  // Custom animation state
+  const [expandedCustomProp, setExpandedCustomProp] = useState<'position' | 'scale' | 'rotation' | 'resize' | 'color' | null>(null)
+  const [customColorFrom, setCustomColorFrom] = useState('#FFFFFF')
+  const [customColorTo, setCustomColorTo] = useState('#FF9042')
+  const [customColorDuration, setCustomColorDuration] = useState(800) // in ms
+  const [customColorEasing, setCustomColorEasing] = useState<'none' | 'ease-in' | 'ease-out' | 'ease-in-out'>('none')
+
+  // Sync color animation controls with timeline clip (for real-time updates when bar is dragged)
+  useEffect(() => {
+    if (expandedCustomProp === 'color' && selectedLayerId) {
+      const colorClip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'color')
+      if (colorClip) {
+        // Update duration from clip
+        setCustomColorDuration(colorClip.duration || 1000)
+        // Also sync other params if they exist
+        const params = colorClip.parameters || {}
+        if (params.colorFrom !== undefined) {
+          setCustomColorFrom('#' + params.colorFrom.toString(16).toUpperCase().padStart(6, '0'))
+        }
+        if (params.colorTo !== undefined) {
+          setCustomColorTo('#' + params.colorTo.toString(16).toUpperCase().padStart(6, '0'))
+        }
+        if (params.colorEasing) {
+          setCustomColorEasing(params.colorEasing === 'linear' ? 'none' : params.colorEasing as any)
+        }
+      }
+    }
+  }, [templateClips, selectedLayerId, expandedCustomProp])
+
+  // Resize animation state
+  const [customResizeFromWidth, setCustomResizeFromWidth] = useState(100)
+  const [customResizeFromHeight, setCustomResizeFromHeight] = useState(100)
+  const [customResizeToWidth, setCustomResizeToWidth] = useState(100)
+  const [customResizeToHeight, setCustomResizeToHeight] = useState(100)
+  const [customResizeDuration, setCustomResizeDuration] = useState(800) // in ms
+  const [customResizeEasing, setCustomResizeEasing] = useState<'none' | 'ease-in' | 'ease-out' | 'ease-in-out'>('none')
+
+  // Sync resize animation controls with timeline clip
+  const [customResizeAnchor, setCustomResizeAnchor] = useState<'middle' | 'top' | 'bottom' | 'left' | 'right'>('middle')
+
+  // Sync resize animation controls with timeline clip
+  useEffect(() => {
+    if (expandedCustomProp === 'resize' && selectedLayerId) {
+      const resizeClip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
+      if (resizeClip) {
+        setCustomResizeDuration(resizeClip.duration || 800)
+        const params = resizeClip.parameters || {}
+        if (params.resizeFromWidth !== undefined) setCustomResizeFromWidth(params.resizeFromWidth)
+        if (params.resizeFromHeight !== undefined) setCustomResizeFromHeight(params.resizeFromHeight)
+        if (params.resizeToWidth !== undefined) setCustomResizeToWidth(params.resizeToWidth)
+        if (params.resizeToHeight !== undefined) setCustomResizeToHeight(params.resizeToHeight)
+        if (params.resizeEasing) {
+          setCustomResizeEasing(params.resizeEasing === 'linear' ? 'none' : params.resizeEasing as any)
+        }
+        if (params.resizeAnchor) setCustomResizeAnchor(params.resizeAnchor)
+      }
+    }
+  }, [templateClips, selectedLayerId, expandedCustomProp])
 
   const [showTextColorPicker, setShowTextColorPicker] = useState(false)
   
@@ -934,7 +993,7 @@ export default function DashboardLayout({
         </div>
 
         {/* Center Navigation Tabs */}
-        <div className="hidden md:flex items-center justify-evenly w-[300px] lg:w-[400px] mx-auto bg-white/5 p-1 rounded-lg border border-white/5">
+        <div className="hidden md:flex items-center justify-evenly w-[400px] lg:w-[500px] mx-auto bg-white/5 p-1 rounded-lg border border-white/5">
             <button
               onClick={() => setActiveTab('templates')}
               className={cn(
@@ -989,6 +1048,17 @@ export default function DashboardLayout({
               )}
             >
               Transitions
+            </button>
+            <button
+              onClick={() => setActiveTab('custom')}
+              className={cn(
+                "flex-1 border-b-2 py-3 text-[11px] font-medium transition-colors",
+                activeTab === 'custom'
+                  ? "border-violet-500 text-violet-400"
+                  : "border-transparent text-neutral-400 hover:text-neutral-200"
+              )}
+            >
+              Custom
             </button>
         </div>
         
@@ -1732,6 +1802,543 @@ export default function DashboardLayout({
                     </svg>
                     <span className="text-[10px] font-medium text-neutral-400 group-hover:text-white">Blur</span>
                   </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Custom Tab Content */}
+          {activeTab === 'custom' && (
+            <div className="flex-1 min-h-0 overflow-y-auto pr-1 pb-96">
+              <h2 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-neutral-600 px-2">
+                Custom Animation
+              </h2>
+              
+              <div className="px-2 mb-4 space-y-4">
+                {/* Info message */}
+                {!selectedLayerId ? (
+                  <p className="text-[10px] text-amber-400/80 flex items-center gap-1.5">
+                    <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                      <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                    </svg>
+                    Select a layer to create custom animations
+                  </p>
+                ) : (
+                  <p className="text-[10px] text-neutral-400">
+                    Create custom keyframe animations for the selected layer
+                  </p>
+                )}
+                
+                {/* Custom animation options */}
+                <div className="space-y-3">
+                  <div className="flex flex-col gap-2">
+                    <span className="text-[11px] font-semibold text-neutral-200">Animation Properties</span>
+                    
+                    {/* Property toggles */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        className={cn(
+                          "flex items-center gap-2 px-3 py-2 rounded-lg border transition-all text-left",
+                          selectedLayerId
+                            ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/30"
+                            : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
+                        )}
+                        disabled={!selectedLayerId}
+                      >
+                        <svg viewBox="0 0 24 24" className="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" strokeWidth="2">
+                          <circle cx="12" cy="12" r="2" />
+                          <path d="M12 2v4m0 12v4M2 12h4m12 0h4" />
+                        </svg>
+                        <span className="text-[10px] text-neutral-300">Position</span>
+                      </button>
+                      
+                      <button
+                        className={cn(
+                          "flex items-center gap-2 px-3 py-2 rounded-lg border transition-all text-left",
+                          selectedLayerId
+                            ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/30"
+                            : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
+                        )}
+                        disabled={!selectedLayerId}
+                      >
+                        <svg viewBox="0 0 24 24" className="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="6" y="6" width="12" height="12" rx="2" />
+                          <path d="M3 3l18 18" strokeDasharray="4 2" />
+                        </svg>
+                        <span className="text-[10px] text-neutral-300">Scale</span>
+                      </button>
+                      
+                      <button
+                        className={cn(
+                          "flex items-center gap-2 px-3 py-2 rounded-lg border transition-all text-left",
+                          selectedLayerId
+                            ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/30"
+                            : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
+                        )}
+                        disabled={!selectedLayerId}
+                      >
+                        <svg viewBox="0 0 24 24" className="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          <path d="M12 8v4l3 3" />
+                        </svg>
+                        <span className="text-[10px] text-neutral-300">Rotation</span>
+                      </button>
+                      
+                      <button
+                        className={cn(
+                          "flex items-center gap-2 px-3 py-2 rounded-lg border transition-all text-left",
+                          selectedLayerId
+                            ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/30"
+                            : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed",
+                          expandedCustomProp === 'resize' && "border-violet-500/50 bg-violet-500/10"
+                        )}
+                        disabled={!selectedLayerId}
+                        onClick={() => {
+                          if (selectedLayerId) {
+                            const newExpanded = expandedCustomProp === 'resize' ? null : 'resize'
+                            setExpandedCustomProp(newExpanded)
+                            
+                            if (newExpanded === 'resize') {
+                              const existingClip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
+                              
+                              // Get layer's current size (for new clips default)
+                              const layer = layers.find(l => l.id === selectedLayerId)
+                              const layerWidth = layer?.width ?? 100
+                              const layerHeight = layer?.height ?? 100
+                              
+                              let fromWidth = layerWidth
+                              let fromHeight = layerHeight
+                              let toWidth = layerWidth
+                              let toHeight = layerHeight
+                              let duration = 800
+                              let easing = 'linear'
+
+                              if (existingClip) {
+                                // Sync UI with existing clip
+                                const params = existingClip.parameters || {}
+                                if (params.resizeFromWidth !== undefined) fromWidth = params.resizeFromWidth
+                                if (params.resizeFromHeight !== undefined) fromHeight = params.resizeFromHeight
+                                if (params.resizeToWidth !== undefined) toWidth = params.resizeToWidth
+                                if (params.resizeToHeight !== undefined) toHeight = params.resizeToHeight
+                                duration = existingClip.duration || 800
+                                easing = params.resizeEasing || 'linear'
+                              } else {
+                                // Create new clip - use layer's current size as From
+                                timeline.addTemplateClip(selectedLayerId, 'resize', 0, duration, {
+                                  resizeFromWidth: fromWidth,
+                                  resizeFromHeight: fromHeight,
+                                  resizeToWidth: toWidth,
+                                  resizeToHeight: toHeight,
+                                  resizeEasing: easing as any,
+                                  resizeAnchor: 'middle'
+                                })
+                              }
+                              
+                              setCustomResizeFromWidth(fromWidth)
+                              setCustomResizeFromHeight(fromHeight)
+                              setCustomResizeToWidth(toWidth)
+                              setCustomResizeToHeight(toHeight)
+                              setCustomResizeDuration(duration)
+                              setCustomResizeEasing(easing === 'linear' ? 'none' : easing as any)
+                            }
+                          }
+                        }}
+                      >
+                        <svg viewBox="0 0 24 24" className="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="4" y="4" width="16" height="16" rx="2" />
+                          <path d="M4 14h6v6" />
+                          <path d="M14 4v6h6" />
+                        </svg>
+                        <span className="text-[10px] text-neutral-300">Resize</span>
+                      </button>
+                      
+                      <button
+                        className={cn(
+                          "flex items-center gap-2 px-3 py-2 rounded-lg border transition-all text-left col-span-2",
+                          selectedLayerId
+                            ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/30"
+                            : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed",
+                          expandedCustomProp === 'color' && "border-violet-500/50 bg-violet-500/10"
+                        )}
+                        disabled={!selectedLayerId}
+                        onClick={() => {
+                          if (selectedLayerId) {
+                            const newExpanded = expandedCustomProp === 'color' ? null : 'color'
+                            setExpandedCustomProp(newExpanded)
+                            
+                            if (newExpanded === 'color') {
+                              // Init state from existing clip or create new
+                              const existingClip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'color')
+                              
+                              // Get layer's current color (for new clips default)
+                              const layer = layers.find(l => l.id === selectedLayerId)
+                              const layerColor = layer?.fillColor ?? 0xffffff
+                              
+                              let fromColor = '#' + layerColor.toString(16).toUpperCase().padStart(6, '0')
+                              let toColor = '#FFFFFF' // Default white
+                              let duration = 1000
+                              let easing = 'linear'
+
+                              if (existingClip) {
+                                // Sync UI with existing clip's stored values (preserve user customizations)
+                                const params = existingClip.parameters || {}
+                                if (params.colorFrom !== undefined) fromColor = '#' + params.colorFrom.toString(16).toUpperCase().padStart(6, '0')
+                                if (params.colorTo !== undefined) toColor = '#' + params.colorTo.toString(16).toUpperCase().padStart(6, '0')
+                                duration = existingClip.duration || 1000
+                                easing = params.colorEasing || 'linear'
+                              } else {
+                                // Create new clip - use layer's current color as From
+                                timeline.addTemplateClip(selectedLayerId, 'color', 0, duration, {
+                                  colorFrom: layerColor,
+                                  colorTo: parseInt(toColor.replace('#', ''), 16),
+                                  colorEasing: easing as any
+                                })
+                              }
+                              
+                              setCustomColorFrom(fromColor)
+                              setCustomColorTo(toColor)
+                              setCustomColorDuration(duration)
+                              // Map 'linear' to 'none' for UI display
+                              setCustomColorEasing(easing === 'linear' ? 'none' : easing as any)
+                            }
+                          }
+                        }}
+                      >
+                        <svg viewBox="0 0 24 24" className="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" strokeWidth="2">
+                          <circle cx="12" cy="12" r="10" />
+                          <path d="M12 2a7 7 0 017 7" stroke="url(#colorGrad)" strokeWidth="3" />
+                          <defs>
+                            <linearGradient id="colorGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                              <stop offset="0%" stopColor="#f472b6" />
+                              <stop offset="50%" stopColor="#8b5cf6" />
+                              <stop offset="100%" stopColor="#06b6d4" />
+                            </linearGradient>
+                          </defs>
+                        </svg>
+                        <span className="text-[10px] text-neutral-300">Color</span>
+                      </button>
+                    </div>
+                  </div>
+                  
+                  {/* Color Animation Controls */}
+                  {expandedCustomProp === 'color' && selectedLayerId && (
+                    <div className="mt-4 p-4 rounded-xl border border-violet-500/20 bg-violet-500/5 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-semibold text-violet-300">Color Animation</span>
+                        <button 
+                          onClick={() => setExpandedCustomProp(null)}
+                          className="text-neutral-500 hover:text-white transition-colors"
+                        >
+                          <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M18 6L6 18M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                      
+                      {/* From Color */}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[10px] text-neutral-400">From</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={customColorFrom.replace('#', '').toUpperCase()}
+                              onChange={(e) => {
+                                const val = e.target.value.replace(/[^0-9A-Fa-f]/g, '').slice(0, 6)
+                                if (val.length <= 6) {
+                                  const hex = '#' + val
+                                  setCustomColorFrom(hex)
+                                  if (val.length === 6) {
+                                    const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'color')
+                                    if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { colorFrom: parseInt(val, 16) } })
+                                  }
+                                }
+                              }}
+                              className="w-16 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200 font-mono"
+                            />
+                            <input
+                              type="color"
+                              value={customColorFrom}
+                              onChange={(e) => {
+                                setCustomColorFrom(e.target.value)
+                                const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'color')
+                                if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { colorFrom: parseInt(e.target.value.replace('#', ''), 16) } })
+                              }}
+                              className="w-8 h-8 rounded border border-white/20 cursor-pointer"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* To Color */}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[10px] text-neutral-400">To</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={customColorTo.replace('#', '').toUpperCase()}
+                              onChange={(e) => {
+                                const val = e.target.value.replace(/[^0-9A-Fa-f]/g, '').slice(0, 6)
+                                if (val.length <= 6) {
+                                  const hex = '#' + val
+                                  setCustomColorTo(hex)
+                                   if (val.length === 6) {
+                                    const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'color')
+                                    if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { colorTo: parseInt(val, 16) } })
+                                  }
+                                }
+                              }}
+                              className="w-16 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200 font-mono"
+                            />
+                            <input
+                              type="color"
+                              value={customColorTo}
+                              onChange={(e) => {
+                                setCustomColorTo(e.target.value)
+                                const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'color')
+                                if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { colorTo: parseInt(e.target.value.replace('#', ''), 16) } })
+                              }}
+                              className="w-8 h-8 rounded border border-white/20 cursor-pointer"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="h-px bg-white/10" />
+                      
+                      {/* Duration */}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[10px] text-neutral-400">Duration</span>
+                          <div className="relative w-16">
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={customColorDuration / 1000}
+                              onChange={(e) => {
+                                const newDur = Number(e.target.value) * 1000
+                                setCustomColorDuration(newDur)
+                                const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'color')
+                                if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { duration: newDur })
+                              }}
+                              className="w-full px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200 text-right pr-4 focus:outline-none focus:border-violet-500/50 transition-colors"
+                            />
+                            <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-neutral-500">s</span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Easing */}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[10px] text-neutral-400">Easing</span>
+                          <select
+                            value={customColorEasing}
+                            onChange={(e) => {
+                              const val = e.target.value as any
+                              setCustomColorEasing(val)
+                              const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'color')
+                              // Map 'none' to 'linear' for animation system
+                              const easingValue = val === 'none' ? 'linear' : val
+                              if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { colorEasing: easingValue } })
+                            }}
+                            className="px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200"
+                          >
+                            <option value="none">None</option>
+                            <option value="ease-in">Ease In</option>
+                            <option value="ease-out">Ease Out</option>
+                            <option value="ease-in-out">Ease In Out</option>
+                          </select>
+                        </div>
+                      </div>
+                      
+                    </div>
+                  )}
+                  
+                  {/* Resize Animation Panel */}
+                  {expandedCustomProp === 'resize' && selectedLayerId && (
+                    <div className="mt-4 p-4 rounded-xl border border-violet-500/30 bg-violet-500/5 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-neutral-200">Resize Animation</span>
+                        <button
+                          onClick={() => {
+                            // Remove resize clip if closing
+                            const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
+                            if (clip) timeline.removeTemplateClip(clip.id)
+                            setExpandedCustomProp(null)
+                          }}
+                          className="text-neutral-500 hover:text-white transition-colors"
+                        >
+                          <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M18 6L6 18M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                      
+                      {/* Initial Value (From) - Read-only from layer */}
+                      <div>
+                        <span className="text-[10px] text-neutral-400 block mb-2">Initial value</span>
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] text-neutral-500">Width</span>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={customResizeFromWidth}
+                              onChange={(e) => {
+                                const val = Number(e.target.value)
+                                setCustomResizeFromWidth(val)
+                                const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
+                                if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { resizeFromWidth: val } })
+                              }}
+                              className="w-20 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-400 text-right focus:outline-none focus:border-violet-500/50"
+                            />
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] text-neutral-500">Height</span>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={customResizeFromHeight}
+                              onChange={(e) => {
+                                const val = Number(e.target.value)
+                                setCustomResizeFromHeight(val)
+                                const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
+                                if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { resizeFromHeight: val } })
+                              }}
+                              className="w-20 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-400 text-right focus:outline-none focus:border-violet-500/50"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="h-px bg-white/10" />
+                      
+                      {/* To */}
+                      <div>
+                        <span className="text-[10px] text-neutral-400 block mb-2">To</span>
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] text-neutral-500">Width</span>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={customResizeToWidth}
+                              onChange={(e) => {
+                                const val = Number(e.target.value)
+                                setCustomResizeToWidth(val)
+                                const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
+                                if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { resizeToWidth: val } })
+                              }}
+                              className="w-20 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200 text-right focus:outline-none focus:border-violet-500/50"
+                            />
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] text-neutral-500">Height</span>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={customResizeToHeight}
+                              onChange={(e) => {
+                                const val = Number(e.target.value)
+                                setCustomResizeToHeight(val)
+                                const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
+                                if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { resizeToHeight: val } })
+                              }}
+                              className="w-20 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200 text-right focus:outline-none focus:border-violet-500/50"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="h-px bg-white/10" />
+                      
+                      {/* Duration */}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[10px] text-neutral-400">Duration</span>
+                          <div className="relative w-16">
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={customResizeDuration / 1000}
+                              onChange={(e) => {
+                                const newDur = Number(e.target.value) * 1000
+                                setCustomResizeDuration(newDur)
+                                const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
+                                if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { duration: newDur })
+                              }}
+                              className="w-full px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200 text-right pr-4 focus:outline-none focus:border-violet-500/50 transition-colors"
+                            />
+                            <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-neutral-500">s</span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Easing */}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[10px] text-neutral-400">Easing</span>
+                          <select
+                            value={customResizeEasing}
+                            onChange={(e) => {
+                              const val = e.target.value as any
+                              setCustomResizeEasing(val)
+                              const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
+                              const easingValue = val === 'none' ? 'linear' : val
+                              if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { resizeEasing: easingValue } })
+                            }}
+                            className="px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200"
+                          >
+                            <option value="none">None</option>
+                            <option value="ease-in">Ease In</option>
+                            <option value="ease-out">Ease Out</option>
+                            <option value="ease-in-out">Ease In Out</option>
+                          </select>
+                        </div>
+                      </div>
+                      
+                      {/* Anchor */}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[10px] text-neutral-400">Anchor</span>
+                          <select
+                            value={customResizeAnchor}
+                            onChange={(e) => {
+                              const val = e.target.value as any
+                              setCustomResizeAnchor(val)
+                              const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
+                              if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { resizeAnchor: val } })
+                            }}
+                            className="px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200"
+                          >
+                            <option value="middle">Middle</option>
+                            <option value="top">Top</option>
+                            <option value="bottom">Bottom</option>
+                            <option value="left">Left</option>
+                            <option value="right">Right</option>
+                          </select>
+                        </div>
+                      </div>
+                      
+                    </div>
+                  )}
+                  
+                  {/* Coming soon notice */}
+                  {!expandedCustomProp && (
+                  <div className="mt-6 p-4 rounded-xl border border-violet-500/20 bg-violet-500/5">
+                    <div className="flex items-center gap-2 mb-2">
+                      <svg viewBox="0 0 24 24" className="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 2v20m10-10H2" />
+                      </svg>
+                      <span className="text-[11px] font-semibold text-violet-300">Keyframe Editor</span>
+                    </div>
+                    <p className="text-[10px] text-neutral-400">
+                      Add keyframes on the timeline below to create custom animations. Click and drag layer properties to animate.
+                    </p>
+                  </div>
+                  )}
                 </div>
               </div>
             </div>

@@ -35,6 +35,9 @@ export interface ClipKeyframes {
   rotation?: TimelineKeyframe<number>[]  // Offset from 0
   opacity?: TimelineKeyframe<number>[]   // Absolute 0-1
   maskScale?: TimelineKeyframe<number>[] // Absolute 0-1
+  color?: TimelineKeyframe<number>[]     // Absolute hex color (0xRRGGBB)
+  width?: TimelineKeyframe<number>[]     // Absolute width in pixels
+  height?: TimelineKeyframe<number>[]    // Absolute height in pixels
 }
 
 // Clip info for sampling
@@ -48,7 +51,7 @@ export interface ClipInfo {
 
 // Templates that support additive blending (can stack)
 export const ADDITIVE_TEMPLATES = [
-  'roll', 'jump', 'pop', 'shake', 'pulse', 'spin', 'path'
+  'roll', 'jump', 'pop', 'shake', 'pulse', 'spin', 'path', 'color', 'resize'
 ] as const
 
 export const isAdditiveTemplate = (template: string): boolean =>
@@ -68,6 +71,7 @@ export interface LayerTracks {
   rotation?: TimelineKeyframe<number>[]
   opacity?: TimelineKeyframe<number>[]
   maskScale?: TimelineKeyframe<number>[]
+  color?: TimelineKeyframe<number>[]
   paths?: PathClip[]
 }
 
@@ -77,6 +81,9 @@ export interface SampledLayerState {
   rotation: number
   opacity: number
   maskScale?: number // If defined, apply a circle mask scaled by this value
+  color?: number // If defined, override layer color
+  width?: number // If defined, override layer width
+  height?: number // If defined, override layer height
   activePathId?: string
 }
 
@@ -86,6 +93,9 @@ export const DEFAULT_LAYER_STATE: SampledLayerState = {
   rotation: 0,
   opacity: 1,
   maskScale: undefined,
+  color: undefined,
+  width: undefined,
+  height: undefined,
 }
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
@@ -114,6 +124,19 @@ const interpolateVec2 = (a: Vec2, b: Vec2, t: number): Vec2 => ({
   x: interpolateNumber(a.x, b.x, t),
   y: interpolateNumber(a.y, b.y, t),
 })
+
+const interpolateColor = (c1: number, c2: number, t: number): number => {
+  const r1 = (c1 >> 16) & 0xff
+  const g1 = (c1 >> 8) & 0xff
+  const b1 = c1 & 0xff
+  const r2 = (c2 >> 16) & 0xff
+  const g2 = (c2 >> 8) & 0xff
+  const b2 = c2 & 0xff
+  const r = Math.round(r1 + (r2 - r1) * t)
+  const g = Math.round(g1 + (g2 - g1) * t)
+  const b = Math.round(b1 + (b2 - b1) * t)
+  return (r << 16) | (g << 8) | b
+}
 
 const findSegment = <T extends TimelineKeyframe<unknown>>(frames: T[], time: number) => {
   let prev = frames[0]
@@ -168,6 +191,20 @@ export const sampleVec2Track = (
   const t = clamp01((time - prev.time) / (next.time - prev.time))
   const eased = applyEasing(t, next.easing ?? 'linear')
   return interpolateVec2(prev.value, next.value, eased)
+}
+
+export const sampleColorTrack = (
+  frames: TimelineKeyframe<number>[] | undefined,
+  time: number,
+  fallback: number
+): number => {
+  if (!frames || frames.length === 0) return fallback
+  if (frames.length === 1) return frames[0].value
+  const { prev, next } = findSegment(frames, time)
+  if (prev.time === next.time) return prev.value
+  const t = clamp01((time - prev.time) / (next.time - prev.time))
+  const eased = applyEasing(t, next.easing ?? 'linear')
+  return interpolateColor(prev.value, next.value, eased)
 }
 
 const samplePathPoint = (rawPoints: Vec2[], t: number): Vec2 => {
@@ -260,6 +297,9 @@ export const sampleLayerTracksUnified = (
   const layerBaseRotation = baseState.rotation  // Always use 0 from baseState, not layer.rotation
   const layerBaseOpacity = layer.opacity?.[0]?.value ?? baseState.opacity
   const layerBaseMaskScale = layer.maskScale?.[0]?.value ?? baseState.maskScale
+  const layerBaseColor = layer.color?.[0]?.value ?? baseState.color
+  const layerBaseWidth = baseState.width
+  const layerBaseHeight = baseState.height
 
   // Start with base state
   let pos = { ...layerBasePosition }
@@ -267,6 +307,9 @@ export const sampleLayerTracksUnified = (
   let rotation = layerBaseRotation
   let opacity = layerBaseOpacity
   let maskScale = layerBaseMaskScale
+  let color = layerBaseColor
+  let width = layerBaseWidth
+  let height = layerBaseHeight
 
   // If no clipKeyframes, fall back to legacy sampling
   if (!layer.clipKeyframes || Object.keys(layer.clipKeyframes).length === 0) {
@@ -328,6 +371,21 @@ export const sampleLayerTracksUnified = (
     if (kf.maskScale) {
       maskScale = sampleNumberTrack(kf.maskScale, localTime, 0)
     }
+
+    // Color: last wins (absolute)
+    if (kf.color) {
+      color = sampleColorTrack(kf.color, localTime, color ?? 0xffffff)
+    }
+
+    // Width: last wins (absolute)
+    if (kf.width) {
+      width = sampleNumberTrack(kf.width, localTime, width ?? 100)
+    }
+
+    // Height: last wins (absolute)
+    if (kf.height) {
+      height = sampleNumberTrack(kf.height, localTime, height ?? 100)
+    }
   }
 
   // Handle paths
@@ -350,6 +408,9 @@ export const sampleLayerTracksUnified = (
     rotation,
     opacity,
     maskScale: maskScale !== undefined && maskScale > 0 ? maskScale : undefined,
+    color,
+    width,
+    height,
     activePathId,
   }
 }
@@ -361,7 +422,7 @@ export const sampleTimelineUnified = (
   time: number,
   defaults: SampledLayerState = DEFAULT_LAYER_STATE,
   // Optional: per-layer base states from dashboard layer state (position, rotation, scale)
-  layerBaseStates?: Record<string, { x: number; y: number; rotation?: number; scale?: number }>
+  layerBaseStates?: Record<string, { x: number; y: number; rotation?: number; scale?: number; color?: number }>
 ): Record<string, SampledLayerState> => {
   const result: Record<string, SampledLayerState> = {}
   layers.forEach((layer) => {
@@ -374,7 +435,8 @@ export const sampleTimelineUnified = (
           ...defaults, 
           position: { x: layerBase.x, y: layerBase.y },
           rotation: layerBase.rotation ?? defaults.rotation,
-          scale: layerBase.scale ?? defaults.scale
+          scale: layerBase.scale ?? defaults.scale,
+          color: layerBase.color ?? defaults.color // Use layer color from dashboard if provided
         }
       : defaults
     result[layer.layerId] = sampleLayerTracksUnified(layer, layerClips, time, layerDefaults)

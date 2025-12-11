@@ -77,6 +77,8 @@ export type TemplateId =
   | 'mask_top_out'
   | 'typewriter' | 'bounce_in' | 'bounce_out' | 'scramble' // Text animations
   | 'transition_fade' | 'transition_slide' | 'transition_zoom' | 'transition_blur' // Unified transitions
+  | 'color' // Custom color animation
+  | 'resize' // Custom resize animation
 
 export interface TemplateClip {
   id: string
@@ -119,6 +121,17 @@ export interface TemplateClip {
     // Text animation parameters
     textAnimation?: 'typewriter' | 'bounce_in' | 'bounce_out' | 'scramble'
     showCursor?: boolean
+    // Color parameters
+    colorFrom?: number
+    colorTo?: number
+    colorEasing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'
+    // Resize parameters
+    resizeFromWidth?: number
+    resizeFromHeight?: number
+    resizeToWidth?: number
+    resizeToHeight?: number
+    resizeEasing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'
+    resizeAnchor?: 'middle' | 'top' | 'bottom' | 'left' | 'right'
   }
 }
 

@@ -7,6 +7,8 @@ export type TemplateId =
   | 'mask_center' | 'mask_top' | 'mask_center_out' | 'mask_top_out'
   | 'typewriter' | 'bounce_in' | 'bounce_out' | 'scramble' // Text animations
   | 'transition_fade' | 'transition_slide' | 'transition_zoom' | 'transition_blur' // Unified transitions
+  | 'color' // Custom color animation
+  | 'resize' // Custom resize animation
 
 export interface PresetResult {
   position?: TimelineKeyframe<Vec2>[]
@@ -14,6 +16,9 @@ export interface PresetResult {
   rotation?: TimelineKeyframe<number>[]
   opacity?: TimelineKeyframe<number>[]
   maskScale?: TimelineKeyframe<number>[]
+  color?: TimelineKeyframe<number>[]
+  width?: TimelineKeyframe<number>[]
+  height?: TimelineKeyframe<number>[]
   duration: number
   meta?: {
     rollDistance?: number // normalized/pixel offset for roll
@@ -31,6 +36,15 @@ export interface PresetResult {
     panZoomEndRegion?: { x: number; y: number; width: number; height: number }
     panZoomEasing?: 'linear' | 'ease-in-out' | 'smooth'
     panZoomIntensity?: number
+    colorFrom?: number
+    colorTo?: number
+    colorEasing?: string
+    // Resize params
+    resizeFromWidth?: number
+    resizeFromHeight?: number
+    resizeToWidth?: number
+    resizeToHeight?: number
+    resizeEasing?: string
   }
 }
 
@@ -625,6 +639,45 @@ const scramblePreset = (duration: number = 2000): PresetResult => ({
   } as any,
 })
 
+const colorPreset = (duration: number = 1000, fromColor: number = 0xffffff, toColor: number = 0xff0000, easing: string = 'linear'): PresetResult => ({
+  duration,
+  color: [
+    { time: 0, value: fromColor },
+    { time: duration, value: toColor, easing: easing as any },
+  ],
+  meta: {
+    colorFrom: fromColor,
+    colorTo: toColor,
+    colorEasing: easing,
+  } as any,
+})
+
+const resizePreset = (
+  duration: number = 800,
+  fromWidth: number = 100,
+  fromHeight: number = 100,
+  toWidth: number = 200,
+  toHeight: number = 200,
+  easing: string = 'linear'
+): PresetResult => ({
+  duration,
+  width: [
+    { time: 0, value: fromWidth },
+    { time: duration, value: toWidth, easing: easing as any },
+  ],
+  height: [
+    { time: 0, value: fromHeight },
+    { time: duration, value: toHeight, easing: easing as any },
+  ],
+  meta: {
+    resizeFromWidth: fromWidth,
+    resizeFromHeight: fromHeight,
+    resizeToWidth: toWidth,
+    resizeToHeight: toHeight,
+    resizeEasing: easing,
+  } as any,
+})
+
 export const PRESET_BUILDERS = {
   roll: rollPreset,
   jump: jumpPreset,
@@ -658,6 +711,8 @@ export const PRESET_BUILDERS = {
   bounce_in: bounceInPreset,
   bounce_out: bounceOutPreset,
   scramble: scramblePreset,
+  color: colorPreset,
+  resize: resizePreset,
 } as const
 
 export type PresetBuilderMap = typeof PRESET_BUILDERS

@@ -645,6 +645,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         scaleFrames.length > 1 ||
         scaleFrames.some((kf) => kf.time !== 0 || Math.abs(kf.value - 1) > 1e-4)
       const hasOpacityAnim = (track?.opacity?.length ?? 0) > 1
+      const defaultColor = layerData?.fillColor ?? 0xffffff
+      const finalColor = state.color ?? defaultColor
 
       // Calculate final transform values
       // For scale: always multiply layer.scale by animation scale (which defaults to 1)
@@ -676,7 +678,82 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       
       if (g && Number.isFinite(canvasPosX)) g.x = canvasPosX
       if (g && Number.isFinite(canvasPosY)) g.y = canvasPosY
-      if (g && g.scale) g.scale.set(finalScale)
+      
+      // Apply resize animation: if we have animated width/height, calculate scale from it
+      // Resize animation works by scaling the shape based on the ratio of animated size to base size
+      let resizeScaleX = 1
+      let resizeScaleY = 1
+      const baseWidth = layerData?.width ?? 100
+      const baseHeight = layerData?.height ?? 100
+      
+      if (state.width !== undefined && baseWidth > 0) {
+        resizeScaleX = state.width / baseWidth
+      }
+      if (state.height !== undefined && baseHeight > 0) {
+        resizeScaleY = state.height / baseHeight
+      }
+      
+      // Combine all scale factors: animation scale * layer scale * resize scale
+      // For uniform scaling, use average of X and Y; for non-uniform use separate X/Y
+      const hasResizeAnim = state.width !== undefined || state.height !== undefined
+      
+      // Get resize anchor from template clip
+      const resizeClip = templateClips.find(c => c.layerId === id && c.template === 'resize')
+      const resizeAnchor = resizeClip?.parameters?.resizeAnchor || 'middle'
+      
+      // RESIZE ANIMATION: Uses actual SCALING to stretch/shrink the shape
+      // This allows the shape to visually exceed its base dimensions (no 100px barrier)
+      // Position is compensated based on anchor so the anchor point stays fixed
+      if (hasResizeAnim && g) {
+        // Calculate scale factors based on animated vs base dimensions
+        // These can be any value - no cap (e.g., 200/100 = 2.0)
+        const scaleX = baseWidth > 0 ? (state.width ?? baseWidth) / baseWidth : 1
+        const scaleY = baseHeight > 0 ? (state.height ?? baseHeight) / baseHeight : 1
+        
+        // Apply non-uniform scaling
+        const actualScaleX = finalScale * scaleX
+        const actualScaleY = finalScale * scaleY
+        g.scale.set(actualScaleX, actualScaleY)
+        
+        // Calculate position offset to keep anchor point fixed
+        // When scaling from center (default), the shape expands equally in all directions
+        // To make it expand from a specific edge, we offset the position
+        const scaledHalfWidth = (baseWidth * actualScaleX) / 2
+        const scaledHalfHeight = (baseHeight * actualScaleY) / 2
+        const originalHalfWidth = (baseWidth * finalScale) / 2
+        const originalHalfHeight = (baseHeight * finalScale) / 2
+        
+        // Position offset based on anchor
+        switch (resizeAnchor) {
+          case 'top':
+            // Keep top edge fixed - offset down by the height expansion
+            g.position.y += (scaledHalfHeight - originalHalfHeight)
+            break
+          case 'bottom':
+            // Keep bottom edge fixed - offset up by the height expansion
+            g.position.y -= (scaledHalfHeight - originalHalfHeight)
+            break
+          case 'left':
+            // Keep left edge fixed - offset right by the width expansion
+            g.position.x += (scaledHalfWidth - originalHalfWidth)
+            break
+          case 'right':
+            // Keep right edge fixed - offset left by the width expansion
+            g.position.x -= (scaledHalfWidth - originalHalfWidth)
+            break
+          case 'middle':
+          default:
+            // Center anchor - no offset needed, shape expands equally
+            break
+        }
+        
+        // Disable mask-based resize
+        ;(g as any).__resizeProgress = { active: false }
+      } else {
+        // Clear resize progress flag and use uniform scale
+        if (g) (g as any).__resizeProgress = null
+        if (g && g.scale) g.scale.set(finalScale)
+      }
       
       // Calculate strict visibility based on timeline clips
       // If playhead < startTime or playhead > startTime + duration, alpha = 0
@@ -790,6 +867,20 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         }
         
         g.filters = activeFilters.length > 0 ? activeFilters : null
+
+        // Apply Color Animation (Tint)
+        // 1. Shapes (Graphics)
+        g.tint = finalColor
+
+        // 2. Icons (Sprites)
+        if (spritesByIdRef.current[id]) {
+          spritesByIdRef.current[id].tint = finalColor
+        }
+
+        // 3. Text
+        if (textsByIdRef.current[id]) {
+          textsByIdRef.current[id].text.tint = finalColor
+        }
       }
       // Handle Masking (mask_center and mask_top)
       const maskScale = state.maskScale
@@ -864,6 +955,86 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           if (g && g.mask === mask) g.mask = null
           mask.destroy()
           delete maskGraphicsByIdRef.current[id]
+        }
+      }
+      
+      // Handle Resize Animation (mask-based clipping like mask_top)
+      const resizeProgress = (g as any)?.__resizeProgress
+      if (resizeProgress?.active && g) {
+        const { scaleX, scaleY, anchor, baseWidth: rBaseW, baseHeight: rBaseH } = resizeProgress
+        
+        // Create or get resize mask (separate from maskScale mask)
+        let resizeMask = (g as any).__resizeMask as PIXI.Graphics | undefined
+        if (!resizeMask) {
+          resizeMask = new PIXI.Graphics()
+          ;(g as any).__resizeMask = resizeMask
+          if (g.parent) g.parent.addChild(resizeMask)
+        } else if (g.parent && resizeMask.parent !== g.parent) {
+          g.parent.addChild(resizeMask)
+        }
+        
+        // Use base layer dimensions for mask size (like mask_top)
+        const layerWidth = rBaseW || layer.width || 100
+        const layerHeight = rBaseH || layer.height || 100
+        const maskWidth = layerWidth * 1.2  // Slightly larger to ensure coverage
+        const maskHeight = layerHeight * 1.2
+        const fullScale = state.scale
+        
+        resizeMask.clear()
+        
+        // Draw full-size rect centered, then use pivot + scale to reveal from anchor
+        // This exactly matches the mask_top pattern
+        resizeMask.rect(-maskWidth / 2, -maskHeight / 2, maskWidth, maskHeight).fill(0xffffff)
+        
+        // Set pivot and scale based on anchor (like mask_top pattern)
+        // scaleX/scaleY can go beyond 1.0 - no 100% barrier
+        switch (anchor) {
+          case 'top':
+            // Pivot at top edge, scale Y controls vertical reveal
+            resizeMask.pivot.set(0, -maskHeight / 2)
+            resizeMask.position.set(g.position.x, g.position.y - (layerHeight * fullScale / 2))
+            resizeMask.scale.set(scaleX * fullScale, scaleY * fullScale)
+            break
+          case 'bottom':
+            // Pivot at bottom edge, scale Y controls vertical reveal
+            resizeMask.pivot.set(0, maskHeight / 2)
+            resizeMask.position.set(g.position.x, g.position.y + (layerHeight * fullScale / 2))
+            resizeMask.scale.set(scaleX * fullScale, scaleY * fullScale)
+            break
+          case 'left':
+            // Pivot at left edge, scale X controls horizontal reveal
+            resizeMask.pivot.set(-maskWidth / 2, 0)
+            resizeMask.position.set(g.position.x - (layerWidth * fullScale / 2), g.position.y)
+            resizeMask.scale.set(scaleX * fullScale, scaleY * fullScale)
+            break
+          case 'right':
+            // Pivot at right edge, scale X controls horizontal reveal
+            resizeMask.pivot.set(maskWidth / 2, 0)
+            resizeMask.position.set(g.position.x + (layerWidth * fullScale / 2), g.position.y)
+            resizeMask.scale.set(scaleX * fullScale, scaleY * fullScale)
+            break
+          case 'middle':
+          default:
+            // Pivot at center, both scales control reveal from center
+            resizeMask.pivot.set(0, 0)
+            resizeMask.position.copyFrom(g.position)
+            resizeMask.scale.set(scaleX * fullScale, scaleY * fullScale)
+            break
+        }
+        
+        resizeMask.rotation = g.rotation
+        
+        // Only apply mask if not already masked by maskScale
+        if (!g.mask) {
+          g.mask = resizeMask
+        }
+      } else if (g) {
+        // Clean up resize mask if resize animation ended
+        const resizeMask = (g as any)?.__resizeMask as PIXI.Graphics | undefined
+        if (resizeMask) {
+          if (g.mask === resizeMask) g.mask = null
+          resizeMask.destroy()
+          ;(g as any).__resizeMask = null
         }
       }
       
@@ -1806,7 +1977,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             fontFamily: layer.fontFamily || 'Inter',
             fontSize: layer.fontSize || 48,
             fontWeight: String(layer.fontWeight || 600) as PIXI.TextStyleFontWeight,
-            fill: layer.fillColor ?? 0xffffff,
+            fill: 0xffffff, // Use white for tinting
             align: 'center',
             wordWrap: true,
             wordWrapWidth: textBoxWidth,
@@ -1979,6 +2150,9 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
              }
           }
 
+          // Initial Tint
+          text.tint = layer.fillColor ?? 0xffffff
+          
           container.addChild(text) 
           
           // Use text's intrinsic width/height (local dimensions, not global bounds)
@@ -2112,23 +2286,29 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
               sprite.anchor.set(0.5)
               sprite.width = layer.width
               sprite.height = layer.height
-              sprite.tint = layer.fillColor
+              // Initial Tint
+              sprite.tint = layer.fillColor ?? 0xffffff
               
               g.addChild(sprite)
               spritesByIdRef.current[layer.id] = sprite
             } catch (error) {
               console.error(`Failed to load icon ${layer.shapeKind}:`, error)
               // Fallback to manual drawing
-              drawShape(g, layer.shapeKind, layer.width, layer.height, layer.fillColor)
+              // Fallback to manual drawing
+              drawShape(g, layer.shapeKind, layer.width, layer.height, 0xffffff)
             }
           } else {
             // Fallback if no icon path
-            drawShape(g, layer.shapeKind, layer.width, layer.height, layer.fillColor)
+          // Fallback if no icon path
+            drawShape(g, layer.shapeKind, layer.width, layer.height, 0xffffff)
           }
         } else {
           // For non-icon shapes, use manual drawing
-          drawShape(g, layer.shapeKind, layer.width, layer.height, layer.fillColor)
+          drawShape(g, layer.shapeKind, layer.width, layer.height, 0xffffff)
         }
+        
+        // Initial Tint for Shape
+        g.tint = layer.fillColor ?? 0xffffff
         
         // Selection outline will be added by a separate effect
         
