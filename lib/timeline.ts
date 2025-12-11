@@ -27,15 +27,47 @@ export interface PathClip {
   easing?: Easing
 }
 
+// Per-clip keyframe storage for unified animation system
+// Values are OFFSETS (position/rotation) or MULTIPLIERS (scale) or ABSOLUTE (opacity)
+export interface ClipKeyframes {
+  position?: TimelineKeyframe<Vec2>[]   // Offset from {0,0}
+  scale?: TimelineKeyframe<number>[]     // Multiplier (1 = no change)
+  rotation?: TimelineKeyframe<number>[]  // Offset from 0
+  opacity?: TimelineKeyframe<number>[]   // Absolute 0-1
+  maskScale?: TimelineKeyframe<number>[] // Absolute 0-1
+}
+
+// Clip info for sampling
+export interface ClipInfo {
+  id: string
+  layerId: string
+  template: string
+  start: number
+  duration: number
+}
+
+// Templates that support additive blending (can stack)
+export const ADDITIVE_TEMPLATES = [
+  'roll', 'jump', 'pop', 'shake', 'pulse', 'spin', 'path'
+] as const
+
+export const isAdditiveTemplate = (template: string): boolean =>
+  ADDITIVE_TEMPLATES.includes(template as any)
+
 export interface LayerTracks {
   layerId: string
   startTime?: number // ms - The "birth" time of the layer
   duration?: number // ms - The lifespan of the layer
+  
+  // NEW: Per-clip keyframe storage (clipId -> keyframes)
+  clipKeyframes?: Record<string, ClipKeyframes>
+  
+  // Base keyframes (for storing base position at time 0)
   position?: TimelineKeyframe<Vec2>[]
   scale?: TimelineKeyframe<number>[]
   rotation?: TimelineKeyframe<number>[]
   opacity?: TimelineKeyframe<number>[]
-  maskScale?: TimelineKeyframe<number>[] // Controls the scale of the circle mask
+  maskScale?: TimelineKeyframe<number>[]
   paths?: PathClip[]
 }
 
@@ -210,6 +242,142 @@ export const sampleTimeline = (
   const result: Record<string, SampledLayerState> = {}
   layers.forEach((layer) => {
     result[layer.layerId] = sampleLayerTracks(layer, time, defaults)
+  })
+  return result
+}
+
+// UNIFIED: Sampling with per-clip keyframes and proper blending
+export const sampleLayerTracksUnified = (
+  layer: LayerTracks,
+  clips: ClipInfo[],
+  time: number,
+  baseState: SampledLayerState
+): SampledLayerState => {
+  // Get base state - for position, scale, and rotation, use baseState
+  // because layer arrays can be corrupted by animation keyframes being merged into legacy arrays
+  const layerBasePosition = baseState.position  // Always use passed baseState, not layer.position
+  const layerBaseScale = baseState.scale  // Always use 1 from baseState, not layer.scale
+  const layerBaseRotation = baseState.rotation  // Always use 0 from baseState, not layer.rotation
+  const layerBaseOpacity = layer.opacity?.[0]?.value ?? baseState.opacity
+  const layerBaseMaskScale = layer.maskScale?.[0]?.value ?? baseState.maskScale
+
+  // Start with base state
+  let pos = { ...layerBasePosition }
+  let scale = layerBaseScale
+  let rotation = layerBaseRotation
+  let opacity = layerBaseOpacity
+  let maskScale = layerBaseMaskScale
+
+  // If no clipKeyframes, fall back to legacy sampling
+  if (!layer.clipKeyframes || Object.keys(layer.clipKeyframes).length === 0) {
+    return sampleLayerTracks(layer, time, baseState)
+  }
+
+  // Sort clips by start time for deterministic order
+  const sortedClips = [...clips].sort((a, b) => a.start - b.start)
+
+  for (const clip of sortedClips) {
+    const kf = layer.clipKeyframes[clip.id]
+    if (!kf) continue
+
+    const clipStart = clip.start
+    const clipEnd = clipStart + clip.duration
+
+    // Determine local time within clip
+    let localTime: number
+    let isActive = false
+
+    if (time >= clipStart && time <= clipEnd) {
+      localTime = time - clipStart
+      isActive = true
+    } else if (time > clipEnd) {
+      // Clip ended - carry forward final value
+      localTime = clip.duration
+    } else {
+      // Before clip starts - skip
+      continue
+    }
+
+    const isAdditive = isAdditiveTemplate(clip.template)
+
+    // Position: always additive (offset)
+    if (kf.position) {
+      const offset = sampleVec2Track(kf.position, localTime, { x: 0, y: 0 })
+      pos.x += offset.x
+      pos.y += offset.y
+    }
+
+    // Rotation: always additive (offset)
+    if (kf.rotation) {
+      const offset = sampleNumberTrack(kf.rotation, localTime, 0)
+      rotation += offset
+    }
+
+    // Scale: always multiplicative
+    if (kf.scale) {
+      const factor = sampleNumberTrack(kf.scale, localTime, 1)
+      scale *= factor
+    }
+
+    // Opacity: last wins (absolute)
+    if (kf.opacity) {
+      opacity = sampleNumberTrack(kf.opacity, localTime, 1)
+    }
+
+    // MaskScale: last wins (absolute)
+    if (kf.maskScale) {
+      maskScale = sampleNumberTrack(kf.maskScale, localTime, 0)
+    }
+  }
+
+  // Handle paths
+  let pathResult: Vec2 | null = null
+  let activePathId: string | undefined
+  if (layer.paths && layer.paths.length > 0) {
+    for (const clip of layer.paths) {
+      const p = samplePathClip(clip, time)
+      if (p) {
+        pathResult = p
+        activePathId = clip.id
+        break
+      }
+    }
+  }
+
+  return {
+    position: pathResult ?? pos,
+    scale,
+    rotation,
+    opacity,
+    maskScale: maskScale !== undefined && maskScale > 0 ? maskScale : undefined,
+    activePathId,
+  }
+}
+
+// UNIFIED: Main timeline sampling function
+export const sampleTimelineUnified = (
+  layers: LayerTracks[],
+  clips: ClipInfo[],
+  time: number,
+  defaults: SampledLayerState = DEFAULT_LAYER_STATE,
+  // Optional: per-layer base states from dashboard layer state (position, rotation, scale)
+  layerBaseStates?: Record<string, { x: number; y: number; rotation?: number; scale?: number }>
+): Record<string, SampledLayerState> => {
+  const result: Record<string, SampledLayerState> = {}
+  layers.forEach((layer) => {
+    // Filter clips for this layer
+    const layerClips = clips.filter(c => c.layerId === layer.layerId)
+    // Use per-layer base state if provided (position, rotation, scale from dashboard layer)
+    const layerBase = layerBaseStates?.[layer.layerId]
+    const layerDefaults = layerBase
+      ? { 
+          ...defaults, 
+          position: { x: layerBase.x, y: layerBase.y },
+          rotation: layerBase.rotation ?? defaults.rotation,
+          scale: layerBase.scale ?? defaults.scale
+        }
+      : defaults
+    result[layer.layerId] = sampleLayerTracksUnified(layer, layerClips, time, layerDefaults)
   })
   return result
 }

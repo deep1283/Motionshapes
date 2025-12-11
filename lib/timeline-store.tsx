@@ -1291,24 +1291,6 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       return times.length ? Math.max(...times) : 0
     }
 
-    const normalizePositionFrame = (frame: TimelineKeyframe<Vec2>, overrideBase?: Vec2): TimelineKeyframe<Vec2> => {
-      const basePos = overrideBase ?? base?.position
-      if (!basePos) return frame
-      const isNormalized = basePos.x <= 1 && basePos.y <= 1
-      const offset = frame.value
-      const next: Vec2 = {
-        x: basePos.x + offset.x * (isNormalized ? 1 : 1),
-        y: basePos.y + offset.y * (isNormalized ? 1 : 1),
-      }
-      return { ...frame, value: next }
-    }
-
-    const normalizeNumberFrame = (frame: TimelineKeyframe<number>, baseValue?: number, additive = false): TimelineKeyframe<number> => {
-      if (baseValue === undefined) return frame
-      const nextValue = additive ? baseValue + frame.value : baseValue + (frame.value - 1)
-      return { ...frame, value: nextValue }
-    }
-
     setState((prev) => {
       const speed = prev.templateSpeed || 1
       const durationScale = options?.targetDuration ? options.targetDuration / Math.max(1, preset.duration || 1) : 1
@@ -1395,7 +1377,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         const clearedTrack: LayerTracks = {
           ...track,
           position: trimFrames(track.position),
-          scale: trimFrames(track.scale),
+          // IMPORTANT: Scale must always start at base value (1), not from old animation keyframes
+          scale: [{ time: 0, value: layerBaseScale ?? 1 }],
           rotation: trimFrames(track.rotation),
           opacity: trimFrames(track.opacity),
         }
@@ -1446,7 +1429,9 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           clearedTrack.scale = [
             {
               time: 0,
-              value: baseScale,
+              // For scale-based animations (grow_in, shrink_in), base scale should be 1
+              // The animation's scale values (0→1) are multipliers applied to this base
+              value: layerBaseScale ?? 1,
             },
           ]
           clearedTrack.rotation = [
@@ -1477,9 +1462,9 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
 
         const mappedPosition =
           preset.position?.map((frame: TimelineKeyframe<Vec2>) => ({
-            ...normalizePositionFrame(frame, baseState.position),
+            ...frame,  // Store raw offset values (no normalization)
             time: startOffset + scaleTime(frame.time),
-            clipId: newClipId, // Tag with clip ID for deletion
+            clipId: newClipId,
           })) ?? []
 
         const mappedScale =
@@ -1491,9 +1476,9 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
 
         const mappedRotation =
           preset.rotation?.map((f: TimelineKeyframe<number>) => ({
-            ...normalizeNumberFrame(f, baseState.rotation, true),
+            ...f,  // Store raw offset values (no normalization)
             time: startOffset + scaleTime(f.time),
-            clipId: newClipId, // Tag with clip ID for deletion
+            clipId: newClipId,
           })) ?? []
 
         const isInOutAnimation = [
@@ -1501,17 +1486,12 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out'
         ].includes(template)
 
-        const mappedOpacity = isInOutAnimation
-          ? preset.opacity?.map((f: TimelineKeyframe<number>) => ({
-              ...f,
-              time: startOffset + scaleTime(f.time),
-              clipId: newClipId, // Tag with clip ID for deletion
-            })) ?? []
-          : preset.opacity?.map((f: TimelineKeyframe<number>) => ({
-              ...normalizeNumberFrame(f, baseState.opacity, false),
-              time: startOffset + scaleTime(f.time),
-              clipId: newClipId, // Tag with clip ID for deletion
-            })) ?? []
+        const mappedOpacity =
+          preset.opacity?.map((f: TimelineKeyframe<number>) => ({
+            ...f,  // Store raw values (no normalization)
+            time: startOffset + scaleTime(f.time),
+            clipId: newClipId,
+          })) ?? []
 
         const finalOpacity = mergeFrames(clearedTrack.opacity, mappedOpacity).sort((a, b) => a.time - b.time)
         
@@ -1533,12 +1513,59 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             clipId: newClipId,
           })) ?? []
 
+        // Create per-clip keyframes with LOCAL times (0-based, relative to clip start)
+        const clipPositionKeyframes = preset.position?.map((f: TimelineKeyframe<Vec2>) => ({
+          ...f,
+          time: scaleTime(f.time),  // Local time, not absolute
+          clipId: newClipId,
+        })) ?? []
+
+        const clipScaleKeyframes = preset.scale?.map((f: TimelineKeyframe<number>) => ({
+          ...f,
+          time: scaleTime(f.time),
+          clipId: newClipId,
+        })) ?? []
+
+        const clipRotationKeyframes = preset.rotation?.map((f: TimelineKeyframe<number>) => ({
+          ...f,
+          time: scaleTime(f.time),
+          clipId: newClipId,
+        })) ?? []
+
+        const clipOpacityKeyframes = preset.opacity?.map((f: TimelineKeyframe<number>) => ({
+          ...f,
+          time: scaleTime(f.time),
+          clipId: newClipId,
+        })) ?? []
+
+        const clipMaskScaleKeyframes = preset.maskScale?.map((f: TimelineKeyframe<number>) => ({
+          ...f,
+          time: maskScaleTime(f.time),
+          clipId: newClipId,
+        })) ?? []
+
+        // Merge new clip keyframes into existing clipKeyframes
+        const existingClipKeyframes = track.clipKeyframes ?? {}
+        const newClipKeyframes = {
+          ...existingClipKeyframes,
+          [newClipId]: {
+            position: clipPositionKeyframes.length > 0 ? clipPositionKeyframes : undefined,
+            scale: clipScaleKeyframes.length > 0 ? clipScaleKeyframes : undefined,
+            rotation: clipRotationKeyframes.length > 0 ? clipRotationKeyframes : undefined,
+            opacity: clipOpacityKeyframes.length > 0 ? clipOpacityKeyframes : undefined,
+            maskScale: clipMaskScaleKeyframes.length > 0 ? clipMaskScaleKeyframes : undefined,
+          },
+        }
+
         return {
           ...track,
-          position: finalPosition,
-          scale: mergeFrames(clearedTrack.scale, mappedScale).sort((a, b) => a.time - b.time),
-          rotation: mergeFrames(clearedTrack.rotation, mappedRotation).sort((a, b) => a.time - b.time),
-          opacity: finalOpacity,
+          clipKeyframes: newClipKeyframes,  // Per-clip keyframes for unified sampling
+          // IMPORTANT: Legacy arrays now store BASE VALUES ONLY for sampling to read
+          // All animation data is in clipKeyframes
+          position: clearedTrack.position,  // Keep base position only
+          scale: clearedTrack.scale,        // Keep base scale only
+          rotation: clearedTrack.rotation,  // Keep base rotation only
+          opacity: clearedTrack.opacity,    // Keep base opacity only
           maskScale: mergeFrames(clearedTrack.maskScale, mappedMaskScale).sort((a, b) => a.time - b.time),
         }
       })
@@ -1598,7 +1625,6 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     layerScale?: number,
     layerBase?: { position?: Vec2; scale?: number; rotation?: number; opacity?: number }
   ) => {
-    console.log('[STEP 1] addTemplateClip called with template:', template, 'layerId:', layerId)
     const clipId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID()
       : `clip-${Date.now()}-${Math.random()}`
@@ -1958,7 +1984,6 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
                 })
               : preset.position
 
-            const mergedScale = preset.scale // keep multipliers; layer.scale applied at render
 
             const mergedRotation = isInOutAnimation && preset.rotation
               ? preset.rotation.map((f: any, idx: number) => {
@@ -1995,7 +2020,9 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             newTrack = {
               ...newTrack,
               position: mergeKeyframes(newTrack.position ?? [], mergedPosition, isInOutAnimation ? undefined : clipBaseState.position, isInOutAnimation ? 'replace' : 'add'),
-              scale: mergeKeyframes(newTrack.scale ?? [], mergedScale, undefined, 'replace'),
+              // IMPORTANT: Don't merge animation scale into legacy array - keep base scale only
+              // Animation scale goes in clipKeyframes (stored in inner addTemplateClip)
+              scale: newTrack.scale?.length ? newTrack.scale : [{ time: 0, value: 1 }],
               rotation: mergeKeyframes(newTrack.rotation ?? [], mergedRotation, isInOutAnimation ? undefined : clipBaseState.rotation, isInOutAnimation ? 'replace' : 'add'),
               opacity: mergeKeyframes(newTrack.opacity ?? [], preset.opacity, isInOutAnimation ? undefined : clipBaseState.opacity, isInOutAnimation ? 'replace' : 'multiply'),
               maskScale: mergeKeyframes(newTrack.maskScale ?? [], preset.maskScale, undefined, 'replace'),
@@ -2050,13 +2077,6 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         parameters?.layerBase
       )
       
-      // Debug: trace rebuilt track keyframes
-      const targetTrack = rebuiltTracks.find(t => t.layerId === layerId)
-      console.log('[TRACK_REBUILD] layer:', layerId, 
-        'position keyframes:', targetTrack?.position?.length,
-        'scale keyframes:', targetTrack?.scale?.length,
-        'clips:', nextClips.filter(c => c.layerId === layerId).map(c => c.template)
-      )
       
       // Merge layer visibility properties (startTime, duration) from updatedTracks into rebuiltTracks
       const newTracks = rebuiltTracks.map(track => {
@@ -2146,8 +2166,12 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           })
         }
         
+        // Remove from clipKeyframes
+        const { [clipId]: removed, ...remainingClipKeyframes } = track.clipKeyframes ?? {}
+        
         return {
           ...track,
+          clipKeyframes: remainingClipKeyframes,
           position: filterKeyframes(track.position),
           scale: filterKeyframes(track.scale),
           rotation: filterKeyframes(track.rotation),

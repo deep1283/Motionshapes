@@ -5,7 +5,7 @@ import type { PointerEvent as ReactPointerEvent } from 'react'
 import * as PIXI from 'pixi.js'
 import 'pixi.js/app' // ensure Application plugins (ticker/resize) are registered
 import 'pixi.js/events' // enable pointer events
-import { sampleTimeline } from '@/lib/timeline'
+import { sampleTimeline, sampleTimelineUnified, ClipInfo } from '@/lib/timeline'
 import { useTimeline, useTimelineActions } from '@/lib/timeline-store'
 import { GlowFilter } from 'pixi-filters'
 import { DropShadowFilter } from 'pixi-filters'
@@ -297,7 +297,34 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   const clickMarkers = useTimeline((s) => s.clickMarkers)
   const templateClips = useTimeline((s) => s.templateClips)
   const effectClips = useTimeline((s) => s.effectClips)
-  const sampledTimeline = useMemo(() => sampleTimeline(timelineTracks, playhead), [timelineTracks, playhead])
+  // Convert template clips to ClipInfo for unified sampling
+  const clipInfos: ClipInfo[] = useMemo(() => 
+    templateClips.map(c => ({ 
+      id: c.id, 
+      layerId: c.layerId,
+      template: c.template,
+      start: c.start ?? 0, 
+      duration: c.duration ?? 1000 
+    })),
+    [templateClips]
+  )
+  // Create per-layer base states map from actual layer state (position, rotation, scale from right panel)
+  const layerBaseStates = useMemo(() => {
+    const map: Record<string, { x: number; y: number; rotation?: number; scale?: number }> = {}
+    layers.forEach(layer => {
+      map[layer.id] = { 
+        x: layer.x, 
+        y: layer.y,
+        rotation: layer.rotation ?? 0,  // Angle from right panel
+        scale: layer.scale ?? 1         // Scale from right panel (if applicable)
+      }
+    })
+    return map
+  }, [layers])
+  const sampledTimeline = useMemo(
+    () => sampleTimelineUnified(timelineTracks, clipInfos, playhead, undefined, layerBaseStates),
+    [timelineTracks, clipInfos, playhead, layerBaseStates]
+  )
   const timelineActions = useTimelineActions()
   const isPlaying = useTimeline((s) => s.isPlaying)
   
