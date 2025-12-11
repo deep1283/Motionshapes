@@ -312,11 +312,14 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   const layerBaseStates = useMemo(() => {
     const map: Record<string, { x: number; y: number; rotation?: number; scale?: number }> = {}
     layers.forEach(layer => {
+      // Convert rotation from degrees (UI) to radians (animation system)
+      const rotationDegrees = layer.rotation ?? 0
+      const rotationRadians = rotationDegrees * (Math.PI / 180)
       map[layer.id] = { 
         x: layer.x, 
         y: layer.y,
-        rotation: layer.rotation ?? 0,  // Angle from right panel
-        scale: layer.scale ?? 1         // Scale from right panel (if applicable)
+        rotation: rotationRadians,  // Angle in radians for animation system
+        scale: layer.scale ?? 1     // Scale from right panel (if applicable)
       }
     })
     return map
@@ -762,10 +765,12 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       g.alpha = hasOpacityAnim ? finalOpacity : (isVisibleInTime ? (finalOpacity < 1 ? finalOpacity : 1) : 0)
 
       // Sync rotation
-      // For rotation: layer.rotation is the base, animation rotation is additive
+      // For rotation: state.rotation from unified sampling ALREADY includes base rotation
+      // Only use layerData.rotation as fallback when there's no animation
       const baseRotationRad = ((layerData?.rotation ?? 0) * Math.PI) / 180
-      const animRotation = hasRotationAnim ? state.rotation : 0
-      if (g) g.rotation = baseRotationRad + animRotation
+      // If animation exists, use state.rotation directly (it already includes base)
+      // If no animation, use base rotation only
+      if (g) g.rotation = hasRotationAnim ? state.rotation : baseRotationRad
       
       // Apply filters (Effects + Off-canvas Blur + Pan/Zoom Focus Blur)
       if (g) {

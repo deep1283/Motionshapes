@@ -123,6 +123,7 @@ interface DashboardLayoutProps {
   // Timeline controls
   templateSpeed?: number
   rollDistance?: number
+  rollRotation?: number
   jumpHeight?: number
   jumpVelocity?: number
   popScale?: number
@@ -131,6 +132,7 @@ interface DashboardLayoutProps {
   popReappear?: boolean
   onTemplateSpeedChange?: (value: number) => void
   onRollDistanceChange?: (value: number) => void
+  onRollRotationChange?: (value: number) => void
   onJumpHeightChange?: (value: number) => void
   onJumpVelocityChange?: (value: number) => void
   onPopScaleChange?: (scale: number) => void
@@ -225,6 +227,7 @@ export default function DashboardLayout({
   onBackgroundChange,
   templateSpeed = 1,
   rollDistance = 0.2,
+  rollRotation = 1,
   jumpHeight = 0.25,
   jumpVelocity = 1.5,
   popScale = 1.6,
@@ -238,6 +241,7 @@ export default function DashboardLayout({
   shakeDistance,
   onTemplateSpeedChange,
   onRollDistanceChange,
+  onRollRotationChange,
   onJumpHeightChange,
   onJumpVelocityChange,
   onPopScaleChange,
@@ -2082,7 +2086,7 @@ export default function DashboardLayout({
         <aside 
             ref={rightSidebarRef}
             style={{ width: rightSidebarWidth }}
-            className="relative border-l border-white/5 bg-[#0a0a0a] p-4 space-y-4 overflow-y-auto overscroll-contain shrink-0 min-h-0 max-h-screen pb-48 scroll-smooth"
+            className="relative border-l border-white/5 bg-[#0a0a0a] p-4 flex flex-col gap-4 overflow-y-auto overscroll-contain shrink-0 min-h-0 max-h-screen pb-[150vh] scroll-smooth"
         >
           {/* Resize Handle */}
           <div
@@ -2374,12 +2378,19 @@ export default function DashboardLayout({
               Controls
             </div>
             
-            {/* Duration Control - Always show if a clip is selected */}
-            {selectedClipDuration !== undefined && (
+            {/* Duration Control - Show if a clip is selected, but NOT for templates that have their own duration slider */}
+            {selectedClipDuration !== undefined && !['pulse', 'shake', 'spin', 'counter', 'pan_zoom', 'mask_center', 'mask_top'].includes(selectedTemplate) && (
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] font-semibold text-neutral-200">Duration</span>
-                  <span className="text-[10px] text-neutral-400">{(selectedClipDuration / 1000).toFixed(2)}s</span>
+                  <span className="text-[11px] font-semibold text-neutral-200">
+                    {selectedTemplate === 'jump' ? 'Jump Height' : 'Duration'}
+                  </span>
+                  <span className="text-[10px] text-neutral-400">
+                    {selectedTemplate === 'jump' 
+                      ? jumpHeight.toFixed(2)
+                      : `${(selectedClipDuration / 1000).toFixed(2)}s`
+                    }
+                  </span>
                 </div>
                 <input
                   type="range"
@@ -2424,41 +2435,22 @@ export default function DashboardLayout({
                     className="w-full accent-violet-500"
                   />
                 </div>
+                <div>
+                  <div className="flex items-center justify-between mb-2 mt-1">
+                    <span className="text-[11px] font-semibold text-neutral-200">Rotation</span>
+                    <span className="text-[10px] text-neutral-400">{rollRotation?.toFixed(1) ?? '2.0'} rotations</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={10}
+                    step={0.5}
+                    value={rollRotation ?? 2}
+                    onChange={(e) => onRollRotationChange?.(Number(e.target.value))}
+                    className="w-full accent-violet-500"
+                  />
+                </div>
               </>
-            )}
-            {selectedTemplate === 'jump' && (
-              <div className="space-y-3">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-semibold text-neutral-200">Jump Height</span>
-                    <span className="text-[10px] text-neutral-400">{jumpHeight.toFixed(2)}</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0.05}
-                    max={0.8}
-                    step={0.01}
-                    value={jumpHeight}
-                    onChange={(e) => onJumpHeightChange?.(Number(e.target.value))}
-                    className="w-full accent-violet-500"
-                  />
-                </div>
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-semibold text-neutral-200">Initial Velocity</span>
-                    <span className="text-[10px] text-neutral-400">{jumpVelocity.toFixed(2)} u/s</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0.2}
-                    max={6}
-                    step={0.05}
-                    value={jumpVelocity}
-                    onChange={(e) => onJumpVelocityChange?.(Number(e.target.value))}
-                    className="w-full accent-violet-500"
-                  />
-                </div>
-              </div>
             )}
             {selectedTemplate === 'pop' && (
               <>
@@ -2500,19 +2492,6 @@ export default function DashboardLayout({
                       className="peer sr-only"
                       checked={popCollapse}
                       onChange={(e) => onPopCollapseChange?.(e.target.checked)}
-                    />
-                    <div className="peer h-4 w-7 rounded-full bg-neutral-700 peer-checked:bg-violet-500 transition-colors" />
-                    <div className="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-white transition-transform peer-checked:translate-x-3" />
-                  </label>
-                </div>
-                <div className="flex items-center justify-between pt-2">
-                  <span className="text-[11px] font-semibold text-neutral-200">Reappear</span>
-                  <label className="relative inline-flex cursor-pointer items-center">
-                    <input
-                      type="checkbox"
-                      className="peer sr-only"
-                      checked={popReappear}
-                      onChange={(e) => onPopReappearChange?.(e.target.checked)}
                     />
                     <div className="peer h-4 w-7 rounded-full bg-neutral-700 peer-checked:bg-violet-500 transition-colors" />
                     <div className="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-white transition-transform peer-checked:translate-x-3" />

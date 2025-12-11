@@ -25,6 +25,7 @@ type TimelineState = {
   lastTick?: number
   templateSpeed: number
   rollDistance: number
+  rollRotation: number
   jumpHeight: number
   jumpVelocity: number
   popScale: number
@@ -46,6 +47,7 @@ type TimelineState = {
     parameters?: {
       templateSpeed?: number
       rollDistance?: number
+      rollRotation?: number
       jumpHeight?: number
       jumpVelocity?: number
       popScale?: number
@@ -133,6 +135,7 @@ const defaultState: TimelineState = {
   playbackRate: 1,
   templateSpeed: 1,
   rollDistance: 0.2,
+  rollRotation: 1,  // Default 1 full rotation during roll
   jumpHeight: 0.25,
   jumpVelocity: 1.5,
   popScale: 1.6,
@@ -724,7 +727,9 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         const track = currentTracks.find(t => t.layerId === layerId)
         if (!track) return currentTracks
 
-        // Reset track to empty/default state
+        // Reset track to empty/default state, but initialize clipKeyframes for unified sampling
+        const newClipKeyframes: Record<string, { position?: any[]; scale?: any[]; rotation?: any[]; opacity?: any[]; maskScale?: any[] }> = {}
+        
         let newTrack: LayerTracks = {
           ...track,
           position: [],
@@ -732,7 +737,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           rotation: [],
           opacity: [],
           maskScale: [],
-          paths: []
+          paths: [],
+          clipKeyframes: newClipKeyframes  // Will be populated by the loop below
         }
 
         // Apply clips sequentially
@@ -815,7 +821,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
 
        let preset
            if (clip.template === 'roll') {
-             preset = PRESET_BUILDERS.roll(clip.parameters?.rollDistance ?? prev.rollDistance, clip.parameters?.templateSpeed ?? prev.templateSpeed)
+             preset = PRESET_BUILDERS.roll(clip.parameters?.rollDistance ?? prev.rollDistance, clip.parameters?.templateSpeed ?? prev.templateSpeed, clip.parameters?.rollRotation ?? prev.rollRotation ?? 2)
              // Add explicit scale/opacity/position to prevent multiply mode issues and ensure final state
              const rollDistance = clip.parameters?.rollDistance ?? prev.rollDistance
              preset = {
@@ -1091,6 +1097,15 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             maskScale: mergeKeyframes(newTrack.maskScale ?? [], preset.maskScale, undefined, 'replace'),
           }
           
+          // CRITICAL: Populate clipKeyframes for unified sampling (with local 0-based times)
+          newClipKeyframes[clip.id] = {
+            position: preset.position?.map((f: any) => ({ ...f })),  // Already 0-based in preset
+            scale: preset.scale?.map((f: any) => ({ ...f })),
+            rotation: preset.rotation?.map((f: any) => ({ ...f })),
+            opacity: preset.opacity?.map((f: any) => ({ ...f })),
+            maskScale: preset.maskScale?.map((f: any) => ({ ...f })),
+          }
+          
            // Update prevClipEnd for next iteration
            prevClipEnd = end
          })
@@ -1221,6 +1236,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       targetDuration?: number;
       parameters?: {
         rollDistance?: number;
+        rollRotation?: number;
         jumpHeight?: number;
         jumpVelocity?: number;
         popScale?: number;
@@ -1246,7 +1262,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
   ) => {
     const preset =
       template === 'roll'
-        ? PRESET_BUILDERS.roll(options?.parameters?.rollDistance ?? state.rollDistance, state.templateSpeed)
+        ? PRESET_BUILDERS.roll(options?.parameters?.rollDistance ?? state.rollDistance, state.templateSpeed, options?.parameters?.rollRotation ?? state.rollRotation ?? 2)
         : template === 'jump'
           ? PRESET_BUILDERS.jump(
               options?.parameters?.jumpHeight ?? state.jumpHeight, 
@@ -1275,7 +1291,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
               ].includes(template)
               // @ts-ignore
               ? PRESET_BUILDERS[template](options?.targetDuration)
-              : PRESET_BUILDERS.roll(options?.parameters?.rollDistance ?? state.rollDistance, state.templateSpeed)
+              : PRESET_BUILDERS.roll(options?.parameters?.rollDistance ?? state.rollDistance, state.templateSpeed, options?.parameters?.rollRotation ?? state.rollRotation ?? 2)
     if (!preset) return
     ensureTrack(layerId)
 
@@ -1700,6 +1716,9 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         const track = currentTracks.find(t => t.layerId === layerId)
         if (!track) return currentTracks
 
+        // Reset track and initialize clipKeyframes for unified sampling
+        const newClipKeyframes: Record<string, { position?: any[]; scale?: any[]; rotation?: any[]; opacity?: any[]; maskScale?: any[] }> = {}
+        
         let newTrack: LayerTracks = {
           ...track,
           position: [],
@@ -1707,7 +1726,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           rotation: [],
           opacity: [],
           maskScale: [],
-          paths: []
+          paths: [],
+          clipKeyframes: newClipKeyframes
         }
 
         let prevClipEnd = 0
@@ -1797,7 +1817,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
 
            let preset
            if (clip.template === 'roll') {
-             preset = PRESET_BUILDERS.roll(clip.parameters?.rollDistance ?? prev.rollDistance, clip.parameters?.templateSpeed ?? prev.templateSpeed)
+             preset = PRESET_BUILDERS.roll(clip.parameters?.rollDistance ?? prev.rollDistance, clip.parameters?.templateSpeed ?? prev.templateSpeed, clip.parameters?.rollRotation ?? prev.rollRotation ?? 2)
            } else if (clip.template === 'jump') {
              preset = PRESET_BUILDERS.jump(clip.parameters?.jumpHeight ?? prev.jumpHeight, clip.parameters?.jumpVelocity ?? prev.jumpVelocity)
            } else if (clip.template === 'pop') {
@@ -2028,6 +2048,15 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
               maskScale: mergeKeyframes(newTrack.maskScale ?? [], preset.maskScale, undefined, 'replace'),
             }
             
+            // CRITICAL: Populate clipKeyframes for unified sampling (with local 0-based times)
+            newClipKeyframes[clip.id] = {
+              position: preset.position?.map((f: any) => ({ ...f })),
+              scale: preset.scale?.map((f: any) => ({ ...f })),
+              rotation: preset.rotation?.map((f: any) => ({ ...f })),
+              opacity: preset.opacity?.map((f: any) => ({ ...f })),
+              maskScale: preset.maskScale?.map((f: any) => ({ ...f })),
+            }
+            
            prevClipEnd = end
          })
          
@@ -2248,6 +2277,14 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     setState((prev) => ({
       ...prev,
       rollDistance: clamped,
+    }))
+  }
+
+  const setRollRotation = (rotations: number) => {
+    const clamped = Math.max(0, Math.min(10, rotations))
+    setState((prev) => ({
+      ...prev,
+      rollRotation: clamped,
     }))
   }
 
@@ -2573,7 +2610,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         
         switch (clip.template) {
           case 'roll':
-            built = PRESET_BUILDERS.roll(params?.rollDistance, params?.templateSpeed)
+            built = PRESET_BUILDERS.roll(params?.rollDistance, params?.templateSpeed, params?.rollRotation ?? 2)
             break
           case 'jump':
             built = PRESET_BUILDERS.jump(params?.jumpHeight, params?.jumpVelocity)
@@ -2723,6 +2760,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     setLoop,
     setPlaybackRate,
     setRollDistance,
+    setRollRotation,
     setJumpHeight,
     setJumpVelocity,
     setPopScale,

@@ -106,6 +106,7 @@ function DashboardContent() {
   const playhead = useTimeline((s) => s.currentTime)
   const templateSpeed = useTimeline((s) => s.templateSpeed)
   const rollDistance = useTimeline((s) => s.rollDistance)
+  const rollRotation = useTimeline((s) => s.rollRotation)
   const jumpHeight = useTimeline((s) => s.jumpHeight)
   const jumpVelocity = useTimeline((s) => s.jumpVelocity)
   const popScale = useTimeline((s) => s.popScale)
@@ -597,6 +598,50 @@ function DashboardContent() {
     }
   }
 
+  const handleShakeDistanceChange = (value: number) => {
+    timeline.setShakeDistance(value)
+    if (selectedClipId && selectedLayerId) {
+      const clip = templateClips.find(c => c.id === selectedClipId)
+      if (clip && clip.template === 'shake') {
+        timeline.updateTemplateClip(selectedLayerId, selectedClipId, {
+          parameters: { shakeDistance: value }
+        })
+        pushSnapshot()
+      }
+    }
+  }
+
+  // Pop speed change - sync with duration (inverse relationship: speed = 1000 / duration)
+  const handlePopSpeedChange = (value: number) => {
+    timeline.setPopSpeed(value)
+    // Calculate new duration from speed (inverse relationship)
+    const newDuration = Math.round(1000 / Math.max(0.1, value))
+    
+    if (selectedClipId && selectedLayerId) {
+      const clip = templateClips.find(c => c.id === selectedClipId)
+      if (clip && clip.template === 'pop') {
+        timeline.updateTemplateClip(selectedLayerId, selectedClipId, {
+          duration: newDuration,
+          parameters: { popSpeed: value }
+        })
+        pushSnapshot()
+      }
+    }
+  }
+
+  // Pop scale change - update clip
+  const handlePopScaleChange = (value: number) => {
+    timeline.setPopScale(value)
+    if (selectedClipId && selectedLayerId) {
+      const clip = templateClips.find(c => c.id === selectedClipId)
+      if (clip && clip.template === 'pop') {
+        timeline.updateTemplateClip(selectedLayerId, selectedClipId, {
+          parameters: { popScale: value }
+        })
+        pushSnapshot()
+      }
+    }
+  }
 
 
   const handleSelectEffect = (effectId: string) => {
@@ -1444,6 +1489,28 @@ function DashboardContent() {
     debouncedPushSnapshot()
   }
 
+  const handleRollRotationChange = (value: number) => {
+    timeline.setRollRotation(value)
+
+    if (selectedClipId && selectedLayerId) {
+      const clip = templateClips.find(c => c.id === selectedClipId)
+      if (clip && clip.template === 'roll') {
+        timeline.updateTemplateClip(
+          selectedLayerId,
+          selectedClipId,
+          {
+            parameters: {
+              rollRotation: value,
+              layerBase: lastLayerBaseRef.current[selectedLayerId]
+            }
+          },
+          layers.find(l => l.id === selectedLayerId)?.scale ?? 1
+        )
+      }
+    }
+    debouncedPushSnapshot()
+  }
+
   const handleJumpHeightChange = (value: number) => {
     timeline.setJumpHeight(value)
 
@@ -1694,10 +1761,12 @@ function DashboardContent() {
         spinDirection={spinDirection}
         onTemplateSpeedChange={handleTemplateSpeedChange}
         onRollDistanceChange={handleRollDistanceChange}
+        rollRotation={rollRotation}
+        onRollRotationChange={handleRollRotationChange}
         onJumpHeightChange={handleJumpHeightChange}
         onJumpVelocityChange={handleJumpVelocityChange}
-        onPopScaleChange={timeline.setPopScale}
-        onPopSpeedChange={timeline.setPopSpeed}
+        onPopScaleChange={handlePopScaleChange}
+        onPopSpeedChange={handlePopSpeedChange}
         onPopCollapseChange={timeline.setPopCollapse}
         onPopReappearChange={timeline.setPopReappear}
         onPulseScaleChange={handlePulseScaleChange}
@@ -1705,7 +1774,7 @@ function DashboardContent() {
         onSpinSpeedChange={handleSpinSpeedChange}
         onSpinDirectionChange={handleSpinDirectionChange}
         shakeDistance={shakeDistance}
-        onShakeDistanceChange={timeline.setShakeDistance}
+        onShakeDistanceChange={handleShakeDistanceChange}
         selectedLayerScale={layers.find(l => l.id === selectedLayerId)?.scale ?? 1}
         onSelectedLayerScaleChange={handleScaleChange}
         onUpdateLayerPosition={handleUpdateLayerPosition}

@@ -17,6 +17,7 @@ export interface PresetResult {
   duration: number
   meta?: {
     rollDistance?: number // normalized/pixel offset for roll
+    rollRotation?: number // number of full rotations during roll
     jumpHeight?: number
     popScale?: number
     wobble?: boolean
@@ -48,11 +49,13 @@ export const rollDurationForDistance = (distance: number = ROLL_BASE_DISTANCE, s
 export const rollDistanceForDuration = (duration: number = ROLL_BASE_DURATION, speed: number = ROLL_BASE_SPEED) =>
   Math.max(0.05, ((Math.max(300, duration) / ROLL_BASE_DURATION) * Math.max(0.1, speed)) * ROLL_BASE_DISTANCE)
 
-const rollPreset = (distance: number = BASE_ROLL_DISTANCE, speed: number = ROLL_BASE_SPEED): PresetResult => {
+const rollPreset = (distance: number = BASE_ROLL_DISTANCE, speed: number = ROLL_BASE_SPEED, rotations: number = 1): PresetResult => {
   const clampedDistance = Math.max(0.05, distance)
   const clampedSpeed = Math.max(0.1, speed)
   // duration = distance / speed (scaled by base values)
   const duration = rollDurationForDistance(clampedDistance, clampedSpeed)
+  // rotations controls how many full spins during roll (default 2)
+  const endRotation = rotations * Math.PI * 2
   return {
     duration,
     position: [
@@ -63,9 +66,9 @@ const rollPreset = (distance: number = BASE_ROLL_DISTANCE, speed: number = ROLL_
     rotation: [
       { time: 0, value: 0, easing: 'linear' },
       // rotation is additive offset
-      { time: duration, value: Math.PI * 4, easing: 'linear' },
+      { time: duration, value: endRotation, easing: 'linear' },
     ],
-    meta: { rollDistance: distance },
+    meta: { rollDistance: distance, rollRotation: rotations },
   }
 }
 
@@ -232,8 +235,11 @@ export const SPIN_BASE_DURATION = 1200 // ms
 
 const spinPreset = (speed: number = SPIN_BASE_SPEED, direction: 1 | -1 = 1, targetDuration?: number): PresetResult => {
   const duration = targetDuration ?? SPIN_BASE_DURATION
-  const rotations = Math.max(0.1, speed)
-  const endRotation = direction * rotations * Math.PI * 2
+  // Speed is rotations per second, duration is in ms
+  // Total rotations = speed * (duration / 1000)
+  // Round to whole number so spin ends at same angle it started
+  const totalRotations = Math.max(1, Math.round(speed * (duration / 1000)))
+  const endRotation = direction * totalRotations * Math.PI * 2
   return {
     duration,
     rotation: [
