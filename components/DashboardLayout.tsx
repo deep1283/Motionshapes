@@ -37,7 +37,9 @@ import {
   Undo,
   Redo,
   Type,
-  Sparkles
+  Sparkles,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
@@ -56,6 +58,7 @@ export type BackgroundSettings = {
   to: string
   opacity: number
   gradientType?: 'linear' | 'radial'
+  gradientPosition?: number  // 0-1, default 0.5 (center)
 }
 
 export type EffectType = 'glow' | 'dropShadow' | 'blur' | 'glitch' | 'pixelate' | 'sparkles' | 'confetti'
@@ -308,6 +311,8 @@ export default function DashboardLayout({
   const templateClips = useTimeline((s) => s.templateClips)
   const timeline = useTimelineActions()
   const [showBackgroundPanel, setShowBackgroundPanel] = useState(false)
+  const [isBackgroundPanelCollapsed, setIsBackgroundPanelCollapsed] = useState(false)
+  const [isTransformPanelCollapsed, setIsTransformPanelCollapsed] = useState(false)
   const [activeTab, setActiveTab] = useState<'templates' | 'shapes' | 'effects' | 'animations' | 'transitions' | 'custom'>('shapes')
   const [animationType, setAnimationType] = useState<'in' | 'out' | 'custom'>('in')
   const [showExploreModal, setShowExploreModal] = useState(false)
@@ -885,9 +890,13 @@ export default function DashboardLayout({
         }
       : background.mode === 'gradient'
       ? {
-          backgroundImage: background.gradientType === 'radial'
-            ? `radial-gradient(circle at center, ${hexToRgba(background.from, background.opacity)}, ${hexToRgba(background.to, background.opacity)})`
-            : `linear-gradient(135deg, ${hexToRgba(background.from, background.opacity)}, ${hexToRgba(background.to, background.opacity)})`,
+          backgroundImage: (() => {
+            const pos = Math.round((background.gradientPosition ?? 0.5) * 100);
+            if (background.gradientType === 'radial') {
+              return `radial-gradient(circle at center, ${hexToRgba(background.from, background.opacity)} ${pos}%, ${hexToRgba(background.to, background.opacity)})`;
+            }
+            return `linear-gradient(135deg, ${hexToRgba(background.from, background.opacity)} ${pos}%, ${hexToRgba(background.to, background.opacity)})`;
+          })(),
         }
       : {
           backgroundColor: hexToRgba(background.solid, background.opacity),
@@ -2691,9 +2700,13 @@ export default function DashboardLayout({
                     ...(background.mode === 'transparent'
                       ? { backgroundColor: 'transparent' }
                       : background.mode === 'gradient'
-                      ? { backgroundImage: background.gradientType === 'radial' 
-                          ? `radial-gradient(circle at center, ${background.from}, ${background.to})`
-                          : `linear-gradient(135deg, ${background.from}, ${background.to})` }
+                      ? { backgroundImage: (() => {
+                          const pos = Math.round((background.gradientPosition ?? 0.5) * 100);
+                          if (background.gradientType === 'radial') {
+                            return `radial-gradient(circle at center, ${background.from} ${pos}%, ${background.to})`;
+                          }
+                          return `linear-gradient(135deg, ${background.from} ${pos}%, ${background.to})`;
+                        })() }
                       : { backgroundColor: background.solid }),
                     opacity: background.mode === 'transparent' ? 0 : Math.max(0, Math.min(1, background.opacity ?? 1)),
                     zIndex: 0,
@@ -2857,8 +2870,17 @@ export default function DashboardLayout({
           <div className="mb-6 space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-neutral-400">Background</span>
+              <button 
+                onClick={() => setIsBackgroundPanelCollapsed(!isBackgroundPanelCollapsed)}
+                className="text-neutral-500 hover:text-white transition-colors p-1"
+                aria-label={isBackgroundPanelCollapsed ? "Expand background panel" : "Collapse background panel"}
+              >
+                {isBackgroundPanelCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+              </button>
             </div>
             
+            {!isBackgroundPanelCollapsed && (
+              <>
             {/* Mode buttons - Segmented Control Look */}
             <div className="flex bg-neutral-900 rounded-lg p-1 border border-white/5">
               <button
@@ -2968,6 +2990,32 @@ export default function DashboardLayout({
                   />
                 </div>
 
+                {/* Balance Slider - Controls gradient position */}
+                <div className="space-y-2">
+                  <span className="text-[10px] text-neutral-500 uppercase tracking-wider px-1">Balance</span>
+                  <div className="flex items-center gap-2">
+                    {/* From color swatch */}
+                    <div 
+                      className="w-4 h-4 rounded shrink-0 border border-white/10"
+                      style={{ backgroundColor: background.from }}
+                    />
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                      value={background.gradientPosition ?? 0.5}
+                      onChange={(e) => updateBackground({ gradientPosition: parseFloat(e.target.value) })}
+                      className="flex-1 h-1.5 bg-neutral-800 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white hover:[&::-webkit-slider-thumb]:scale-110 transition-all"
+                    />
+                    {/* To color swatch */}
+                    <div 
+                      className="w-4 h-4 rounded shrink-0 border border-white/10"
+                      style={{ backgroundColor: background.to }}
+                    />
+                  </div>
+                </div>
+
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between px-1">
                     <span className="text-[10px] text-neutral-500">From</span>
@@ -3023,14 +3071,25 @@ export default function DashboardLayout({
                 </div>
               </div>
             )}
+              </>
+            )}
           </div>
 
           {selectedLayerId && (
             <div className="mb-6 space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-neutral-400">Transform</span>
+                <button 
+                  onClick={() => setIsTransformPanelCollapsed(!isTransformPanelCollapsed)}
+                  className="text-neutral-500 hover:text-white transition-colors p-1"
+                  aria-label={isTransformPanelCollapsed ? "Expand transform panel" : "Collapse transform panel"}
+                >
+                  {isTransformPanelCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                </button>
               </div>
               
+              {!isTransformPanelCollapsed && (
+                <>
               {/* Size */}
               <div className="space-y-2">
                 <span className="text-[10px] uppercase text-neutral-500">Size</span>
@@ -3121,6 +3180,8 @@ export default function DashboardLayout({
                   />
                 </div>
               </div>
+                </>
+              )}
             </div>
           )}
 

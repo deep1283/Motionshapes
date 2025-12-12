@@ -8,6 +8,7 @@ export interface BackgroundSettings {
   to: string
   opacity: number
   gradientType?: 'linear' | 'radial'
+  gradientPosition?: number  // 0-1, default 0.5 (center)
 }
 
 export type ShapeKind =
