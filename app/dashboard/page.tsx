@@ -95,6 +95,10 @@ function DashboardContent() {
   const [showSmoothPathButton, setShowSmoothPathButton] = useState(false)
   const smoothPathTimerRef = useRef<NodeJS.Timeout | null>(null)
   
+  // Export canvas refs
+  const exportCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const exportRenderRef = useRef<(() => void) | null>(null)
+  
   const [background, setBackground] = useState<BackgroundSettings>({
     mode: 'transparent',
     solid: '#0f0f0f',
@@ -2169,6 +2173,8 @@ function DashboardContent() {
           pushSnapshot()
         }}
         onSelectLayer={handleSelectLayer}
+        exportCanvasRef={exportCanvasRef}
+        exportRenderRef={exportRenderRef}
       >
         <MotionCanvas 
           template={selectedTemplate} 
@@ -2198,6 +2204,10 @@ function DashboardContent() {
           onCanvasBackgroundClick={handleDeselectShape}
           selectedClipId={selectedClipId}
           onUpdatePanZoomRegions={handleUpdatePanZoomRegions}
+          onCanvasReady={(canvas, render) => {
+            exportCanvasRef.current = canvas
+            exportRenderRef.current = render
+          }}
         />
       </DashboardLayout>
 

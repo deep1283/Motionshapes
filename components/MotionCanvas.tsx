@@ -83,6 +83,8 @@ interface MotionCanvasProps {
   // Pan/Zoom region editing
   selectedClipId?: string
   onUpdatePanZoomRegions?: (clipId: string, targetRegion: PanZoomRegion) => void
+  // Export support
+  onCanvasReady?: (canvas: HTMLCanvasElement, render: () => void) => void
 }
 
 const ICON_SHAPE_KINDS = ['like', 'comment', 'share', 'cursor'] as const
@@ -236,7 +238,7 @@ function LineOverlay({
   )
 }
 
-export default function MotionCanvas({ template, templateVersion, layers = [], layerOrder = [], onUpdateLayerPosition, onUpdateLayerSize, onTemplateComplete, isDrawingPath = false, isDrawingLine = false, pathPoints = [], onAddPathPoint, onFinishPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint, background: _background, offsetX = 0, offsetY = 0, popReappear = false, onCanvasBackgroundClick, selectedClipId, onUpdatePanZoomRegions }: MotionCanvasProps) {
+export default function MotionCanvas({ template, templateVersion, layers = [], layerOrder = [], onUpdateLayerPosition, onUpdateLayerSize, onTemplateComplete, isDrawingPath = false, isDrawingLine = false, pathPoints = [], onAddPathPoint, onFinishPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint, background: _background, offsetX = 0, offsetY = 0, popReappear = false, onCanvasBackgroundClick, selectedClipId, onUpdatePanZoomRegions, onCanvasReady }: MotionCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<PIXI.Application | null>(null)
   const [isReady, setIsReady] = useState(false)
@@ -590,6 +592,11 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         // keep rendering even if no template animation is running
         app.ticker.add(() => app.render())
         setIsReady(true)
+        
+        // Expose canvas for export functionality
+        if (onCanvasReady) {
+          onCanvasReady(app.canvas as HTMLCanvasElement, () => app.render())
+        }
       }
     }
 

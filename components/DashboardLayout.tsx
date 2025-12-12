@@ -49,6 +49,7 @@ import { TemplatePreview } from '@/components/TemplatePreview'
 import TimelinePanel from '@/components/TimelinePanel'
 import FontPicker from '@/components/FontPicker'
 import { ExploreShapesModal } from '@/components/ExploreShapesModal'
+import { ExportModal } from '@/components/ExportModal'
 import { useTimeline, useTimelineActions } from '@/lib/timeline-store'
 
 export type BackgroundSettings = {
@@ -205,6 +206,9 @@ interface DashboardLayoutProps {
   onAddScramble?: (layerId: string) => void
   // Transitions
   onAddTransition?: (fromLayerId: string, toLayerId: string, transitionType: 'fade' | 'slide' | 'zoom' | 'blur') => void
+  // Export support - refs from parent for canvas access
+  exportCanvasRef?: React.MutableRefObject<HTMLCanvasElement | null>
+  exportRenderRef?: React.MutableRefObject<(() => void) | null>
 }
 
 export default function DashboardLayout({ 
@@ -305,10 +309,13 @@ export default function DashboardLayout({
   onAddBounceOut,
   onAddScramble,
   onAddTransition,
+  exportCanvasRef,
+  exportRenderRef,
 }: DashboardLayoutProps) {
   const router = useRouter()
   const supabase = createClient()
   const templateClips = useTimeline((s) => s.templateClips)
+  const timelineDuration = useTimeline((s) => s.duration)
   const timeline = useTimelineActions()
   const [showBackgroundPanel, setShowBackgroundPanel] = useState(false)
   const [isBackgroundPanelCollapsed, setIsBackgroundPanelCollapsed] = useState(false)
@@ -316,6 +323,9 @@ export default function DashboardLayout({
   const [activeTab, setActiveTab] = useState<'templates' | 'shapes' | 'effects' | 'animations' | 'transitions' | 'custom'>('shapes')
   const [animationType, setAnimationType] = useState<'in' | 'out' | 'custom'>('in')
   const [showExploreModal, setShowExploreModal] = useState(false)
+  
+  // Export modal state
+  const [showExportModal, setShowExportModal] = useState(false)
   
   // Custom animation state
   const [expandedCustomProp, setExpandedCustomProp] = useState<'position' | 'scale' | 'rotation' | 'resize' | 'rotate' | 'color' | null>(null)
@@ -1151,6 +1161,15 @@ export default function DashboardLayout({
             >
                 <Upload className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">Import</span>
+            </Button>
+            <Button 
+                onClick={() => setShowExportModal(true)}
+                variant="ghost"
+                size="sm"
+                className="h-8 gap-2 text-neutral-400 hover:text-white hover:bg-white/5 text-xs"
+            >
+                <Download className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Export</span>
             </Button>
             <Button 
                 onClick={handleLogout}
@@ -4541,6 +4560,18 @@ export default function DashboardLayout({
           </div>
         )}
       </AnimatePresence>
+      
+      {/* Export Modal */}
+      <ExportModal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        canvasRef={exportCanvasRef?.current ?? null}
+        duration={timelineDuration}
+        canvasWidth={canvasWidth}
+        canvasHeight={canvasHeight}
+        onSeek={(time) => timeline.setCurrentTime(time)}
+        onRender={() => exportRenderRef?.current?.()}
+      />
     </div>
   )
 }
