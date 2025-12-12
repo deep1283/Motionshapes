@@ -32,6 +32,7 @@ export function ExportModal({
   const [progress, setProgress] = useState(0)
   const [currentFrame, setCurrentFrame] = useState(0)
   const [totalFrames, setTotalFrames] = useState(0)
+  const [exportPhase, setExportPhase] = useState<'capturing' | 'encoding'>('capturing')
 
   // Reset state when modal opens
   useEffect(() => {
@@ -73,10 +74,11 @@ export function ExportModal({
         duration,
         fps,
         quality,
-        onProgress: (prog, frame, total) => {
+        onProgress: (prog, frame, total, phase) => {
           setProgress(prog)
           setCurrentFrame(frame)
           setTotalFrames(total)
+          setExportPhase(phase)
         },
         onSeek,
         onRender,
@@ -253,12 +255,18 @@ export function ExportModal({
               
               {/* Frame counter */}
               <div className="text-sm text-neutral-400">
-                Rendering frame {currentFrame} of {totalFrames}
+                {exportPhase === 'capturing' 
+                  ? `Capturing frame ${currentFrame} of ${totalFrames}`
+                  : `Encoding frame ${currentFrame} of ${totalFrames}`
+                }
               </div>
               
-              {/* Pulse animation */}
+              {/* Phase indicator */}
               <div className="text-xs text-neutral-500 animate-pulse">
-                Please wait...
+                {exportPhase === 'capturing' 
+                  ? 'Capturing frames...' 
+                  : 'Creating video...'
+                }
               </div>
             </div>
           )}
