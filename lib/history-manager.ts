@@ -7,6 +7,7 @@ export interface BackgroundSettings {
   from: string
   to: string
   opacity: number
+  gradientType?: 'linear' | 'radial'
 }
 
 export type ShapeKind =

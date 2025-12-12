@@ -55,6 +55,7 @@ export type BackgroundSettings = {
   from: string
   to: string
   opacity: number
+  gradientType?: 'linear' | 'radial'
 }
 
 export type EffectType = 'glow' | 'dropShadow' | 'blur' | 'glitch' | 'pixelate' | 'sparkles' | 'confetti'
@@ -884,7 +885,9 @@ export default function DashboardLayout({
         }
       : background.mode === 'gradient'
       ? {
-          backgroundImage: `linear-gradient(135deg, ${hexToRgba(background.from, background.opacity)}, ${hexToRgba(background.to, background.opacity)})`,
+          backgroundImage: background.gradientType === 'radial'
+            ? `radial-gradient(circle at center, ${hexToRgba(background.from, background.opacity)}, ${hexToRgba(background.to, background.opacity)})`
+            : `linear-gradient(135deg, ${hexToRgba(background.from, background.opacity)}, ${hexToRgba(background.to, background.opacity)})`,
         }
       : {
           backgroundColor: hexToRgba(background.solid, background.opacity),
@@ -2688,7 +2691,9 @@ export default function DashboardLayout({
                     ...(background.mode === 'transparent'
                       ? { backgroundColor: 'transparent' }
                       : background.mode === 'gradient'
-                      ? { backgroundImage: `linear-gradient(135deg, ${background.from}, ${background.to})` }
+                      ? { backgroundImage: background.gradientType === 'radial' 
+                          ? `radial-gradient(circle at center, ${background.from}, ${background.to})`
+                          : `linear-gradient(135deg, ${background.from}, ${background.to})` }
                       : { backgroundColor: background.solid }),
                     opacity: background.mode === 'transparent' ? 0 : Math.max(0, Math.min(1, background.opacity ?? 1)),
                     zIndex: 0,
@@ -2919,7 +2924,50 @@ export default function DashboardLayout({
             )}
             
             {background.mode === 'gradient' && (
-              <div className="space-y-3 pt-1">
+              <div className="space-y-4 pt-1">
+                {/* Gradient Type Toggle */}
+                <div className="flex bg-neutral-900 rounded-lg p-1 border border-white/5">
+                  <button
+                    className={cn(
+                      "flex-1 py-1.5 px-2 text-[10px] font-medium rounded-md transition-all",
+                      (!background.gradientType || background.gradientType === 'linear')
+                        ? "bg-white/10 text-white shadow-sm" 
+                        : "text-neutral-500 hover:text-neutral-300 hover:bg-white/5"
+                    )}
+                    onClick={() => updateBackground({ gradientType: 'linear' })}
+                  >
+                    Linear
+                  </button>
+                  <button
+                    className={cn(
+                      "flex-1 py-1.5 px-2 text-[10px] font-medium rounded-md transition-all",
+                      background.gradientType === 'radial' 
+                        ? "bg-white/10 text-white shadow-sm" 
+                        : "text-neutral-500 hover:text-neutral-300 hover:bg-white/5"
+                    )}
+                    onClick={() => updateBackground({ gradientType: 'radial' })}
+                  >
+                    Radial
+                  </button>
+                </div>
+
+                {/* Intensity Slider */}
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center px-1">
+                    <span className="text-[10px] text-neutral-500 uppercase tracking-wider">Intensity</span>
+                    <span className="text-[10px] font-mono text-neutral-400">{Math.round((background.opacity ?? 1) * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={background.opacity ?? 1}
+                    onChange={(e) => updateBackground({ opacity: parseFloat(e.target.value) })}
+                    className="w-full h-1.5 bg-neutral-800 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white hover:[&::-webkit-slider-thumb]:scale-110 transition-all"
+                  />
+                </div>
+
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between px-1">
                     <span className="text-[10px] text-neutral-500">From</span>

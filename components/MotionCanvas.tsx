@@ -71,6 +71,7 @@ interface MotionCanvasProps {
     from: string
     to: string
     opacity: number
+    gradientType?: 'linear' | 'radial'
   }
   offsetX?: number
   offsetY?: number
