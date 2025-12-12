@@ -83,8 +83,13 @@ interface MotionCanvasProps {
   // Pan/Zoom region editing
   selectedClipId?: string
   onUpdatePanZoomRegions?: (clipId: string, targetRegion: PanZoomRegion) => void
-  // Export support
-  onCanvasReady?: (canvas: HTMLCanvasElement, render: () => void) => void
+  // Export support - provides canvas access and UI control functions
+  onCanvasReady?: (
+    canvas: HTMLCanvasElement, 
+    render: () => void, 
+    hideHandles: () => void,
+    showHandles: () => void
+  ) => void
 }
 
 const ICON_SHAPE_KINDS = ['like', 'comment', 'share', 'cursor'] as const
@@ -595,7 +600,34 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         
         // Expose canvas for export functionality
         if (onCanvasReady) {
-          onCanvasReady(app.canvas as HTMLCanvasElement, () => app.render())
+          // Function to hide all selection outlines and resize handles
+          const hideHandles = () => {
+            Object.values(outlinesByIdRef.current).forEach(outline => {
+              if (outline) outline.visible = false
+            })
+            Object.values(resizeHandlesRef.current).forEach(handles => {
+              if (handles) handles.forEach(h => h.visible = false)
+            })
+            app.render()
+          }
+          
+          // Function to restore handle visibility based on selection
+          const showHandles = () => {
+            Object.entries(outlinesByIdRef.current).forEach(([id, outline]) => {
+              if (outline) outline.visible = selectedLayerId === id
+            })
+            Object.entries(resizeHandlesRef.current).forEach(([id, handles]) => {
+              if (handles) handles.forEach(h => h.visible = selectedLayerId === id)
+            })
+            app.render()
+          }
+          
+          onCanvasReady(
+            app.canvas as HTMLCanvasElement, 
+            () => app.render(),
+            hideHandles,
+            showHandles
+          )
         }
       }
     }

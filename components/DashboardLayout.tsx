@@ -209,6 +209,8 @@ interface DashboardLayoutProps {
   // Export support - refs from parent for canvas access
   exportCanvasRef?: React.MutableRefObject<HTMLCanvasElement | null>
   exportRenderRef?: React.MutableRefObject<(() => void) | null>
+  exportHideHandlesRef?: React.MutableRefObject<(() => void) | null>
+  exportShowHandlesRef?: React.MutableRefObject<(() => void) | null>
 }
 
 export default function DashboardLayout({ 
@@ -311,6 +313,8 @@ export default function DashboardLayout({
   onAddTransition,
   exportCanvasRef,
   exportRenderRef,
+  exportHideHandlesRef,
+  exportShowHandlesRef,
 }: DashboardLayoutProps) {
   const router = useRouter()
   const supabase = createClient()
@@ -4571,6 +4575,9 @@ export default function DashboardLayout({
         canvasHeight={canvasHeight}
         onSeek={(time) => timeline.setCurrentTime(time)}
         onRender={() => exportRenderRef?.current?.()}
+        onSetPlaying={(playing) => timeline.setPlaying(playing)}
+        onHideHandles={() => exportHideHandlesRef?.current?.()}
+        onShowHandles={() => exportShowHandlesRef?.current?.()}
       />
     </div>
   )

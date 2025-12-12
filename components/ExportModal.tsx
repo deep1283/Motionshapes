@@ -14,6 +14,9 @@ interface ExportModalProps {
   canvasHeight: number
   onSeek: (time: number) => void
   onRender: () => void
+  onSetPlaying: (playing: boolean) => void
+  onHideHandles?: () => void
+  onShowHandles?: () => void
 }
 
 export function ExportModal({
@@ -25,6 +28,9 @@ export function ExportModal({
   canvasHeight,
   onSeek,
   onRender,
+  onSetPlaying,
+  onHideHandles,
+  onShowHandles,
 }: ExportModalProps) {
   const [quality, setQuality] = useState<ExportQuality>('standard')
   const [fps, setFps] = useState<ExportFPS>(30)
@@ -67,6 +73,20 @@ export function ExportModal({
     setIsExporting(true)
     setProgress(0)
     setTotalFrames(Math.ceil(duration / (1000 / fps)))
+    
+    // Set playing state to hide UI overlays (selection handles, path lines, etc.)
+    onSetPlaying(true)
+    
+    // Directly hide PIXI handles (more reliable than waiting for React re-render)
+    onHideHandles?.()
+    
+    // Seek to start and force render to ensure UI is updated before capture
+    onSeek(0)
+    onRender()
+    
+    // Wait for PIXI to render the hidden handles
+    await new Promise(resolve => requestAnimationFrame(resolve))
+    await new Promise(resolve => requestAnimationFrame(resolve))
 
     try {
       const blob = await exportToWebM({
@@ -95,6 +115,9 @@ export function ExportModal({
       console.error('Export failed:', error)
       alert('Export failed. Please try again.')
     } finally {
+      // Reset playing state and restore handles
+      onShowHandles?.()
+      onSetPlaying(false)
       setIsExporting(false)
     }
   }

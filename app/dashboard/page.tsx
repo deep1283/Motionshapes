@@ -98,6 +98,8 @@ function DashboardContent() {
   // Export canvas refs
   const exportCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const exportRenderRef = useRef<(() => void) | null>(null)
+  const exportHideHandlesRef = useRef<(() => void) | null>(null)
+  const exportShowHandlesRef = useRef<(() => void) | null>(null)
   
   const [background, setBackground] = useState<BackgroundSettings>({
     mode: 'transparent',
@@ -2175,6 +2177,8 @@ function DashboardContent() {
         onSelectLayer={handleSelectLayer}
         exportCanvasRef={exportCanvasRef}
         exportRenderRef={exportRenderRef}
+        exportHideHandlesRef={exportHideHandlesRef}
+        exportShowHandlesRef={exportShowHandlesRef}
       >
         <MotionCanvas 
           template={selectedTemplate} 
@@ -2204,9 +2208,11 @@ function DashboardContent() {
           onCanvasBackgroundClick={handleDeselectShape}
           selectedClipId={selectedClipId}
           onUpdatePanZoomRegions={handleUpdatePanZoomRegions}
-          onCanvasReady={(canvas, render) => {
+          onCanvasReady={(canvas, render, hideHandles, showHandles) => {
             exportCanvasRef.current = canvas
             exportRenderRef.current = render
+            exportHideHandlesRef.current = hideHandles
+            exportShowHandlesRef.current = showHandles
           }}
         />
       </DashboardLayout>
