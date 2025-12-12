@@ -66,7 +66,7 @@ interface MotionCanvasProps {
   onClearPath?: () => void
   onInsertPathPoint?: (indexAfter: number, x: number, y: number) => void
   background?: {
-    mode: 'solid' | 'gradient'
+    mode: 'transparent' | 'solid' | 'gradient'
     solid: string
     from: string
     to: string
@@ -703,56 +703,40 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       
       // RESIZE ANIMATION: Uses actual SCALING to stretch/shrink the shape
       // This allows the shape to visually exceed its base dimensions (no 100px barrier)
-      // Position is compensated based on anchor so the anchor point stays fixed
+      // Always scales from center (pivot 0,0) to avoid snapping issues with path animation
       if (hasResizeAnim && g) {
         // Calculate scale factors based on animated vs base dimensions
-        // These can be any value - no cap (e.g., 200/100 = 2.0)
-        const scaleX = baseWidth > 0 ? (state.width ?? baseWidth) / baseWidth : 1
-        const scaleY = baseHeight > 0 ? (state.height ?? baseHeight) / baseHeight : 1
+        // Handle edge case: if base is 0, use 1 to avoid division by zero
+        const safeBaseWidth = baseWidth > 0 ? baseWidth : 1
+        const safeBaseHeight = baseHeight > 0 ? baseHeight : 1
         
-        // Apply non-uniform scaling
+        // Get animated dimensions (from keyframes - these are the actual target sizes in pixels)
+        const animatedWidth = state.width ?? baseWidth
+        const animatedHeight = state.height ?? baseHeight
+        
+        // Calculate scale factors - these can exceed 1.0 for growth
+        // Use minimum of 0.01 to ensure shape is never completely invisible
+        const scaleX = Math.max(0.01, animatedWidth / safeBaseWidth)
+        const scaleY = Math.max(0.01, animatedHeight / safeBaseHeight)
+        
+        // Apply non-uniform scaling with overall layer scale
         const actualScaleX = finalScale * scaleX
         const actualScaleY = finalScale * scaleY
         g.scale.set(actualScaleX, actualScaleY)
         
-        // Calculate position offset to keep anchor point fixed
-        // When scaling from center (default), the shape expands equally in all directions
-        // To make it expand from a specific edge, we offset the position
-        const scaledHalfWidth = (baseWidth * actualScaleX) / 2
-        const scaledHalfHeight = (baseHeight * actualScaleY) / 2
-        const originalHalfWidth = (baseWidth * finalScale) / 2
-        const originalHalfHeight = (baseHeight * finalScale) / 2
+        // Always use center pivot (0,0) - this ensures no snapping when animation ends
+        // and works correctly with path animation
+        g.pivot.set(0, 0)
         
-        // Position offset based on anchor
-        switch (resizeAnchor) {
-          case 'top':
-            // Keep top edge fixed - offset down by the height expansion
-            g.position.y += (scaledHalfHeight - originalHalfHeight)
-            break
-          case 'bottom':
-            // Keep bottom edge fixed - offset up by the height expansion
-            g.position.y -= (scaledHalfHeight - originalHalfHeight)
-            break
-          case 'left':
-            // Keep left edge fixed - offset right by the width expansion
-            g.position.x += (scaledHalfWidth - originalHalfWidth)
-            break
-          case 'right':
-            // Keep right edge fixed - offset left by the width expansion
-            g.position.x -= (scaledHalfWidth - originalHalfWidth)
-            break
-          case 'middle':
-          default:
-            // Center anchor - no offset needed, shape expands equally
-            break
-        }
-        
-        // Disable mask-based resize
+        // Mark resize as active but disable mask approach (using scale-only)
         ;(g as any).__resizeProgress = { active: false }
       } else {
-        // Clear resize progress flag and use uniform scale
-        if (g) (g as any).__resizeProgress = null
-        if (g && g.scale) g.scale.set(finalScale)
+        // Clear resize progress flag and ensure uniform scale
+        if (g) {
+          (g as any).__resizeProgress = null
+          g.pivot.set(0, 0)
+          g.scale.set(finalScale)
+        }
       }
       
       // Calculate strict visibility based on timeline clips

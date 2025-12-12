@@ -67,6 +67,7 @@ type TimelineState = {
       counterSuffix?: string
       counterDecimals?: number
       pathPoints?: Vec2[]
+      pathEasing?: 'linear' | 'easeInQuad' | 'easeOutQuad' | 'easeInOutQuad'
       pathLength?: number
       layerBase?: {
         position?: Vec2
@@ -100,6 +101,10 @@ type TimelineState = {
       resizeToHeight?: number
       resizeEasing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'
       resizeAnchor?: 'middle' | 'top' | 'bottom' | 'left' | 'right'
+      // Rotation parameters
+      rotateFromAngle?: number
+      rotateToAngle?: number
+      rotateEasing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'
     }
   }>
   // Click markers for click animation effect
@@ -897,6 +902,13 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
                 clip.parameters?.resizeToHeight,
                 clip.parameters?.resizeEasing
               )
+            } else if (clip.template === 'rotate') {
+              preset = PRESET_BUILDERS.rotate(
+                clip.duration,
+                clip.parameters?.rotateFromAngle,
+                clip.parameters?.rotateToAngle,
+                clip.parameters?.rotateEasing
+              )
             } else if (clip.template === 'path' && clip.parameters?.pathPoints) {
               newTrack.paths = [
                 ...(newTrack.paths ?? []),
@@ -905,7 +917,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
                   startTime: start,
                   duration: duration,
                   points: clip.parameters.pathPoints,
-                  easing: 'linear'
+                  easing: (clip.parameters?.pathEasing as any) || 'linear'
                 }
               ]
               

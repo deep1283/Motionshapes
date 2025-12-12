@@ -9,6 +9,7 @@ export type TemplateId =
   | 'transition_fade' | 'transition_slide' | 'transition_zoom' | 'transition_blur' // Unified transitions
   | 'color' // Custom color animation
   | 'resize' // Custom resize animation
+  | 'rotate' // Custom rotation animation
 
 export interface PresetResult {
   position?: TimelineKeyframe<Vec2>[]
@@ -678,6 +679,31 @@ const resizePreset = (
   } as any,
 })
 
+// Rotate preset: animates rotation from one angle to another
+// Angles are in degrees, converted to radians internally
+const rotatePreset = (
+  duration: number = 800,
+  fromAngle: number = 0,
+  toAngle: number = 360,
+  easing: string = 'linear'
+): PresetResult => {
+  // Convert degrees to radians
+  const fromRad = (fromAngle * Math.PI) / 180
+  const toRad = (toAngle * Math.PI) / 180
+  return {
+    duration,
+    rotation: [
+      { time: 0, value: fromRad },
+      { time: duration, value: toRad, easing: easing as any },
+    ],
+    meta: {
+      rotateFromAngle: fromAngle,
+      rotateToAngle: toAngle,
+      rotateEasing: easing,
+    } as any,
+  }
+}
+
 export const PRESET_BUILDERS = {
   roll: rollPreset,
   jump: jumpPreset,
@@ -713,6 +739,7 @@ export const PRESET_BUILDERS = {
   scramble: scramblePreset,
   color: colorPreset,
   resize: resizePreset,
+  rotate: rotatePreset,
 } as const
 
 export type PresetBuilderMap = typeof PRESET_BUILDERS

@@ -50,7 +50,7 @@ import { ExploreShapesModal } from '@/components/ExploreShapesModal'
 import { useTimeline, useTimelineActions } from '@/lib/timeline-store'
 
 export type BackgroundSettings = {
-  mode: 'solid' | 'gradient'
+  mode: 'transparent' | 'solid' | 'gradient'
   solid: string
   from: string
   to: string
@@ -312,7 +312,7 @@ export default function DashboardLayout({
   const [showExploreModal, setShowExploreModal] = useState(false)
   
   // Custom animation state
-  const [expandedCustomProp, setExpandedCustomProp] = useState<'position' | 'scale' | 'rotation' | 'resize' | 'color' | null>(null)
+  const [expandedCustomProp, setExpandedCustomProp] = useState<'position' | 'scale' | 'rotation' | 'resize' | 'rotate' | 'color' | null>(null)
   const [customColorFrom, setCustomColorFrom] = useState('#FFFFFF')
   const [customColorTo, setCustomColorTo] = useState('#FF9042')
   const [customColorDuration, setCustomColorDuration] = useState(800) // in ms
@@ -349,9 +349,6 @@ export default function DashboardLayout({
   const [customResizeEasing, setCustomResizeEasing] = useState<'none' | 'ease-in' | 'ease-out' | 'ease-in-out'>('none')
 
   // Sync resize animation controls with timeline clip
-  const [customResizeAnchor, setCustomResizeAnchor] = useState<'middle' | 'top' | 'bottom' | 'left' | 'right'>('middle')
-
-  // Sync resize animation controls with timeline clip
   useEffect(() => {
     if (expandedCustomProp === 'resize' && selectedLayerId) {
       const resizeClip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
@@ -365,10 +362,40 @@ export default function DashboardLayout({
         if (params.resizeEasing) {
           setCustomResizeEasing(params.resizeEasing === 'linear' ? 'none' : params.resizeEasing as any)
         }
-        if (params.resizeAnchor) setCustomResizeAnchor(params.resizeAnchor)
+
       }
     }
   }, [templateClips, selectedLayerId, expandedCustomProp])
+
+  // Rotation animation state
+  const [customRotateFromAngle, setCustomRotateFromAngle] = useState(0)
+  const [customRotateToAngle, setCustomRotateToAngle] = useState(45)
+  const [customRotateDuration, setCustomRotateDuration] = useState(800) // in ms
+  const [customRotateEasing, setCustomRotateEasing] = useState<'none' | 'ease-in' | 'ease-out' | 'ease-in-out'>('none')
+
+  // Sync rotation animation controls with timeline clip
+  useEffect(() => {
+    if (expandedCustomProp === 'rotate' && selectedLayerId) {
+      const rotateClip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'rotate')
+      if (rotateClip) {
+        setCustomRotateDuration(rotateClip.duration || 800)
+        const params = rotateClip.parameters || {}
+        if (params.rotateFromAngle !== undefined) setCustomRotateFromAngle(params.rotateFromAngle)
+        if (params.rotateToAngle !== undefined) setCustomRotateToAngle(params.rotateToAngle)
+        if (params.rotateEasing) {
+          setCustomRotateEasing(params.rotateEasing === 'linear' ? 'none' : params.rotateEasing as any)
+        }
+      } else {
+        // Read initial angle from layer's rotation property
+        const layer = layers?.find(l => l.id === selectedLayerId)
+        if (layer?.rotation !== undefined) {
+          // Convert radians to degrees
+          const angleDeg = Math.round((layer.rotation * 180) / Math.PI)
+          setCustomRotateFromAngle(angleDeg)
+        }
+      }
+    }
+  }, [templateClips, selectedLayerId, expandedCustomProp, layers])
 
   const [showTextColorPicker, setShowTextColorPicker] = useState(false)
   
@@ -851,7 +878,11 @@ export default function DashboardLayout({
   }, [isResizingCanvas, isMovingCanvas, resizeHandle])
 
   const canvasBgStyle =
-    background.mode === 'gradient'
+    background.mode === 'transparent'
+      ? {
+          backgroundColor: 'transparent',
+        }
+      : background.mode === 'gradient'
       ? {
           backgroundImage: `linear-gradient(135deg, ${hexToRgba(background.from, background.opacity)}, ${hexToRgba(background.to, background.opacity)})`,
         }
@@ -1834,8 +1865,8 @@ export default function DashboardLayout({
                   <div className="flex flex-col gap-2">
                     <span className="text-[11px] font-semibold text-neutral-200">Animation Properties</span>
                     
-                    {/* Property toggles */}
-                    <div className="grid grid-cols-2 gap-2">
+                    {/* Property toggles - each on its own line */}
+                    <div className="flex flex-col gap-2">
                       <button
                         className={cn(
                           "flex items-center gap-2 px-3 py-2 rounded-lg border transition-all text-left",
@@ -1850,38 +1881,6 @@ export default function DashboardLayout({
                           <path d="M12 2v4m0 12v4M2 12h4m12 0h4" />
                         </svg>
                         <span className="text-[10px] text-neutral-300">Position</span>
-                      </button>
-                      
-                      <button
-                        className={cn(
-                          "flex items-center gap-2 px-3 py-2 rounded-lg border transition-all text-left",
-                          selectedLayerId
-                            ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/30"
-                            : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
-                        )}
-                        disabled={!selectedLayerId}
-                      >
-                        <svg viewBox="0 0 24 24" className="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" strokeWidth="2">
-                          <rect x="6" y="6" width="12" height="12" rx="2" />
-                          <path d="M3 3l18 18" strokeDasharray="4 2" />
-                        </svg>
-                        <span className="text-[10px] text-neutral-300">Scale</span>
-                      </button>
-                      
-                      <button
-                        className={cn(
-                          "flex items-center gap-2 px-3 py-2 rounded-lg border transition-all text-left",
-                          selectedLayerId
-                            ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/30"
-                            : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
-                        )}
-                        disabled={!selectedLayerId}
-                      >
-                        <svg viewBox="0 0 24 24" className="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          <path d="M12 8v4l3 3" />
-                        </svg>
-                        <span className="text-[10px] text-neutral-300">Rotation</span>
                       </button>
                       
                       <button
@@ -1954,7 +1953,65 @@ export default function DashboardLayout({
                       
                       <button
                         className={cn(
-                          "flex items-center gap-2 px-3 py-2 rounded-lg border transition-all text-left col-span-2",
+                          "flex items-center gap-2 px-3 py-2 rounded-lg border transition-all text-left",
+                          selectedLayerId
+                            ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/30"
+                            : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed",
+                          expandedCustomProp === 'rotate' && "border-violet-500/50 bg-violet-500/10"
+                        )}
+                        disabled={!selectedLayerId}
+                        onClick={() => {
+                          if (selectedLayerId) {
+                            const newExpanded = expandedCustomProp === 'rotate' ? null : 'rotate'
+                            setExpandedCustomProp(newExpanded)
+                            
+                            if (newExpanded === 'rotate') {
+                              // Get layer's current rotation as From angle
+                              const layer = layers.find(l => l.id === selectedLayerId)
+                              const layerRotation = layer?.rotation ?? 0
+                              const fromAngle = Math.round((layerRotation * 180) / Math.PI)
+                              
+                              // Init state from existing clip or create new
+                              const existingClip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'rotate')
+                              
+                              let toAngle = fromAngle + 45
+                              let duration = 800
+                              let easing = 'linear'
+                              
+                              if (existingClip) {
+                                const params = existingClip.parameters || {}
+                                if (params.rotateFromAngle !== undefined) setCustomRotateFromAngle(params.rotateFromAngle)
+                                else setCustomRotateFromAngle(fromAngle)
+                                if (params.rotateToAngle !== undefined) toAngle = params.rotateToAngle
+                                duration = existingClip.duration || 800
+                                easing = params.rotateEasing || 'linear'
+                              } else {
+                                // Create new clip
+                                timeline.addTemplateClip(selectedLayerId, 'rotate', 0, duration, {
+                                  rotateFromAngle: fromAngle,
+                                  rotateToAngle: toAngle,
+                                  rotateEasing: easing as any
+                                })
+                                setCustomRotateFromAngle(fromAngle)
+                              }
+                              
+                              setCustomRotateToAngle(toAngle)
+                              setCustomRotateDuration(duration)
+                              setCustomRotateEasing(easing === 'linear' ? 'none' : easing as any)
+                            }
+                          }
+                        }}
+                      >
+                        <svg viewBox="0 0 24 24" className="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M21 12a9 9 0 11-6.22-8.56" />
+                          <path d="M21 3v5h-5" />
+                        </svg>
+                        <span className="text-[10px] text-neutral-300">Rotate</span>
+                      </button>
+                      
+                      <button
+                        className={cn(
+                          "flex items-center gap-2 px-3 py-2 rounded-lg border transition-all text-left",
                           selectedLayerId
                             ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/30"
                             : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed",
@@ -2299,25 +2356,113 @@ export default function DashboardLayout({
                         </div>
                       </div>
                       
-                      {/* Anchor */}
+                    </div>
+                  )}
+                  
+                  {/* Rotation Animation Panel */}
+                  {expandedCustomProp === 'rotate' && selectedLayerId && (
+                    <div className="mb-6 p-4 rounded-xl border border-violet-500/30 bg-gradient-to-b from-violet-500/10 to-transparent">
+                      <div className="flex items-center justify-between mb-4">
+                        <span className="text-xs font-medium text-violet-300">Rotation Animation</span>
+                        <button
+                          onClick={() => {
+                            const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'rotate')
+                            if (clip) timeline.removeTemplateClip(clip.id)
+                            setExpandedCustomProp(null)
+                          }}
+                          className="text-neutral-400 hover:text-white transition-colors"
+                        >
+                          <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M18 6L6 18M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                      
+                      {/* From Angle */}
+                      <div>
+                        <span className="text-[10px] text-neutral-400 block mb-2">From</span>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={customRotateFromAngle}
+                            onChange={(e) => {
+                              const val = Number(e.target.value)
+                              setCustomRotateFromAngle(val)
+                              const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'rotate')
+                              if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { rotateFromAngle: val } })
+                            }}
+                            className="flex-1 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-400 text-right focus:outline-none focus:border-violet-500/50"
+                          />
+                          <span className="text-[10px] text-neutral-500">°</span>
+                        </div>
+                      </div>
+                      
+                      <div className="w-full h-px bg-white/10 my-4" />
+                      
+                      {/* To Angle */}
+                      <div>
+                        <span className="text-[10px] text-neutral-400 block mb-2">To</span>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={customRotateToAngle}
+                            onChange={(e) => {
+                              const val = Number(e.target.value)
+                              setCustomRotateToAngle(val)
+                              const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'rotate')
+                              if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { rotateToAngle: val } })
+                            }}
+                            className="flex-1 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-400 text-right focus:outline-none focus:border-violet-500/50"
+                          />
+                          <span className="text-[10px] text-neutral-500">°</span>
+                        </div>
+                      </div>
+                      
+                      <div className="w-full h-px bg-white/10 my-4" />
+                      
+                      {/* Duration */}
                       <div>
                         <div className="flex items-center justify-between mb-2">
-                          <span className="text-[10px] text-neutral-400">Anchor</span>
+                          <span className="text-[10px] text-neutral-400">Duration</span>
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={(customRotateDuration / 1000).toFixed(1)}
+                              onChange={(e) => {
+                                const val = Math.max(0.1, Number(e.target.value)) * 1000
+                                setCustomRotateDuration(val)
+                                const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'rotate')
+                                if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { duration: val })
+                              }}
+                              className="w-12 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200 text-right focus:outline-none focus:border-violet-500/50"
+                            />
+                            <span className="text-[10px] text-neutral-500">s</span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Easing */}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[10px] text-neutral-400">Easing</span>
                           <select
-                            value={customResizeAnchor}
+                            value={customRotateEasing}
                             onChange={(e) => {
                               const val = e.target.value as any
-                              setCustomResizeAnchor(val)
-                              const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
-                              if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { resizeAnchor: val } })
+                              setCustomRotateEasing(val)
+                              const easing = val === 'none' ? 'linear' : val
+                              const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'rotate')
+                              if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { rotateEasing: easing } })
                             }}
                             className="px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200"
                           >
-                            <option value="middle">Middle</option>
-                            <option value="top">Top</option>
-                            <option value="bottom">Bottom</option>
-                            <option value="left">Left</option>
-                            <option value="right">Right</option>
+                            <option value="none">None</option>
+                            <option value="ease-in">Ease In</option>
+                            <option value="ease-out">Ease Out</option>
+                            <option value="ease-in-out">Smooth</option>
                           </select>
                         </div>
                       </div>
@@ -2540,10 +2685,12 @@ export default function DashboardLayout({
                     left: `calc(50% + ${canvasX}px)`,
                     top: `calc(50% + ${canvasY}px)`,
                     transform: 'translate(-50%, -50%)',
-                    ...(background.mode === 'gradient'
+                    ...(background.mode === 'transparent'
+                      ? { backgroundColor: 'transparent' }
+                      : background.mode === 'gradient'
                       ? { backgroundImage: `linear-gradient(135deg, ${background.from}, ${background.to})` }
                       : { backgroundColor: background.solid }),
-                    opacity: Math.max(0, Math.min(1, background.opacity ?? 1)),
+                    opacity: background.mode === 'transparent' ? 0 : Math.max(0, Math.min(1, background.opacity ?? 1)),
                     zIndex: 0,
                   }}
                 />
@@ -2701,7 +2848,134 @@ export default function DashboardLayout({
             onMouseDown={startRightSidebarResize}
           />
 
+          {/* Background Settings */}
+          <div className="mb-6 space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-neutral-400">Background</span>
+            </div>
+            
+            {/* Mode buttons - Segmented Control Look */}
+            <div className="flex bg-neutral-900 rounded-lg p-1 border border-white/5">
+              <button
+                className={cn(
+                  "flex-1 py-1.5 px-2 text-[10px] font-medium rounded-md transition-all",
+                  background.mode === 'transparent' 
+                    ? "bg-white/10 text-white shadow-sm" 
+                    : "text-neutral-500 hover:text-neutral-300 hover:bg-white/5"
+                )}
+                onClick={() => updateBackground({ mode: 'transparent' })}
+              >
+                None
+              </button>
+              <button
+                className={cn(
+                  "flex-1 py-1.5 px-2 text-[10px] font-medium rounded-md transition-all",
+                  background.mode === 'solid' 
+                    ? "bg-white/10 text-white shadow-sm" 
+                    : "text-neutral-500 hover:text-neutral-300 hover:bg-white/5"
+                )}
+                onClick={() => updateBackground({ mode: 'solid' })}
+              >
+                Solid
+              </button>
+              <button
+                className={cn(
+                  "flex-1 py-1.5 px-2 text-[10px] font-medium rounded-md transition-all",
+                  background.mode === 'gradient' 
+                    ? "bg-white/10 text-white shadow-sm" 
+                    : "text-neutral-500 hover:text-neutral-300 hover:bg-white/5"
+                )}
+                onClick={() => updateBackground({ mode: 'gradient' })}
+              >
+                Gradient
+              </button>
+            </div>
+            
+            {/* Color inputs based on mode */}
+            {background.mode === 'solid' && (
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center gap-2 bg-neutral-900 p-1.5 rounded-lg border border-white/5">
+                  <div className="relative w-8 h-8 rounded shrink-0 overflow-hidden border border-white/10 group">
+                    <input
+                      type="color"
+                      value={background.solid}
+                      onChange={(e) => updateBackground({ solid: normalizeHex(e.target.value) })}
+                      className="absolute inset-0 w-[200%] h-[200%] -top-[50%] -left-[50%] p-0 m-0 cursor-pointer opacity-0"
+                    />
+                    <div 
+                      className="absolute inset-0 pointer-events-none"
+                      style={{ backgroundColor: background.solid }}
+                    />
+                  </div>
+                  <input
+                    type="text"
+                    value={background.solid}
+                    onChange={(e) => updateBackground({ solid: normalizeHex(e.target.value) })}
+                    className="flex-1 bg-transparent text-neutral-200 text-xs font-mono outline-none uppercase"
+                    spellCheck={false}
+                  />
+                </div>
+              </div>
+            )}
+            
+            {background.mode === 'gradient' && (
+              <div className="space-y-3 pt-1">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between px-1">
+                    <span className="text-[10px] text-neutral-500">From</span>
+                  </div>
+                  <div className="flex items-center gap-2 bg-neutral-900 p-1.5 rounded-lg border border-white/5">
+                    <div className="relative w-8 h-8 rounded shrink-0 overflow-hidden border border-white/10">
+                      <input
+                        type="color"
+                        value={background.from}
+                        onChange={(e) => updateBackground({ from: normalizeHex(e.target.value) })}
+                        className="absolute inset-0 w-[200%] h-[200%] -top-[50%] -left-[50%] p-0 m-0 cursor-pointer opacity-0"
+                      />
+                      <div 
+                        className="absolute inset-0 pointer-events-none"
+                        style={{ backgroundColor: background.from }}
+                      />
+                    </div>
+                    <input
+                      type="text"
+                      value={background.from}
+                      onChange={(e) => updateBackground({ from: normalizeHex(e.target.value) })}
+                      className="flex-1 bg-transparent text-neutral-200 text-xs font-mono outline-none uppercase"
+                      spellCheck={false}
+                    />
+                  </div>
+                </div>
 
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between px-1">
+                    <span className="text-[10px] text-neutral-500">To</span>
+                  </div>
+                  <div className="flex items-center gap-2 bg-neutral-900 p-1.5 rounded-lg border border-white/5">
+                    <div className="relative w-8 h-8 rounded shrink-0 overflow-hidden border border-white/10">
+                      <input
+                        type="color"
+                        value={background.to}
+                        onChange={(e) => updateBackground({ to: normalizeHex(e.target.value) })}
+                        className="absolute inset-0 w-[200%] h-[200%] -top-[50%] -left-[50%] p-0 m-0 cursor-pointer opacity-0"
+                      />
+                      <div 
+                        className="absolute inset-0 pointer-events-none"
+                        style={{ backgroundColor: background.to }}
+                      />
+                    </div>
+                    <input
+                      type="text"
+                      value={background.to}
+                      onChange={(e) => updateBackground({ to: normalizeHex(e.target.value) })}
+                      className="flex-1 bg-transparent text-neutral-200 text-xs font-mono outline-none uppercase"
+                      spellCheck={false}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
           {selectedLayerId && (
             <div className="mb-6 space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">
@@ -3997,20 +4271,47 @@ export default function DashboardLayout({
               </div>
             )}
             {selectedTemplate === 'path' && (
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] font-semibold text-neutral-200">Path Speed</span>
-                  <span className="text-[10px] text-neutral-400">{templateSpeed.toFixed(2)}x</span>
+              <div className="space-y-4">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-semibold text-neutral-200">Path Speed</span>
+                    <span className="text-[10px] text-neutral-400">{templateSpeed.toFixed(2)}x</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.25}
+                    max={3}
+                    step={0.05}
+                    value={templateSpeed}
+                    onChange={(e) => onTemplateSpeedChange?.(Number(e.target.value))}
+                    className="w-full accent-violet-500"
+                  />
                 </div>
-                <input
-                  type="range"
-                  min={0.25}
-                  max={3}
-                  step={0.05}
-                  value={templateSpeed}
-                  onChange={(e) => onTemplateSpeedChange?.(Number(e.target.value))}
-                  className="w-full accent-violet-500"
-                />
+                
+                {/* Easing dropdown */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-semibold text-neutral-200">Easing</span>
+                    <select
+                      value={(() => {
+                        const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'path')
+                        return clip?.parameters?.pathEasing || 'linear'
+                      })()}
+                      onChange={(e) => {
+                        const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'path')
+                        if (clip && selectedLayerId) {
+                          timeline.updateTemplateClip(selectedLayerId, clip.id, { parameters: { pathEasing: e.target.value as any } })
+                        }
+                      }}
+                      className="px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200"
+                    >
+                      <option value="linear">Linear</option>
+                      <option value="easeInOutQuad">Smooth</option>
+                      <option value="easeInQuad">Accelerate</option>
+                      <option value="easeOutQuad">Decelerate</option>
+                    </select>
+                  </div>
+                </div>
               </div>
             )}
             {!selectedTemplate && <p className="text-[11px] text-neutral-500">Select a template to adjust its controls.</p>}

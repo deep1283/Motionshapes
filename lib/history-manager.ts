@@ -2,7 +2,7 @@ import type { Vec2 } from './timeline'
 
 // Background settings type (from dashboard)
 export interface BackgroundSettings {
-  mode: 'solid' | 'gradient'
+  mode: 'transparent' | 'solid' | 'gradient'
   solid: string
   from: string
   to: string
@@ -79,6 +79,7 @@ export type TemplateId =
   | 'transition_fade' | 'transition_slide' | 'transition_zoom' | 'transition_blur' // Unified transitions
   | 'color' // Custom color animation
   | 'resize' // Custom resize animation
+  | 'rotate' // Custom rotation animation
 
 export interface TemplateClip {
   id: string
@@ -102,6 +103,7 @@ export interface TemplateClip {
     spinSpeed?: number
     spinDirection?: 1 | -1
     pathPoints?: Vec2[]
+    pathEasing?: 'linear' | 'easeInQuad' | 'easeOutQuad' | 'easeInOutQuad'
     pathLength?: number
     layerBase?: {
       position?: Vec2
@@ -132,6 +134,10 @@ export interface TemplateClip {
     resizeToHeight?: number
     resizeEasing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'
     resizeAnchor?: 'middle' | 'top' | 'bottom' | 'left' | 'right'
+    // Rotation parameters
+    rotateFromAngle?: number
+    rotateToAngle?: number
+    rotateEasing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'
   }
 }
 

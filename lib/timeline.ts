@@ -231,7 +231,13 @@ const samplePathPoint = (rawPoints: Vec2[], t: number): Vec2 => {
 
 export const samplePathClip = (clip: PathClip, time: number): Vec2 | null => {
   if (clip.points.length === 0) return null
-  if (time < clip.startTime || time > clip.startTime + clip.duration) return null
+  // Before clip starts - return null (shape at base position)
+  if (time < clip.startTime) return null
+  // After clip ends - return the LAST point (shape stays at final position)
+  if (time > clip.startTime + clip.duration) {
+    return clip.points[clip.points.length - 1]
+  }
+  // During clip - interpolate along path
   const t = clamp01((time - clip.startTime) / clip.duration)
   const eased = applyEasing(t, clip.easing ?? 'linear')
   return samplePathPoint(clip.points, eased)

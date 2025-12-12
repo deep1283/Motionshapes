@@ -96,7 +96,7 @@ function DashboardContent() {
   const smoothPathTimerRef = useRef<NodeJS.Timeout | null>(null)
   
   const [background, setBackground] = useState<BackgroundSettings>({
-    mode: 'solid',
+    mode: 'transparent',
     solid: '#0f0f0f',
     from: '#0f172a',
     to: '#0b1223',
