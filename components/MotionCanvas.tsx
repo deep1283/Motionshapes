@@ -2739,8 +2739,9 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     
     let needsRender = false
     // Simply show/hide the outline graphics and resize handles
+    // Hide during playback so handles don't appear in exports
     Object.entries(outlinesByIdRef.current).forEach(([id, outline]) => {
-      const isSelected = selectedLayerId === id
+      const isSelected = selectedLayerId === id && !isPlaying
       if (outline.visible !== isSelected) {
         outline.visible = isSelected
         needsRender = true
@@ -2760,7 +2761,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     if (needsRender) {
       appRef.current.render()
     }
-  }, [selectedLayerId, isReady])
+  }, [selectedLayerId, isReady, isPlaying])
 
   // 4. Sync dimensions from panel to canvas (for BOTH images AND shapes)
   useEffect(() => {
@@ -3334,8 +3335,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       </div>
     )}
       
-      {/* Show the finished path (non-interactive, just visual) */}
-      {!isDrawingPath && allPathClips.length > 0 && (
+      {/* Show the finished path (non-interactive, just visual) - hide during playback */}
+      {!isDrawingPath && !isPlaying && allPathClips.length > 0 && (
         <div className="absolute inset-0" style={{ zIndex: 25, pointerEvents: 'none' }}>
           <svg className="h-full w-full">
             {allPathClips.map((pathClip, pathIndex) => (
@@ -3391,8 +3392,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         </div>
       )}
 
-      {/* Line draw overlay (two-point, draggable end) */}
-      {isDrawingLine && (
+      {/* Line draw overlay (two-point, draggable end) - hide during playback */}
+      {isDrawingLine && !isPlaying && (
         <LineOverlay
           canvasBounds={canvasBounds}
           offsetX={offsetX}
