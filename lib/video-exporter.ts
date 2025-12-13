@@ -190,3 +190,64 @@ export function estimateFileSize(
   }
   return `~${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
+
+/**
+ * Convert WebM blob to MP4 using FFmpeg.wasm
+ * FFmpeg is lazy-loaded on first use (~25MB download, cached after)
+ */
+export async function convertToMP4(
+  webmBlob: Blob,
+  onProgress?: (progress: number) => void
+): Promise<Blob> {
+  // Dynamically import FFmpeg to avoid loading it until needed
+  const { FFmpeg } = await import('@ffmpeg/ffmpeg')
+  const { fetchFile } = await import('@ffmpeg/util')
+  
+  const ffmpeg = new FFmpeg()
+  
+  // Load FFmpeg WASM (downloads ~25MB on first load, cached after)
+  if (!ffmpeg.loaded) {
+    onProgress?.(0.1) // 10% - loading FFmpeg
+    await ffmpeg.load()
+  }
+  
+  onProgress?.(0.2) // 20% - FFmpeg loaded
+  
+  // Write WebM to FFmpeg virtual filesystem
+  const inputData = await fetchFile(webmBlob)
+  await ffmpeg.writeFile('input.webm', inputData)
+  
+  onProgress?.(0.3) // 30% - Input written
+  
+  // Convert WebM to MP4 using H.264 codec
+  // -c:v libx264 = use H.264 video codec
+  // -preset fast = balance between speed and compression
+  // -crf 23 = quality level (18-28, lower = better)
+  // -pix_fmt yuv420p = ensure compatibility with all players
+  await ffmpeg.exec([
+    '-i', 'input.webm',
+    '-c:v', 'libx264',
+    '-preset', 'fast',
+    '-crf', '23',
+    '-pix_fmt', 'yuv420p',
+    '-movflags', '+faststart', // Optimize for web streaming
+    'output.mp4'
+  ])
+  
+  onProgress?.(0.9) // 90% - Conversion complete
+  
+  // Read the output MP4
+  const outputData = await ffmpeg.readFile('output.mp4')
+  
+  // Clean up
+  await ffmpeg.deleteFile('input.webm')
+  await ffmpeg.deleteFile('output.mp4')
+  
+  onProgress?.(1) // 100% - Done
+  
+  // Return as Blob (convert Uint8Array to proper ArrayBuffer)
+  const buffer = outputData instanceof Uint8Array 
+    ? outputData.buffer.slice(outputData.byteOffset, outputData.byteOffset + outputData.byteLength) as ArrayBuffer
+    : outputData as BlobPart
+  return new Blob([buffer], { type: 'video/mp4' })
+}

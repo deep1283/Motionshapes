@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { X, Download, Monitor } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { exportToWebM, downloadBlob, estimateFileSize, ExportQuality, ExportFPS } from '@/lib/video-exporter'
+import { exportToWebM, downloadBlob, estimateFileSize, ExportQuality, ExportFPS, convertToMP4 } from '@/lib/video-exporter'
 
 interface ExportModalProps {
   isOpen: boolean
@@ -38,8 +38,9 @@ export function ExportModal({
   const [progress, setProgress] = useState(0)
   const [currentFrame, setCurrentFrame] = useState(0)
   const [totalFrames, setTotalFrames] = useState(0)
-  const [exportPhase, setExportPhase] = useState<'capturing' | 'encoding'>('capturing')
+  const [exportPhase, setExportPhase] = useState<'capturing' | 'encoding' | 'converting'>('capturing')
   const [filename, setFilename] = useState('motionshapes')
+  const [format, setFormat] = useState<'webm' | 'mp4'>('webm')
 
   // Reset state when modal opens
   useEffect(() => {
@@ -48,6 +49,7 @@ export function ExportModal({
       setCurrentFrame(0)
       setIsExporting(false)
       setFilename('motionshapes')
+      setFormat('webm')
     }
   }, [isOpen])
 
@@ -106,7 +108,17 @@ export function ExportModal({
         onRender,
       })
 
-      downloadBlob(blob, `${filename.trim() || 'motionshapes'}.webm`)
+      // If MP4 selected, convert WebM to MP4
+      let finalBlob = blob
+      if (format === 'mp4') {
+        setExportPhase('converting')
+        setProgress(0)
+        finalBlob = await convertToMP4(blob, (prog) => {
+          setProgress(prog)
+        })
+      }
+
+      downloadBlob(finalBlob, `${filename.trim() || 'motionshapes'}.${format}`)
       
       // Reset timeline to start
       onSeek(0)
@@ -151,6 +163,38 @@ export function ExportModal({
             </button>
           )}
         </div>
+        
+        {/* Format Tabs */}
+        <div className="flex border-b border-white/5">
+          <button
+            onClick={() => setFormat('webm')}
+            disabled={isExporting}
+            className={cn(
+              "flex-1 py-3 px-4 text-sm font-medium transition-all border-b-2",
+              format === 'webm'
+                ? "text-purple-400 border-purple-500 bg-purple-500/5"
+                : "text-neutral-400 border-transparent hover:text-neutral-200 hover:bg-white/5",
+              isExporting && "cursor-not-allowed opacity-50"
+            )}
+          >
+            WebM
+            <span className="block text-[10px] font-normal opacity-60">Faster export</span>
+          </button>
+          <button
+            onClick={() => setFormat('mp4')}
+            disabled={isExporting}
+            className={cn(
+              "flex-1 py-3 px-4 text-sm font-medium transition-all border-b-2",
+              format === 'mp4'
+                ? "text-purple-400 border-purple-500 bg-purple-500/5"
+                : "text-neutral-400 border-transparent hover:text-neutral-200 hover:bg-white/5",
+              isExporting && "cursor-not-allowed opacity-50"
+            )}
+          >
+            MP4
+            <span className="block text-[10px] font-normal opacity-60">Universal</span>
+          </button>
+        </div>
 
         {/* Content */}
         <div className="px-6 py-5 space-y-5">
@@ -184,7 +228,7 @@ export function ExportModal({
                     placeholder="motionshapes"
                     className="flex-1 px-3 py-2 rounded-xl bg-neutral-800 text-white border border-white/10 focus:border-purple-500/50 focus:outline-none text-sm"
                   />
-                  <span className="text-neutral-500 text-sm">.webm</span>
+                  <span className="text-neutral-500 text-sm">.{format}</span>
                 </div>
               </div>
 
@@ -299,7 +343,9 @@ export function ExportModal({
               <div className="text-sm text-neutral-400">
                 {exportPhase === 'capturing' 
                   ? `Capturing frame ${currentFrame} of ${totalFrames}`
-                  : `Encoding frame ${currentFrame} of ${totalFrames}`
+                  : exportPhase === 'encoding'
+                  ? `Encoding frame ${currentFrame} of ${totalFrames}`
+                  : 'Converting to MP4...'
                 }
               </div>
               
@@ -307,7 +353,9 @@ export function ExportModal({
               <div className="text-xs text-neutral-500 animate-pulse">
                 {exportPhase === 'capturing' 
                   ? 'Capturing frames...' 
-                  : 'Creating video...'
+                  : exportPhase === 'encoding'
+                  ? 'Creating video...'
+                  : 'Converting WebM → MP4...'
                 }
               </div>
             </div>
@@ -323,7 +371,7 @@ export function ExportModal({
               className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white font-medium hover:from-purple-600 hover:to-pink-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               <Download className="w-4 h-4" />
-              Export WebM
+              Export {format.toUpperCase()}
             </button>
           </div>
         )}
