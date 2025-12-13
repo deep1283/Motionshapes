@@ -908,10 +908,13 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
       <div className="flex flex-1 overflow-hidden min-h-0">
         {/* Full Width Timeline */}
         <div className="flex-1 flex flex-col overflow-hidden relative min-h-0">
-          {/* Playhead */}
+          {/* Playhead - uses CSS transition for smooth movement at throttled update rate */}
           <div
             className="absolute top-0 bottom-0 w-[2px] bg-rose-500 z-10 pointer-events-none"
-            style={{ left: `calc(200px + ${(Math.min(currentTime, safeDuration) / safeDuration) * (100 - (200 / (typeof window !== 'undefined' ? window.innerWidth : 1920)) * 100)}%)` }}
+            style={{ 
+              left: `calc(200px + ${(Math.min(currentTime, safeDuration) / safeDuration) * (100 - (200 / (typeof window !== 'undefined' ? window.innerWidth : 1920)) * 100)}%)`,
+              transition: isPlaying ? 'left 33ms linear' : 'none' // Smooth during playback, instant when scrubbing
+            }}
           />
 
           {/* Time Ruler */}

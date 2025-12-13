@@ -645,15 +645,19 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
 
   // Apply timeline-sampled transforms onto Pixi graphics so playhead/scrub reflects on-canvas
   // Helper to update graphics from timeline state
-  const updateGraphicsFromTimeline = () => {
+  // Optional sampledData parameter for direct playback updates (bypasses React)
+  const updateGraphicsFromTimeline = (sampledData?: Record<string, any>) => {
     if (!containerRef.current) return
     const bounds = containerRef.current.getBoundingClientRect()
     const screenWidth = bounds.width || 1
     const screenHeight = bounds.height || 1
     
+    // Use provided sampledData (for playback) or fall back to React's sampledTimeline
+    const timelineData = sampledData || sampledTimeline
+    
     renderLayers.forEach((layer, idx) => {
       const { id } = layer
-      const state = sampledTimeline[id]
+      const state = timelineData[id]
       if (!state) return
       const g = graphicsByIdRef.current[id]
       if (!g) return
@@ -1253,14 +1257,53 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   }, [isReady])
 
   // Apply timeline-sampled transforms onto Pixi graphics so playhead/scrub reflects on-canvas
+  // SKIP during playback - the PixiJS playback ticker handles this for 60fps performance
   useEffect(() => {
+    if (isPlaying) return // During playback, PixiJS ticker handles updates
     updateGraphicsFromTimeline()
-  }, [sampledTimeline, isReady])
+  }, [sampledTimeline, isReady, isPlaying])
 
   // Re-apply transforms when layer props or selection changes (e.g., scale/position/rotation updates without timeline changes)
   useEffect(() => {
     updateGraphicsFromTimeline()
   }, [orderedLayers, layers, selectedLayerId])
+
+  // HIGH-PERFORMANCE PLAYBACK: Use PixiJS ticker to update graphics at 60fps
+  // This bypasses React completely during playback for smooth animation
+  useEffect(() => {
+    const app = appRef.current
+    if (!app || !isReady) return
+    
+    // Only add the ticker during playback
+    if (!isPlaying) return
+    
+    const playbackTick = () => {
+      // Read state directly from store (bypasses React)
+      const storeState = timelineActions.getState()
+      
+      // Get precise playhead time (60fps internal time, not throttled React state)
+      const currentPlayhead = timelineActions.getPlayheadTime()
+      
+      // Sample timeline with current playhead from store
+      const sampled = sampleTimelineUnified(
+        storeState.tracks,
+        clipInfos,
+        currentPlayhead, // Use 60fps internal time
+        undefined,
+        layerBaseStates
+      )
+      
+      // Update graphics directly (bypasses React state)
+      updateGraphicsFromTimeline(sampled)
+    }
+    
+    // Add to PixiJS ticker for 60fps updates
+    app.ticker.add(playbackTick)
+    
+    return () => {
+      app.ticker?.remove(playbackTick)
+    }
+  }, [isPlaying, isReady, clipInfos, layerBaseStates, timelineActions])
 
   // Note: Typewriter animation is now handled in the playhead useEffect (around line 2520)
   // which updates text.text directly based on playhead position, similar to counter animations

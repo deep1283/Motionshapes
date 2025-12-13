@@ -194,6 +194,12 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
 
   const listeners = new Set<() => void>()
   let rafId: number | null = null
+  
+  // Internal time tracking for high-performance playback
+  // This allows PixiJS to read the current time at 60fps without React re-renders
+  let internalCurrentTime = state.currentTime
+  let lastUiUpdateTime = 0
+  const UI_UPDATE_INTERVAL = 33 // ~30fps for UI updates (React state)
 
   const notify = () => {
     listeners.forEach((cb) => cb())
@@ -2284,9 +2290,12 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
   }
 
   const setCurrentTime = (time: number) => {
+    const clampedTime = clampTime(time, state.duration)
+    // Sync internal time for PixiJS
+    internalCurrentTime = clampedTime
     setState((prev) => ({
       ...prev,
-      currentTime: clampTime(time, prev.duration),
+      currentTime: clampedTime,
       isPlaying: false,
       lastTick: undefined,
     }))
@@ -2417,58 +2426,66 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
   }
 
   const tick = (timestamp: number) => {
-    setState((prev) => {
-      if (!prev.isPlaying) return prev
-      const lastTick = prev.lastTick ?? timestamp
-      const deltaMs = (timestamp - lastTick) * prev.playbackRate
-      let nextTime = prev.currentTime + deltaMs
-      let playing: boolean = prev.isPlaying
+    // Read current state without triggering React
+    const prev = state
+    if (!prev.isPlaying) {
+      stopTicker()
+      return
+    }
+    
+    const lastTick = prev.lastTick ?? timestamp
+    const deltaMs = (timestamp - lastTick) * prev.playbackRate
+    let nextTime = internalCurrentTime + deltaMs
+    let shouldStop = false
 
-      // Calculate actual content duration to loop/stop correctly
-      // We want to loop at the end of the clips, not the full timeline view duration (which is min 4000ms)
-      const tracksEnd = prev.tracks.reduce((max, t) => {
-        const times: number[] = []
-        if (t.position?.length) times.push(t.position[t.position.length - 1].time)
-        if (t.scale?.length) times.push(t.scale[t.scale.length - 1].time)
-        if (t.rotation?.length) times.push(t.rotation[t.rotation.length - 1].time)
-        if (t.opacity?.length) times.push(t.opacity[t.opacity.length - 1].time)
-        return Math.max(max, times.length ? Math.max(...times) : 0)
-      }, 0)
-      const clipsEnd = prev.templateClips.reduce((max, c) => Math.max(max, (c.start ?? 0) + (c.duration ?? 0)), 0)
-      const pathsEnd = getMaxPathEnd(prev.tracks)
-      
-      // Include layer visibility bars (shape bars) - the purple parent bars
-      const layersEnd = prev.tracks.reduce((max, t) => Math.max(max, (t.startTime ?? 0) + (t.duration ?? 0)), 0)
-      
-      // Include click markers in content duration
-      const clickMarkersEnd = prev.clickMarkers.reduce((max, m) => Math.max(max, m.time), 0)
-      
-      // If there are shape bars, stop at the end of the last bar
-      // If there are no bars, allow 5 seconds of free movement
-      const hasLayers = prev.tracks.length > 0
-      const hasClips = prev.templateClips.length > 0 || tracksEnd > 0 || pathsEnd > 0 || hasLayers
-      const contentDuration = hasClips 
-        ? Math.max(100, tracksEnd, clipsEnd, pathsEnd, layersEnd, clickMarkersEnd)  // Stop at content end (including bars)
-        : Math.max(5000, clickMarkersEnd + 500)  // 5s free movement or until click markers
+    // Calculate actual content duration to loop/stop correctly
+    const tracksEnd = prev.tracks.reduce((max, t) => {
+      const times: number[] = []
+      if (t.position?.length) times.push(t.position[t.position.length - 1].time)
+      if (t.scale?.length) times.push(t.scale[t.scale.length - 1].time)
+      if (t.rotation?.length) times.push(t.rotation[t.rotation.length - 1].time)
+      if (t.opacity?.length) times.push(t.opacity[t.opacity.length - 1].time)
+      return Math.max(max, times.length ? Math.max(...times) : 0)
+    }, 0)
+    const clipsEnd = prev.templateClips.reduce((max, c) => Math.max(max, (c.start ?? 0) + (c.duration ?? 0)), 0)
+    const pathsEnd = getMaxPathEnd(prev.tracks)
+    const layersEnd = prev.tracks.reduce((max, t) => Math.max(max, (t.startTime ?? 0) + (t.duration ?? 0)), 0)
+    const clickMarkersEnd = prev.clickMarkers.reduce((max, m) => Math.max(max, m.time), 0)
+    
+    const hasLayers = prev.tracks.length > 0
+    const hasClips = prev.templateClips.length > 0 || tracksEnd > 0 || pathsEnd > 0 || hasLayers
+    const contentDuration = hasClips 
+      ? Math.max(100, tracksEnd, clipsEnd, pathsEnd, layersEnd, clickMarkersEnd)
+      : Math.max(5000, clickMarkersEnd + 500)
 
-      if (nextTime >= contentDuration) {
-        if (prev.loop && contentDuration > 0) {
-          nextTime = nextTime % contentDuration
-        } else {
-          nextTime = contentDuration
-          playing = false
-        }
+    if (nextTime >= contentDuration) {
+      if (prev.loop && contentDuration > 0) {
+        nextTime = nextTime % contentDuration
+      } else {
+        nextTime = contentDuration
+        shouldStop = true
       }
+    }
 
-      return {
-        ...prev,
+    // Always update internal time (60fps for PixiJS)
+    internalCurrentTime = nextTime
+
+    // Throttle React state updates to ~30fps for UI (timeline panel, playhead)
+    const timeSinceLastUiUpdate = timestamp - lastUiUpdateTime
+    if (timeSinceLastUiUpdate >= UI_UPDATE_INTERVAL || shouldStop) {
+      lastUiUpdateTime = timestamp
+      setState((current) => ({
+        ...current,
         currentTime: nextTime,
-        isPlaying: playing,
+        isPlaying: !shouldStop,
         lastTick: timestamp,
-      }
-    })
+      }))
+    } else {
+      // Just update lastTick without triggering full React update
+      state = { ...state, lastTick: timestamp }
+    }
 
-    if (state.isPlaying && typeof requestAnimationFrame !== 'undefined') {
+    if (!shouldStop && typeof requestAnimationFrame !== 'undefined') {
       rafId = requestAnimationFrame(tick)
     } else {
       stopTicker()
@@ -2792,6 +2809,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
   return {
     subscribe,
     getState: () => state,
+    // Get the real-time playhead position (60fps during playback, for PixiJS)
+    getPlayheadTime: () => state.isPlaying ? internalCurrentTime : state.currentTime,
     ensureTrack,
     updateTemplateClip,
     selectClip,
