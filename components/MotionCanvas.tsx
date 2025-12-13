@@ -343,6 +343,39 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   // Pan/Zoom region editing state
   const [panZoomActiveRegion, setPanZoomActiveRegion] = useState<'start' | 'end' | null>(null)
   
+  // ANIMATION CACHE: Stores sampled frames for instant replay
+  // Cache is invalidated when animation data changes
+  const animationCacheRef = useRef<{
+    version: number
+    frames: Map<number, Record<string, any>>  // frameIndex -> sampledTimeline
+    frameInterval: number  // ms per frame (e.g., 16.67 for 60fps)
+  }>({
+    version: 0,
+    frames: new Map(),
+    frameInterval: 1000 / 60  // 60fps
+  })
+  
+  // Track cache version based on animation-relevant data changes
+  const cacheVersion = useMemo(() => {
+    // Generate a hash based on ALL animation data including parameters
+    // When this changes, cache becomes stale
+    return JSON.stringify({
+      tracks: timelineTracks.map(t => JSON.stringify(t)).join(','), // Full track data including clipKeyframes for resize, color, etc.
+      clips: templateClips.map(c => JSON.stringify(c)).join(','), // Animations (roll, jump, etc.)
+      effects: effectClips.map(c => JSON.stringify(c)).join(','), // Effects (glow, blur, etc.)
+      markers: clickMarkers.map(m => `${m.id}:${m.time}:${m.layerId}`).join(','), // Click markers
+      layers: layers.map(l => `${l.id}:${l.x}:${l.y}:${l.scale}:${l.rotation}:${l.fillColor}`).join(',')
+    })
+  }, [timelineTracks, templateClips, effectClips, clickMarkers, layers])
+  
+  // Invalidate cache when version changes
+  useEffect(() => {
+    animationCacheRef.current = {
+      version: animationCacheRef.current.version + 1,
+      frames: new Map(),
+      frameInterval: 1000 / 60
+    }
+  }, [cacheVersion])
 
   
   // Track which click markers have been triggered (to avoid re-triggering)
@@ -1284,14 +1317,25 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       // Get precise playhead time (60fps internal time, not throttled React state)
       const currentPlayhead = timelineActions.getPlayheadTime()
       
-      // Sample timeline with current playhead from store
-      const sampled = sampleTimelineUnified(
-        storeState.tracks,
-        clipInfos,
-        currentPlayhead, // Use 60fps internal time
-        undefined,
-        layerBaseStates
-      )
+      // Calculate frame index for cache lookup
+      const cache = animationCacheRef.current
+      const frameIndex = Math.floor(currentPlayhead / cache.frameInterval)
+      
+      // Check cache first for instant replay
+      let sampled = cache.frames.get(frameIndex)
+      
+      if (!sampled) {
+        // Cache miss - compute sample and store
+        sampled = sampleTimelineUnified(
+          storeState.tracks,
+          clipInfos,
+          currentPlayhead,
+          undefined,
+          layerBaseStates
+        )
+        // Store in cache for next replay
+        cache.frames.set(frameIndex, sampled)
+      }
       
       // Update graphics directly (bypasses React state)
       updateGraphicsFromTimeline(sampled)

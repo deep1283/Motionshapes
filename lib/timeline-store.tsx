@@ -200,6 +200,31 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
   let internalCurrentTime = state.currentTime
   let lastUiUpdateTime = 0
   const UI_UPDATE_INTERVAL = 33 // ~30fps for UI updates (React state)
+  
+  // CACHED content duration - avoids expensive per-frame calculations
+  let cachedContentDuration = 5000
+  
+  // Helper to recalculate content duration (called only when tracks/clips change)
+  const recalculateContentDuration = () => {
+    const tracksEnd = state.tracks.reduce((max, t) => {
+      const times: number[] = []
+      if (t.position?.length) times.push(t.position[t.position.length - 1].time)
+      if (t.scale?.length) times.push(t.scale[t.scale.length - 1].time)
+      if (t.rotation?.length) times.push(t.rotation[t.rotation.length - 1].time)
+      if (t.opacity?.length) times.push(t.opacity[t.opacity.length - 1].time)
+      return Math.max(max, times.length ? Math.max(...times) : 0)
+    }, 0)
+    const clipsEnd = state.templateClips.reduce((max, c) => Math.max(max, (c.start ?? 0) + (c.duration ?? 0)), 0)
+    const pathsEnd = getMaxPathEnd(state.tracks)
+    const layersEnd = state.tracks.reduce((max, t) => Math.max(max, (t.startTime ?? 0) + (t.duration ?? 0)), 0)
+    const clickMarkersEnd = state.clickMarkers.reduce((max, m) => Math.max(max, m.time), 0)
+    
+    const hasLayers = state.tracks.length > 0
+    const hasClips = state.templateClips.length > 0 || tracksEnd > 0 || pathsEnd > 0 || hasLayers
+    cachedContentDuration = hasClips 
+      ? Math.max(100, tracksEnd, clipsEnd, pathsEnd, layersEnd, clickMarkersEnd)
+      : Math.max(5000, clickMarkersEnd + 500)
+  }
 
   const notify = () => {
     listeners.forEach((cb) => cb())
@@ -207,6 +232,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
 
   const setState = (updater: (prev: TimelineState) => TimelineState) => {
     state = updater(state)
+    recalculateContentDuration() // Keep cache in sync
     notify()
   }
 
@@ -2438,25 +2464,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     let nextTime = internalCurrentTime + deltaMs
     let shouldStop = false
 
-    // Calculate actual content duration to loop/stop correctly
-    const tracksEnd = prev.tracks.reduce((max, t) => {
-      const times: number[] = []
-      if (t.position?.length) times.push(t.position[t.position.length - 1].time)
-      if (t.scale?.length) times.push(t.scale[t.scale.length - 1].time)
-      if (t.rotation?.length) times.push(t.rotation[t.rotation.length - 1].time)
-      if (t.opacity?.length) times.push(t.opacity[t.opacity.length - 1].time)
-      return Math.max(max, times.length ? Math.max(...times) : 0)
-    }, 0)
-    const clipsEnd = prev.templateClips.reduce((max, c) => Math.max(max, (c.start ?? 0) + (c.duration ?? 0)), 0)
-    const pathsEnd = getMaxPathEnd(prev.tracks)
-    const layersEnd = prev.tracks.reduce((max, t) => Math.max(max, (t.startTime ?? 0) + (t.duration ?? 0)), 0)
-    const clickMarkersEnd = prev.clickMarkers.reduce((max, m) => Math.max(max, m.time), 0)
-    
-    const hasLayers = prev.tracks.length > 0
-    const hasClips = prev.templateClips.length > 0 || tracksEnd > 0 || pathsEnd > 0 || hasLayers
-    const contentDuration = hasClips 
-      ? Math.max(100, tracksEnd, clipsEnd, pathsEnd, layersEnd, clickMarkersEnd)
-      : Math.max(5000, clickMarkersEnd + 500)
+    // Use CACHED content duration (calculated only when tracks/clips change)
+    const contentDuration = cachedContentDuration
 
     if (nextTime >= contentDuration) {
       if (prev.loop && contentDuration > 0) {
