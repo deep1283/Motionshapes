@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import Image from 'next/image'
 import type { SVGProps } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -319,8 +319,21 @@ export default function DashboardLayout({
   const router = useRouter()
   const supabase = createClient()
   const templateClips = useTimeline((s) => s.templateClips)
+  const effectClips = useTimeline((s) => s.effectClips)
+  const timelineTracks = useTimeline((s) => s.tracks)
+  const clickMarkers = useTimeline((s) => s.clickMarkers)
   const timelineDuration = useTimeline((s) => s.duration)
   const timeline = useTimelineActions()
+  
+  // Calculate actual content duration for export (not fixed 5s)
+  const contentDuration = useMemo(() => {
+    const clipsEnd = templateClips.reduce((max, c) => Math.max(max, (c.start ?? 0) + (c.duration ?? 0)), 0)
+    const layersEnd = timelineTracks.reduce((max, t) => Math.max(max, (t.startTime ?? 0) + (t.duration ?? 0)), 0)
+    const effectsEnd = effectClips.reduce((max, c) => Math.max(max, (c.start ?? 0) + (c.duration ?? 0)), 0)
+    const markersEnd = clickMarkers.reduce((max, m) => Math.max(max, m.time), 0)
+    // Return max of all, minimum 100ms to avoid empty exports
+    return Math.max(100, clipsEnd, layersEnd, effectsEnd, markersEnd)
+  }, [templateClips, timelineTracks, effectClips, clickMarkers])
   const [showBackgroundPanel, setShowBackgroundPanel] = useState(false)
   const [isBackgroundPanelCollapsed, setIsBackgroundPanelCollapsed] = useState(false)
   const [isTransformPanelCollapsed, setIsTransformPanelCollapsed] = useState(false)
@@ -4570,7 +4583,7 @@ export default function DashboardLayout({
         isOpen={showExportModal}
         onClose={() => setShowExportModal(false)}
         canvasRef={exportCanvasRef?.current ?? null}
-        duration={timelineDuration}
+        duration={contentDuration}
         canvasWidth={canvasWidth}
         canvasHeight={canvasHeight}
         onSeek={(time) => timeline.setCurrentTime(time)}

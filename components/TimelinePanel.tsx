@@ -48,6 +48,18 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
   const timeline = useTimelineActions()
   const MIN_TIMELINE_MS = 5000 // 5 seconds minimum for free playhead movement
   const safeDuration = Math.max(MIN_TIMELINE_MS, Number.isFinite(duration) ? duration : MIN_TIMELINE_MS)
+  
+  // Calculate actual content duration dynamically (changes as animations are added/removed)
+  const contentDuration = useMemo(() => {
+    // Find end times of all content
+    const clipsEnd = templateClips.reduce((max, c) => Math.max(max, (c.start ?? 0) + (c.duration ?? 0)), 0)
+    const layersEnd = tracks.reduce((max, t) => Math.max(max, (t.startTime ?? 0) + (t.duration ?? 0)), 0)
+    const effectsEnd = effectClips.reduce((max, c) => Math.max(max, (c.start ?? 0) + (c.duration ?? 0)), 0)
+    const markersEnd = clickMarkers.reduce((max, m) => Math.max(max, m.time), 0)
+    
+    // Return max of all, or 0 if no content
+    return Math.max(clipsEnd, layersEnd, effectsEnd, markersEnd)
+  }, [templateClips, tracks, effectClips, clickMarkers])
   // Timeline resize state
   const MIN_HEIGHT = 100
   const MAX_HEIGHT = typeof window !== 'undefined' ? window.innerHeight * 0.8 : 600
@@ -885,7 +897,7 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
           <span className="text-[10px] font-bold tracking-widest text-neutral-600">TIMELINE</span>
           <div className="h-3 w-px bg-white/5" />
           <span className="text-[10px] font-mono text-violet-500/80 bg-violet-500/10 px-1.5 py-0.5 rounded border border-violet-500/20">
-            {formatTime(currentTime)} / {formatTime(duration)}
+            {formatTime(contentDuration)}
           </span>
         </div>
         <div className="flex items-center gap-2">

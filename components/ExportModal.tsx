@@ -39,6 +39,7 @@ export function ExportModal({
   const [currentFrame, setCurrentFrame] = useState(0)
   const [totalFrames, setTotalFrames] = useState(0)
   const [exportPhase, setExportPhase] = useState<'capturing' | 'encoding'>('capturing')
+  const [filename, setFilename] = useState('motionshapes')
 
   // Reset state when modal opens
   useEffect(() => {
@@ -46,6 +47,7 @@ export function ExportModal({
       setProgress(0)
       setCurrentFrame(0)
       setIsExporting(false)
+      setFilename('motionshapes')
     }
   }, [isOpen])
 
@@ -104,7 +106,7 @@ export function ExportModal({
         onRender,
       })
 
-      downloadBlob(blob, 'motionshapes.webm')
+      downloadBlob(blob, `${filename.trim() || 'motionshapes'}.webm`)
       
       // Reset timeline to start
       onSeek(0)
@@ -169,6 +171,23 @@ export function ExportModal({
 
           {!isExporting ? (
             <>
+              {/* Filename Input */}
+              <div className="space-y-2">
+                <label className="text-xs uppercase tracking-wider text-neutral-500 font-medium">
+                  File Name
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={filename}
+                    onChange={(e) => setFilename(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ''))}
+                    placeholder="motionshapes"
+                    className="flex-1 px-3 py-2 rounded-xl bg-neutral-800 text-white border border-white/10 focus:border-purple-500/50 focus:outline-none text-sm"
+                  />
+                  <span className="text-neutral-500 text-sm">.webm</span>
+                </div>
+              </div>
+
               {/* Quality Selection */}
               <div className="space-y-2">
                 <label className="text-xs uppercase tracking-wider text-neutral-500 font-medium">
