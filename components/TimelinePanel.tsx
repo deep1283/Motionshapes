@@ -234,13 +234,18 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
       }
     })
     templateClips.forEach(clip => {
-      snapPoints.push(clip.start ?? 0)
-      snapPoints.push((clip.start ?? 0) + (clip.duration ?? 1000))
+      // Exclude clips on the current layer - don't snap to own clips
+      if (clip.layerId !== layerId) {
+        snapPoints.push(clip.start ?? 0)
+        snapPoints.push((clip.start ?? 0) + (clip.duration ?? 1000))
+      }
     })
-    // Also snap to effect clips
+    // Also snap to effect clips (excluding current layer's clips)
     effectClips.forEach(c => {
-      snapPoints.push(c.start ?? 0)
-      snapPoints.push((c.start ?? 0) + (c.duration ?? 1000))
+      if (c.layerId !== layerId) {
+        snapPoints.push(c.start ?? 0)
+        snapPoints.push((c.start ?? 0) + (c.duration ?? 1000))
+      }
     })
     
     const SNAP_THRESHOLD = 50
@@ -274,27 +279,31 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
       window.removeEventListener('pointermove', handleMove)
       window.removeEventListener('pointerup', handleUp)
       
+      // Only restore transition (don't clear left - prevents visual jump to 0)
       layerElement.style.transition = ''
-      layerElement.style.left = ''
+      // Don't clear left: layerElement.style.left = ''
       
       const delta = currentStart - baseStart
       
-      // Update layer start time
-      timeline.updateLayer(layerId, { startTime: currentStart })
-      
-      // Move all template clips for this layer by the same delta
-      templateClips
-        .filter(c => c.layerId === layerId)
-        .forEach(clip => {
-          timeline.updateTemplateClip(layerId, clip.id, { start: clip.start + delta })
-        })
-      
-      // Move all effect clips for this layer by the same delta
-      effectClips
-        .filter(c => c.layerId === layerId)
-        .forEach(clip => {
-          timeline.updateEffectClip(clip.id, { start: clip.start + delta })
-        })
+      // Only update if there was actual movement
+      if (delta !== 0) {
+        // Update layer start time
+        timeline.updateLayer(layerId, { startTime: currentStart })
+        
+        // Move all template clips for this layer by the same delta
+        templateClips
+          .filter(c => c.layerId === layerId)
+          .forEach(clip => {
+            timeline.updateTemplateClip(layerId, clip.id, { start: clip.start + delta })
+          })
+        
+        // Move all effect clips for this layer by the same delta
+        effectClips
+          .filter(c => c.layerId === layerId)
+          .forEach(clip => {
+            timeline.updateEffectClip(clip.id, { start: clip.start + delta })
+          })
+      }
     }
     
     layerElement.style.transition = 'none'
@@ -368,10 +377,14 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
       window.removeEventListener('pointermove', handleMove)
       window.removeEventListener('pointerup', handleUp)
       
+      // Only restore transition (don't clear width - prevents visual jump)
       layerElement.style.transition = ''
-      layerElement.style.width = ''
+      // Don't clear width: layerElement.style.width = ''
       
-      timeline.updateLayer(layerId, { duration: currentDuration })
+      // Only update if changed
+      if (currentDuration !== baseDuration) {
+        timeline.updateLayer(layerId, { duration: currentDuration })
+      }
     }
     
     layerElement.style.transition = 'none'
@@ -500,16 +513,18 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
       window.removeEventListener('pointermove', handleMove)
       window.removeEventListener('pointerup', handleUp)
       
-      // Reset element styles
+      // Only restore transition (don't clear left/width - prevents visual jump)
       clipElement.style.transition = ''
-      clipElement.style.left = ''
-      clipElement.style.width = ''
+      // Don't clear: clipElement.style.left = ''
+      // Don't clear: clipElement.style.width = ''
       
-      // Update React state
-      timeline.updateTemplateClip(clip.layerId, clip.id, {
-        start: currentStart,
-        duration: currentDuration,
-      })
+      // Update React state only if changed
+      if (currentStart !== baseStart || currentDuration !== baseDuration) {
+        timeline.updateTemplateClip(clip.layerId, clip.id, {
+          start: currentStart,
+          duration: currentDuration,
+        })
+      }
     }
     
     clipElement.style.transition = 'none'
@@ -585,15 +600,19 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
       window.removeEventListener('pointermove', handleMove)
       window.removeEventListener('pointerup', handleUp)
       
-      // Reset element styles before React takes over
+      // Keep inline style with current position (don't clear - prevents visual jump)
+      // Only restore transition
       clipElement.style.transition = ''
-      clipElement.style.left = ''
+      // Don't clear left - keep the inline style to prevent flash to 0
+      // clipElement.style.left = '' // REMOVED - this caused visual jump to 0
       
-      // Update React state
-      timeline.updateTemplateClip(clip.layerId, clip.id, {
-        start: currentStart,
-        duration: clipDuration,
-      })
+      // Update React state (only if moved)
+      if (currentStart !== baseStart) {
+        timeline.updateTemplateClip(clip.layerId, clip.id, {
+          start: currentStart,
+          duration: clipDuration,
+        })
+      }
     }
     
     // Immediately disable transition for instant drag start
@@ -928,15 +947,17 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
               </div>
             )}
             {orderedLayers.map((layer, idx) => {
-              const clips = templateClips.filter((c) => c.layerId === layer.id).sort((a, b) => a.start - b.start)
+              // Don't sort - keep clips in creation order for stable sub-row positions
+              const clips = templateClips.filter((c) => c.layerId === layer.id)
               const isCollapsed = collapsedLayers[layer.id]
               
-              // Calculate summary bar dimensions
-              const minStart = clips.length > 0 ? clips[0].start : 0
-              const maxEnd = clips.length > 0 ? clips[clips.length - 1].start + clips[clips.length - 1].duration : 0
+              // Calculate summary bar dimensions (find actual min/max, not relying on sorted order)
+              const minStart = clips.length > 0 ? Math.min(...clips.map(c => c.start)) : 0
+              const maxEnd = clips.length > 0 ? Math.max(...clips.map(c => c.start + c.duration)) : 0
               const summaryDuration = maxEnd - minStart
               const summaryLeft = (minStart / safeDuration) * 100
               const summaryWidth = Math.max(0, (summaryDuration / safeDuration) * 100)
+
 
               return (
                 <div
@@ -1256,10 +1277,14 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
                                   window.removeEventListener('pointermove', onMove)
                                   window.removeEventListener('pointerup', onUp)
                                   
+                                  // Only restore transition (don't clear left - prevents visual jump)
                                   clipElement.style.transition = ''
-                                  clipElement.style.left = ''
+                                  // Don't clear: clipElement.style.left = ''
                                   
-                                  timeline.updateEffectClip(clip.id, { start: currentStart })
+                                  // Only update if moved
+                                  if (currentStart !== baseStart) {
+                                    timeline.updateEffectClip(clip.id, { start: currentStart })
+                                  }
                                 }
                                 
                                 clipElement.style.transition = 'none'
@@ -1325,10 +1350,14 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
                                     window.removeEventListener('pointermove', onMove)
                                     window.removeEventListener('pointerup', onUp)
                                     
+                                    // Only restore transition (don't clear width - prevents visual jump)
                                     clipElement.style.transition = ''
-                                    clipElement.style.width = ''
+                                    // Don't clear: clipElement.style.width = ''
                                     
-                                    timeline.updateEffectClip(clip.id, { duration: currentDuration })
+                                    // Only update if changed
+                                    if (currentDuration !== baseDuration) {
+                                      timeline.updateEffectClip(clip.id, { duration: currentDuration })
+                                    }
                                   }
                                   
                                   clipElement.style.transition = 'none'
