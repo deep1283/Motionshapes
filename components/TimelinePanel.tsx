@@ -207,6 +207,7 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
     baseStart: number
     duration: number
     currentStart?: number
+    element?: HTMLElement // Direct reference to DOM element for zero-lag drag
   } | null>(null)
   
   // State for dragging/resizing the Shape Visibility Bar itself
@@ -214,34 +215,169 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
   const [isMovingLayer, setIsMovingLayer] = useState(false)
   const [isResizingLayer, setIsResizingLayer] = useState(false)
 
-  const handleLayerDragStart = (e: React.PointerEvent, layerId: string, start: number, duration: number) => {
+  const handleLayerDragStart = (e: React.PointerEvent, layerId: string, startTime: number, duration: number) => {
     e.stopPropagation()
     const rect = timelineAreaRef.current?.getBoundingClientRect()
     if (!rect) return
     
-    layerMoveStateRef.current = {
-      layerId,
-      startX: e.clientX,
-      baseStart: start,
-      currentStart: start
+    const layerElement = e.currentTarget as HTMLElement
+    const startX = e.clientX
+    const baseStart = startTime
+    let currentStart = baseStart
+    
+    // Capture snap points at drag start
+    const snapPoints: number[] = []
+    tracks.forEach(t => {
+      if (t.layerId !== layerId) {
+        snapPoints.push(t.startTime ?? 0)
+        snapPoints.push((t.startTime ?? 0) + (t.duration ?? 2000))
+      }
+    })
+    templateClips.forEach(clip => {
+      snapPoints.push(clip.start ?? 0)
+      snapPoints.push((clip.start ?? 0) + (clip.duration ?? 1000))
+    })
+    // Also snap to effect clips
+    effectClips.forEach(c => {
+      snapPoints.push(c.start ?? 0)
+      snapPoints.push((c.start ?? 0) + (c.duration ?? 1000))
+    })
+    
+    const SNAP_THRESHOLD = 50
+    
+    const handleMove = (ev: PointerEvent) => {
+      const pxPerMs = rect.width / safeDuration
+      const deltaMs = (ev.clientX - startX) / pxPerMs
+      let nextStart = Math.max(0, Math.round(baseStart + deltaMs))
+      const layerEnd = nextStart + duration
+      
+      for (const snapPoint of snapPoints) {
+        if (Math.abs(nextStart - snapPoint) <= SNAP_THRESHOLD) {
+          nextStart = snapPoint
+          break
+        }
+        if (Math.abs(layerEnd - snapPoint) <= SNAP_THRESHOLD) {
+          nextStart = snapPoint - duration
+          break
+        }
+      }
+      
+      currentStart = Math.max(0, nextStart)
+      
+      // DIRECT DOM MANIPULATION
+      const leftPercent = (currentStart / safeDuration) * 100
+      layerElement.style.transition = 'none'
+      layerElement.style.left = `${leftPercent}%`
     }
-    setIsMovingLayer(true)
+    
+    const handleUp = () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleUp)
+      
+      layerElement.style.transition = ''
+      layerElement.style.left = ''
+      
+      const delta = currentStart - baseStart
+      
+      // Update layer start time
+      timeline.updateLayer(layerId, { startTime: currentStart })
+      
+      // Move all template clips for this layer by the same delta
+      templateClips
+        .filter(c => c.layerId === layerId)
+        .forEach(clip => {
+          timeline.updateTemplateClip(layerId, clip.id, { start: clip.start + delta })
+        })
+      
+      // Move all effect clips for this layer by the same delta
+      effectClips
+        .filter(c => c.layerId === layerId)
+        .forEach(clip => {
+          timeline.updateEffectClip(clip.id, { start: clip.start + delta })
+        })
+    }
+    
+    layerElement.style.transition = 'none'
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', handleUp)
+    
     setScrubTarget(false)
     setIsScrubbing(false)
   }
 
-  const handleLayerResizeStart = (e: React.PointerEvent, layerId: string, duration: number) => {
+  const handleLayerResizeStart = (e: React.PointerEvent, layerId: string, baseDuration: number) => {
     e.stopPropagation()
     const rect = timelineAreaRef.current?.getBoundingClientRect()
     if (!rect) return
-
-    layerResizeStateRef.current = {
-      layerId,
-      startX: e.clientX,
-      baseDuration: duration,
-      currentDuration: duration
+    
+    const layerElement = (e.currentTarget.parentElement) as HTMLElement
+    const startX = e.clientX
+    let currentDuration = baseDuration
+    
+    const track = tracks.find(t => t.layerId === layerId)
+    const startTime = track?.startTime ?? 0
+    
+    // Capture snap points
+    const snapPoints: number[] = []
+    tracks.forEach(t => {
+      if (t.layerId !== layerId) {
+        snapPoints.push(t.startTime ?? 0)
+        snapPoints.push((t.startTime ?? 0) + (t.duration ?? 2000))
+      }
+    })
+    templateClips.forEach(clip => {
+      snapPoints.push(clip.start ?? 0)
+      snapPoints.push((clip.start ?? 0) + (clip.duration ?? 1000))
+    })
+    // Also snap to effect clips
+    effectClips.forEach(c => {
+      snapPoints.push(c.start ?? 0)
+      snapPoints.push((c.start ?? 0) + (c.duration ?? 1000))
+    })
+    
+    const SNAP_THRESHOLD = 50
+    const layerClips = templateClips.filter(c => c.layerId === layerId)
+    const templateClipsEnd = layerClips.reduce((max, c) => {
+      const clipEnd = (c.start ?? 0) + (c.duration ?? 0) - startTime
+      return Math.max(max, clipEnd)
+    }, 0)
+    const minDuration = Math.max(100, templateClipsEnd)
+    
+    const handleMove = (ev: PointerEvent) => {
+      const pxPerMs = rect.width / safeDuration
+      const deltaMs = (ev.clientX - startX) / pxPerMs
+      let newDuration = Math.max(minDuration, Math.round(baseDuration + deltaMs))
+      
+      const newEndTime = startTime + newDuration
+      for (const snapPoint of snapPoints) {
+        if (Math.abs(newEndTime - snapPoint) <= SNAP_THRESHOLD) {
+          newDuration = snapPoint - startTime
+          if (newDuration >= minDuration) break
+        }
+      }
+      
+      currentDuration = Math.max(minDuration, newDuration)
+      
+      // DIRECT DOM MANIPULATION
+      const widthPercent = Math.max(0, (currentDuration / safeDuration) * 100)
+      layerElement.style.transition = 'none'
+      layerElement.style.width = `${widthPercent}%`
     }
-    setIsResizingLayer(true)
+    
+    const handleUp = () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleUp)
+      
+      layerElement.style.transition = ''
+      layerElement.style.width = ''
+      
+      timeline.updateLayer(layerId, { duration: currentDuration })
+    }
+    
+    layerElement.style.transition = 'none'
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', handleUp)
+    
     setScrubTarget(false)
     setIsScrubbing(false)
   }
@@ -291,15 +427,95 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
     e.stopPropagation()
     const rect = timelineAreaRef.current?.getBoundingClientRect()
     if (!rect) return
-    resizeStateRef.current = {
-      clipId: clip.id,
-      layerId: clip.layerId,
-      edge,
-      startX: e.clientX,
-      baseStart: clip.start,
-      baseDuration: clip.duration,
+    
+    const clipElement = e.currentTarget.parentElement as HTMLElement
+    const startX = e.clientX
+    const baseStart = clip.start
+    const baseDuration = clip.duration
+    let currentStart = baseStart
+    let currentDuration = baseDuration
+    
+    // Build snap points - include layer bars, other template clips, effect clips
+    const snapPoints: number[] = []
+    tracks.forEach(t => {
+      snapPoints.push(t.startTime ?? 0)
+      snapPoints.push((t.startTime ?? 0) + (t.duration ?? 2000))
+    })
+    templateClips.forEach(c => {
+      if (c.id !== clip.id) {
+        snapPoints.push(c.start ?? 0)
+        snapPoints.push((c.start ?? 0) + (c.duration ?? 1000))
+      }
+    })
+    effectClips.forEach(c => {
+      snapPoints.push(c.start ?? 0)
+      snapPoints.push((c.start ?? 0) + (c.duration ?? 1000))
+    })
+    const SNAP_THRESHOLD = 50
+    
+    const handleMove = (ev: PointerEvent) => {
+      const pxPerMs = rect.width / safeDuration
+      const deltaMs = (ev.clientX - startX) / pxPerMs
+      
+      if (edge === 'left') {
+        let nextStart = Math.max(0, baseStart + deltaMs)
+        const maxStart = baseStart + baseDuration - MIN_CLIP_DURATION
+        nextStart = Math.min(nextStart, maxStart)
+        
+        // Snap left edge
+        for (const snapPoint of snapPoints) {
+          if (Math.abs(nextStart - snapPoint) <= SNAP_THRESHOLD) {
+            nextStart = snapPoint
+            break
+          }
+        }
+        
+        currentStart = Math.round(Math.max(0, nextStart))
+        currentDuration = Math.max(MIN_CLIP_DURATION, Math.round(baseDuration - (currentStart - baseStart)))
+      } else {
+        let newDuration = Math.max(MIN_CLIP_DURATION, Math.round(baseDuration + deltaMs))
+        const newEndTime = baseStart + newDuration
+        
+        // Snap right edge
+        for (const snapPoint of snapPoints) {
+          if (Math.abs(newEndTime - snapPoint) <= SNAP_THRESHOLD) {
+            newDuration = snapPoint - baseStart
+            if (newDuration >= MIN_CLIP_DURATION) break
+          }
+        }
+        
+        currentDuration = Math.max(MIN_CLIP_DURATION, newDuration)
+        currentStart = baseStart
+      }
+      
+      // DIRECT DOM MANIPULATION
+      const leftPercent = (currentStart / safeDuration) * 100
+      const widthPercent = Math.max(2, (currentDuration / safeDuration) * 100)
+      clipElement.style.transition = 'none'
+      clipElement.style.left = `${leftPercent}%`
+      clipElement.style.width = `${widthPercent}%`
     }
-    setIsResizingClip(true)
+    
+    const handleUp = () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleUp)
+      
+      // Reset element styles
+      clipElement.style.transition = ''
+      clipElement.style.left = ''
+      clipElement.style.width = ''
+      
+      // Update React state
+      timeline.updateTemplateClip(clip.layerId, clip.id, {
+        start: currentStart,
+        duration: currentDuration,
+      })
+    }
+    
+    clipElement.style.transition = 'none'
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', handleUp)
+    
     setScrubTarget(false)
     setIsScrubbing(false)
   }
@@ -309,146 +525,95 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
     onClipClick?.({ id: clip.id, template: clip.template as string })
     const rect = timelineAreaRef.current?.getBoundingClientRect()
     if (!rect) return
-    moveStateRef.current = {
-      clipId: clip.id,
-      layerId: clip.layerId,
-      startX: e.clientX,
-      baseStart: clip.start,
-      duration: clip.duration,
-    }
-    setIsMovingClip(true)
-    setScrubTarget(false)
-    setIsScrubbing(false)
-  }
-
-  useEffect(() => {
-    if (!isResizingClip) return
-    const handleMove = (ev: PointerEvent) => {
-      const state = resizeStateRef.current
-      const rect = timelineAreaRef.current?.getBoundingClientRect()
-      if (!state || !rect) return
-
-      const pxPerMs = rect.width / safeDuration
-      const deltaMs = (ev.clientX - state.startX) / pxPerMs
-
-      let nextStart = state.baseStart
-      let nextDuration = state.baseDuration
-
-      if (state.edge === 'left') {
-        nextStart = Math.max(0, state.baseStart + deltaMs)
-        const maxStart = state.baseStart + state.baseDuration - MIN_CLIP_DURATION
-        nextStart = Math.min(nextStart, maxStart)
-        nextDuration = Math.max(MIN_CLIP_DURATION, state.baseDuration - (nextStart - state.baseStart))
-      } else {
-        nextDuration = Math.max(MIN_CLIP_DURATION, state.baseDuration + deltaMs)
+    
+    // Get the clip element for direct DOM manipulation during drag
+    const clipElement = e.currentTarget as HTMLElement
+    const startX = e.clientX
+    const baseStart = clip.start
+    const clipDuration = clip.duration
+    let currentStart = baseStart
+    
+    // Capture current snap points at drag start (for closures)
+    const snapPoints: number[] = []
+    tracks.forEach(track => {
+      snapPoints.push(track.startTime ?? 0)
+      snapPoints.push((track.startTime ?? 0) + (track.duration ?? 2000))
+    })
+    templateClips.forEach(c => {
+      if (c.id !== clip.id) {
+        snapPoints.push(c.start ?? 0)
+        snapPoints.push((c.start ?? 0) + (c.duration ?? 1000))
       }
-
-      state.currentStart = Math.round(nextStart)
-      state.currentDuration = Math.round(nextDuration)
-
-      setOptimisticClip({
-        id: state.clipId,
-        start: state.currentStart,
-        duration: state.currentDuration,
-      })
-    }
-
-    const handleUp = () => {
-      const state = resizeStateRef.current
-      if (state && state.currentStart !== undefined && state.currentDuration !== undefined) {
-        timeline.updateTemplateClip(state.layerId, state.clipId, {
-          start: state.currentStart,
-          duration: state.currentDuration,
-        })
-      }
-      setIsResizingClip(false)
-      setOptimisticClip(null)
-      resizeStateRef.current = null
-    }
-
-    window.addEventListener('pointermove', handleMove)
-    window.addEventListener('pointerup', handleUp)
-    return () => {
-      window.removeEventListener('pointermove', handleMove)
-      window.removeEventListener('pointerup', handleUp)
-    }
-  }, [isResizingClip, safeDuration, timeline])
-
-  useEffect(() => {
-    if (!isMovingClip) return
+    })
+    // Also snap to effect clips
+    effectClips.forEach(c => {
+      snapPoints.push(c.start ?? 0)
+      snapPoints.push((c.start ?? 0) + (c.duration ?? 1000))
+    })
+    
+    const SNAP_THRESHOLD = 50
+    
+    // IMMEDIATELY attach handlers - no waiting for React
     const handleMove = (ev: PointerEvent) => {
-      const state = moveStateRef.current
-      const rect = timelineAreaRef.current?.getBoundingClientRect()
-      if (!state || !rect) return
       const pxPerMs = rect.width / safeDuration
-      const deltaMs = (ev.clientX - state.startX) / pxPerMs
-      let nextStart = Math.max(0, Math.round(state.baseStart + deltaMs))
-      const clipEnd = nextStart + state.duration
+      const deltaMs = (ev.clientX - startX) / pxPerMs
+      let nextStart = Math.max(0, Math.round(baseStart + deltaMs))
+      const clipEnd = nextStart + clipDuration
       
-      // Magnetic snap threshold (50ms)
-      const SNAP_THRESHOLD = 50
-      
-      // Collect all snap points from layers and other clips
-      const snapPoints: number[] = []
-      
-      // Add layer start/end points
-      tracks.forEach(track => {
-        snapPoints.push(track.startTime ?? 0)
-        snapPoints.push((track.startTime ?? 0) + (track.duration ?? 2000))
-      })
-      
-      // Add other template clip start/end points
-      templateClips.forEach(clip => {
-        if (clip.id !== state.clipId) {
-          snapPoints.push(clip.start ?? 0)
-          snapPoints.push((clip.start ?? 0) + (clip.duration ?? 1000))
-        }
-      })
-      
-      // Try to snap clip start
+      // Try to snap clip start or end
       for (const snapPoint of snapPoints) {
         if (Math.abs(nextStart - snapPoint) <= SNAP_THRESHOLD) {
           nextStart = snapPoint
           break
         }
-        // Try to snap clip end
         if (Math.abs(clipEnd - snapPoint) <= SNAP_THRESHOLD) {
-          nextStart = snapPoint - state.duration
+          nextStart = snapPoint - clipDuration
           break
         }
       }
       
-      state.currentStart = Math.max(0, nextStart)
+      currentStart = Math.max(0, nextStart)
       
-      setOptimisticClip({
-        id: state.clipId,
-        start: state.currentStart,
-        duration: state.duration,
-      })
+      // DIRECT DOM MANIPULATION - bypass React for zero lag
+      const leftPercent = (currentStart / safeDuration) * 100
+      clipElement.style.transition = 'none' // Disable CSS transition for instant movement
+      clipElement.style.left = `${leftPercent}%`
     }
+    
     const handleUp = () => {
-      const state = moveStateRef.current
-      if (state && state.currentStart !== undefined) {
-        timeline.updateTemplateClip(state.layerId, state.clipId, {
-          start: state.currentStart,
-          duration: state.duration,
-        })
-      }
-      setIsMovingClip(false)
-      setOptimisticClip(null)
-      moveStateRef.current = null
-    }
-    window.addEventListener('pointermove', handleMove)
-    window.addEventListener('pointerup', handleUp)
-    return () => {
+      // Remove listeners first
       window.removeEventListener('pointermove', handleMove)
       window.removeEventListener('pointerup', handleUp)
+      
+      // Reset element styles before React takes over
+      clipElement.style.transition = ''
+      clipElement.style.left = ''
+      
+      // Update React state
+      timeline.updateTemplateClip(clip.layerId, clip.id, {
+        start: currentStart,
+        duration: clipDuration,
+      })
     }
-  }, [isMovingClip, safeDuration, timeline])
+    
+    // Immediately disable transition for instant drag start
+    clipElement.style.transition = 'none'
+    
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', handleUp)
+    
+    // Still set state for any UI that depends on it
+    setScrubTarget(false)
+    setIsScrubbing(false)
+  }
 
   // Effect for Moving Layer visibility bar
   useEffect(() => {
     if (!isMovingLayer) return
+    
+    let rafId: number | null = null
+    let pendingUpdate: { startTime: number; duration: number } | null = null
+    
     const handleMove = (ev: PointerEvent) => {
       const state = layerMoveStateRef.current
       const rect = timelineAreaRef.current?.getBoundingClientRect()
@@ -494,14 +659,24 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
       
       state.currentStart = Math.max(0, nextStart)
 
-      setOptimisticLayer({
-        layerId: state.layerId,
-        startTime: state.currentStart,
-        duration: duration
-      })
+      // Throttle state updates using RAF for smooth 60fps rendering
+      pendingUpdate = { startTime: state.currentStart, duration }
+      if (!rafId) {
+        rafId = requestAnimationFrame(() => {
+          if (pendingUpdate && state) {
+            setOptimisticLayer({
+              layerId: state.layerId,
+              startTime: pendingUpdate.startTime,
+              duration: pendingUpdate.duration
+            })
+          }
+          rafId = null
+        })
+      }
     }
 
     const handleUp = () => {
+       if (rafId) cancelAnimationFrame(rafId)
        const state = layerMoveStateRef.current
        if (state && state.currentStart !== undefined) {
          const delta = state.currentStart - state.baseStart
@@ -537,6 +712,7 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
     window.addEventListener('pointermove', handleMove)
     window.addEventListener('pointerup', handleUp)
     return () => {
+      if (rafId) cancelAnimationFrame(rafId)
       window.removeEventListener('pointermove', handleMove)
       window.removeEventListener('pointerup', handleUp)
     }
@@ -669,7 +845,14 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
   return (
     <div 
       className={`border-t border-white/5 bg-[#0a0a0a] z-40 flex flex-col relative ${isResizing ? '' : 'transition-[height] duration-75 ease-out'}`}
-      style={{ height: timelineHeight }}
+      style={{ height: timelineHeight, userSelect: 'none' }}
+      onDragStart={(e) => {
+        // Prevent native drag from any child elements except layer name area
+        const target = e.target as HTMLElement
+        if (!target.closest('[data-allow-drag="true"]')) {
+          e.preventDefault()
+        }
+      }}
     >
       {/* Resize Handle */}
       <div
@@ -766,6 +949,7 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
                   >
                     <div 
                       className="w-[200px] border-r border-white/5 flex items-center px-2 gap-2 cursor-grab active:cursor-grabbing"
+                      data-allow-drag="true"
                       draggable
                       onDragStart={(e) => {
                         e.stopPropagation()
@@ -851,7 +1035,9 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
                             className={`absolute top-1/2 -translate-y-1/2 h-5 rounded-sm border transition-all z-20 group/bar cursor-pointer
                               ${isOptimistic ? 'bg-purple-500/60 border-purple-500/80' : selectedLayerId === layer.id ? 'bg-purple-500/60 border-purple-500' : 'bg-purple-500/40 border-purple-500/50 hover:bg-purple-500/50'}
                             `}
-                            style={{ left: `${left}%`, width: `${width}%` }}
+                            style={{ left: `${left}%`, width: `${width}%`, userSelect: 'none' }}
+                            draggable={false}
+                            onDragStart={(e) => e.preventDefault()}
                             onClick={() => onSelectLayer?.(layer.id)}
                             onPointerDown={(e) => handleLayerDragStart(e, layer.id, startTime, duration)}
                           >
@@ -955,7 +1141,9 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
 
                           <div
                             className={clipClasses.filter(Boolean).join(' ')}
-                            style={{ left: `${left}%`, width: `${width}%` }}
+                            style={{ left: `${left}%`, width: `${width}%`, userSelect: 'none' }}
+                            draggable={false}
+                            onDragStart={(e) => e.preventDefault()}
                             onClick={(e) => {
                               e.stopPropagation()
                               onClipClick?.({ id: clip.id, template: clip.template as string })
@@ -1007,26 +1195,74 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
                             {/* Effect Clip Bar */}
                             <div
                               className="absolute top-1/2 -translate-y-1/2 h-6 rounded-md border px-2 text-[10px] text-white flex items-center gap-1 shadow-lg overflow-hidden transition-all bg-gradient-to-r from-purple-500/40 to-purple-600/40 border-purple-500/50 hover:brightness-110 cursor-grab"
-                              style={{ left: `${left}%`, width: `${width}%` }}
+                              style={{ left: `${left}%`, width: `${width}%`, userSelect: 'none' }}
+                              draggable={false}
+                              onDragStart={(e) => e.preventDefault()}
                               onPointerDown={(e) => {
                                 e.stopPropagation()
+                                const clipElement = e.currentTarget as HTMLElement
                                 const rect = e.currentTarget.parentElement?.getBoundingClientRect()
                                 if (!rect) return
                                 const startX = e.clientX
                                 const baseStart = clip.start
+                                const clipDuration = clip.duration
+                                let currentStart = baseStart
+                                
+                                // Build snap points
+                                const snapPoints: number[] = []
+                                tracks.forEach(t => {
+                                  snapPoints.push(t.startTime ?? 0)
+                                  snapPoints.push((t.startTime ?? 0) + (t.duration ?? 2000))
+                                })
+                                templateClips.forEach(c => {
+                                  snapPoints.push(c.start ?? 0)
+                                  snapPoints.push((c.start ?? 0) + (c.duration ?? 1000))
+                                })
+                                effectClips.forEach(c => {
+                                  if (c.id !== clip.id) {
+                                    snapPoints.push(c.start ?? 0)
+                                    snapPoints.push((c.start ?? 0) + (c.duration ?? 1000))
+                                  }
+                                })
+                                const SNAP_THRESHOLD = 50
                                 
                                 const onMove = (ev: PointerEvent) => {
                                   const pxPerMs = rect.width / safeDuration
                                   const deltaMs = (ev.clientX - startX) / pxPerMs
-                                  const newStart = Math.max(0, baseStart + deltaMs)
-                                  timeline.updateEffectClip(clip.id, { start: newStart })
+                                  let nextStart = Math.max(0, Math.round(baseStart + deltaMs))
+                                  const clipEnd = nextStart + clipDuration
+                                  
+                                  // Snap logic
+                                  for (const snapPoint of snapPoints) {
+                                    if (Math.abs(nextStart - snapPoint) <= SNAP_THRESHOLD) {
+                                      nextStart = snapPoint
+                                      break
+                                    }
+                                    if (Math.abs(clipEnd - snapPoint) <= SNAP_THRESHOLD) {
+                                      nextStart = snapPoint - clipDuration
+                                      break
+                                    }
+                                  }
+                                  
+                                  currentStart = Math.max(0, nextStart)
+                                  
+                                  // DIRECT DOM MANIPULATION
+                                  const leftPercent = (currentStart / safeDuration) * 100
+                                  clipElement.style.transition = 'none'
+                                  clipElement.style.left = `${leftPercent}%`
                                 }
                                 
                                 const onUp = () => {
                                   window.removeEventListener('pointermove', onMove)
                                   window.removeEventListener('pointerup', onUp)
+                                  
+                                  clipElement.style.transition = ''
+                                  clipElement.style.left = ''
+                                  
+                                  timeline.updateEffectClip(clip.id, { start: currentStart })
                                 }
                                 
+                                clipElement.style.transition = 'none'
                                 window.addEventListener('pointermove', onMove)
                                 window.addEventListener('pointerup', onUp)
                               }}
@@ -1037,23 +1273,65 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
                                 className="absolute right-0 top-0 h-full w-3 cursor-col-resize bg-white/15 z-10 hover:bg-white/30 transition-colors"
                                 onPointerDown={(e) => {
                                   e.stopPropagation()
+                                  const clipElement = e.currentTarget.parentElement as HTMLElement
                                   const rect = e.currentTarget.parentElement?.parentElement?.getBoundingClientRect()
                                   if (!rect) return
                                   const startX = e.clientX
                                   const baseDuration = clip.duration
+                                  const clipStart = clip.start
+                                  let currentDuration = baseDuration
+                                  
+                                  // Build snap points
+                                  const snapPoints: number[] = []
+                                  tracks.forEach(t => {
+                                    snapPoints.push(t.startTime ?? 0)
+                                    snapPoints.push((t.startTime ?? 0) + (t.duration ?? 2000))
+                                  })
+                                  templateClips.forEach(c => {
+                                    snapPoints.push(c.start ?? 0)
+                                    snapPoints.push((c.start ?? 0) + (c.duration ?? 1000))
+                                  })
+                                  effectClips.forEach(c => {
+                                    if (c.id !== clip.id) {
+                                      snapPoints.push(c.start ?? 0)
+                                      snapPoints.push((c.start ?? 0) + (c.duration ?? 1000))
+                                    }
+                                  })
+                                  const SNAP_THRESHOLD = 50
                                   
                                   const onMove = (ev: PointerEvent) => {
                                     const pxPerMs = rect.width / safeDuration
                                     const deltaMs = (ev.clientX - startX) / pxPerMs
-                                    const newDuration = Math.max(100, baseDuration + deltaMs)
-                                    timeline.updateEffectClip(clip.id, { duration: newDuration })
+                                    let newDuration = Math.max(100, Math.round(baseDuration + deltaMs))
+                                    const newEndTime = clipStart + newDuration
+                                    
+                                    // Snap end to snap points
+                                    for (const snapPoint of snapPoints) {
+                                      if (Math.abs(newEndTime - snapPoint) <= SNAP_THRESHOLD) {
+                                        newDuration = snapPoint - clipStart
+                                        if (newDuration >= 100) break
+                                      }
+                                    }
+                                    
+                                    currentDuration = Math.max(100, newDuration)
+                                    
+                                    // DIRECT DOM MANIPULATION
+                                    const widthPercent = Math.max(2, (currentDuration / safeDuration) * 100)
+                                    clipElement.style.transition = 'none'
+                                    clipElement.style.width = `${widthPercent}%`
                                   }
                                   
                                   const onUp = () => {
                                     window.removeEventListener('pointermove', onMove)
                                     window.removeEventListener('pointerup', onUp)
+                                    
+                                    clipElement.style.transition = ''
+                                    clipElement.style.width = ''
+                                    
+                                    timeline.updateEffectClip(clip.id, { duration: currentDuration })
                                   }
                                   
+                                  clipElement.style.transition = 'none'
                                   window.addEventListener('pointermove', onMove)
                                   window.addEventListener('pointerup', onUp)
                                 }}
