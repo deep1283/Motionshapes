@@ -3190,115 +3190,6 @@ export default function DashboardLayout({
                       const c = layers.find(l => l.id === selectedLayerId)?.fillColor ?? 0xffffff
                       return c.toString(16).toUpperCase().padStart(6, '0')
                     })()}
-                    key={`fill-hex-${selectedLayerId}`}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && selectedLayerId) {
-                        const hex = e.currentTarget.value.replace('#', '')
-                        const numColor = parseInt(hex, 16)
-                        if (!isNaN(numColor)) {
-                          onUpdateLayerColor?.(selectedLayerId, numColor)
-                        }
-                      }
-                    }}
-                    onBlur={(e) => {
-                      if (!selectedLayerId) return
-                      const hex = e.currentTarget.value.replace('#', '')
-                      const numColor = parseInt(hex, 16)
-                      if (!isNaN(numColor)) {
-                        onUpdateLayerColor?.(selectedLayerId, numColor)
-                      }
-                    }}
-                    placeholder="FFFFFF"
-                    maxLength={6}
-                    className="flex-1 min-w-0 rounded bg-neutral-800 px-3 py-2.5 text-sm text-white font-mono focus:outline-none focus:ring-1 focus:ring-purple-500"
-                  />
-                  <input
-                    type="color"
-                    value={`#${(layers.find(l => l.id === selectedLayerId)?.fillColor ?? 0xffffff).toString(16).padStart(6, '0')}`}
-                    onChange={(e) => {
-                      if (!selectedLayerId) return
-                      const numColor = parseInt(e.target.value.replace('#', ''), 16)
-                      onUpdateLayerColor?.(selectedLayerId, numColor)
-                    }}
-                    className="w-10 h-10 rounded border-2 border-neutral-600 hover:border-purple-500 cursor-pointer transition-colors flex-shrink-0 p-0 bg-transparent"
-                  />
-                </div>
-              </div>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* Text Controls - Only show for regular text layers (NOT counters) */}
-          {selectedLayerId && layers.find(l => l.id === selectedLayerId)?.type === 'text' && !layers.find(l => l.id === selectedLayerId)?.isCounter && (
-            <div className="mb-6 space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-neutral-400">Text</span>
-              </div>
-              
-              {/* Text Content */}
-              <div className="space-y-2">
-                <span className="text-[10px] uppercase text-neutral-500">Content</span>
-                <div className="flex gap-2">
-                  <textarea
-                    id="text-content-input"
-                    defaultValue={layers.find(l => l.id === selectedLayerId)?.text || ''}
-                    key={selectedLayerId} // Reset when layer changes
-                    placeholder="Enter text..."
-                    className="flex-1 rounded bg-neutral-800 px-3 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-purple-500 resize-none"
-                    rows={2}
-                  />
-                  <button
-                    onClick={() => {
-                      if (!selectedLayerId) return
-                      const textarea = document.getElementById('text-content-input') as HTMLTextAreaElement
-                      if (textarea) {
-                        onUpdateLayerText?.(selectedLayerId, textarea.value)
-                      }
-                    }}
-                    className="px-3 py-1 rounded bg-purple-600 hover:bg-purple-500 text-white text-xs font-medium transition-colors"
-                  >
-                    Apply
-                  </button>
-                </div>
-              </div>
-
-              {/* Font Family */}
-              <div className="space-y-2">
-                <span className="text-[10px] uppercase text-neutral-500">Font</span>
-                <FontPicker
-                  value={layers.find(l => l.id === selectedLayerId)?.fontFamily || 'Inter'}
-                  onChange={(fontFamily) => {
-                    if (!selectedLayerId) return
-                    onUpdateLayerFontFamily?.(selectedLayerId, fontFamily)
-                  }}
-                />
-              </div>
-
-              {/* Font Size */}
-              <div className="space-y-2">
-                <span className="text-[10px] uppercase text-neutral-500">Font Size</span>
-                <BufferedInput
-                  value={layers.find(l => l.id === selectedLayerId)?.fontSize || 48}
-                  onCommit={(val) => {
-                    if (!selectedLayerId) return
-                    onUpdateLayerFontSize?.(selectedLayerId, val)
-                  }}
-                  label="px"
-                />
-              </div>
-
-              {/* Font Color */}
-              <div className="space-y-2">
-                <span className="text-[10px] uppercase text-neutral-500">Color</span>
-                {/* Hex Input + Color Picker Swatch side by side */}
-                <div className="flex items-center gap-2 w-full">
-                  <input
-                    type="text"
-                    defaultValue={(() => {
-                      const c = layers.find(l => l.id === selectedLayerId)?.fillColor ?? 0xffffff
-                      return c.toString(16).toUpperCase().padStart(6, '0')
-                    })()}
                     key={`color-${selectedLayerId}`}
                     onChange={(e) => {
                       if (!selectedLayerId) return
@@ -3311,7 +3202,6 @@ export default function DashboardLayout({
                     maxLength={6}
                     className="flex-1 min-w-0 rounded bg-neutral-800 px-3 py-2.5 text-sm text-white font-mono focus:outline-none focus:ring-1 focus:ring-purple-500"
                   />
-                  {/* Native Color Picker styled as swatch */}
                   <input
                     type="color"
                     value={`#${(layers.find(l => l.id === selectedLayerId)?.fillColor ?? 0xffffff).toString(16).padStart(6, '0')}`}
@@ -3324,8 +3214,69 @@ export default function DashboardLayout({
                   />
                 </div>
               </div>
+
+              {/* Text-specific controls - only for text layers (not counters) */}
+              {layers.find(l => l.id === selectedLayerId)?.type === 'text' && !layers.find(l => l.id === selectedLayerId)?.isCounter && (
+                <>
+                  {/* Text Content */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] uppercase text-neutral-500">Content</span>
+                    <div className="flex gap-2">
+                      <textarea
+                        id="text-content-input"
+                        defaultValue={layers.find(l => l.id === selectedLayerId)?.text || ''}
+                        key={selectedLayerId}
+                        placeholder="Enter text..."
+                        className="flex-1 rounded bg-neutral-800 px-3 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-purple-500 resize-none"
+                        rows={2}
+                      />
+                      <button
+                        onClick={() => {
+                          if (!selectedLayerId) return
+                          const textarea = document.getElementById('text-content-input') as HTMLTextAreaElement
+                          if (textarea) {
+                            onUpdateLayerText?.(selectedLayerId, textarea.value)
+                          }
+                        }}
+                        className="px-3 py-1 rounded bg-purple-600 hover:bg-purple-500 text-white text-xs font-medium transition-colors"
+                      >
+                        Apply
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Font Family */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] uppercase text-neutral-500">Font</span>
+                    <FontPicker
+                      value={layers.find(l => l.id === selectedLayerId)?.fontFamily || 'Inter'}
+                      onChange={(fontFamily) => {
+                        if (!selectedLayerId) return
+                        onUpdateLayerFontFamily?.(selectedLayerId, fontFamily)
+                      }}
+                    />
+                  </div>
+
+                  {/* Font Size */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] uppercase text-neutral-500">Font Size</span>
+                    <BufferedInput
+                      value={layers.find(l => l.id === selectedLayerId)?.fontSize || 48}
+                      onCommit={(val) => {
+                        if (!selectedLayerId) return
+                        onUpdateLayerFontSize?.(selectedLayerId, val)
+                      }}
+                      label="px"
+                    />
+                  </div>
+                </>
+              )}
+                </>
+              )}
             </div>
           )}
+
+
 
           {/* Counter Controls - Only show for counter layers */}
           {selectedLayerId && layers.find(l => l.id === selectedLayerId)?.isCounter && (
