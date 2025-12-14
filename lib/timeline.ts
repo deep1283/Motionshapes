@@ -5,6 +5,7 @@ export type Easing =
   | 'easeInQuad'
   | 'easeOutQuad'
   | 'easeInOutQuad'
+  | 'easeInOutQuint'
   | 'easeOutBack'
 
 export interface Vec2 {
@@ -108,6 +109,12 @@ const applyEasing = (t: number, easing: Easing = 'linear') => {
       return 1 - (1 - t) * (1 - t)
     case 'easeInOutQuad':
       return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2
+    case 'easeInOutQuint':
+      // Exponential S-curve - very aggressive (Jitter-like)
+      // Uses power of 7 for extremely sharp acceleration in the middle
+      return t < 0.5 
+        ? 64 * t * t * t * t * t * t * t   // t^7 * 64
+        : 1 - Math.pow(-2 * t + 2, 7) / 2
     case 'easeOutBack': {
       const c1 = 1.70158
       const c3 = c1 + 1

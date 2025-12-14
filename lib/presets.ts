@@ -501,7 +501,7 @@ const panZoomPreset = (
   const getEasing = (easingType: string) => {
     switch (easingType) {
       case 'linear': return 'linear' as any
-      case 'smooth': return 'easeInOutCubic' as any
+      case 'smooth': return 'easeInOutQuint' as any // Aggressive S-curve like Jitter
       case 'ease-in-out': 
       default: return 'easeInOutQuad' as any
     }
