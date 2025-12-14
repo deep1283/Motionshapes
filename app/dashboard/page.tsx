@@ -1172,12 +1172,8 @@ function DashboardContent() {
     setSelectedClipId('')
     setSelectedTemplate('')  // Clear template to prevent accidentally applying it to the layer
     setShowSelectShapeHint(false)
-    
-    // Move playhead to layer's startTime so the shape is visible
-    const track = tracks.find(t => t.layerId === id)
-    if (track?.startTime !== undefined) {
-      timeline.setCurrentTime(track.startTime)
-    }
+    // Playhead stays at current position - user can edit at current time
+    // Timeline clip clicks (handleClipClick) still jump to clip start
   }
 
   const handleDeselectShape = () => {

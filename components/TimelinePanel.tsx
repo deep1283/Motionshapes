@@ -1074,7 +1074,11 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
                             style={{ left: `${left}%`, width: `${width}%`, userSelect: 'none' }}
                             draggable={false}
                             onDragStart={(e) => e.preventDefault()}
-                            onClick={() => onSelectLayer?.(layer.id)}
+                            onClick={() => {
+                              onSelectLayer?.(layer.id)
+                              // Move playhead to start of layer bar (like template clip clicks)
+                              timeline.setCurrentTime(startTime)
+                            }}
                             onPointerDown={(e) => handleLayerDragStart(e, layer.id, startTime, duration)}
                           >
                              {/* Label */}
