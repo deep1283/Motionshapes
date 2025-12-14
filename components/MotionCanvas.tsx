@@ -260,6 +260,12 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     appRef.current.render()
   }, [offsetX, offsetY, isReady])
 
+  // Keep selectedLayerIdRef in sync with prop for per-frame handle positioning
+  useEffect(() => {
+    selectedLayerIdRef.current = selectedLayerId
+  }, [selectedLayerId])
+
+
   // ... (rest of component)
   const dragRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null)
   const graphicsByIdRef = useRef<Record<string, PIXI.Graphics>>({})
@@ -273,6 +279,11 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   const spritesByIdRef = useRef<Record<string, PIXI.Sprite>>({})
   const textsByIdRef = useRef<Record<string, { text: PIXI.Text; fullText: string; layerId: string; hasTypewriter: boolean; parts?: PIXI.Text[]; originalChars?: string[] }>>({})
   const resizeHandlesRef = useRef<Record<string, PIXI.Graphics[]>>({})
+  const allHandlesRef = useRef<PIXI.Graphics[]>([]) // Strict tracking of ALL created handles for cleanup
+  const selectedLayerIdRef = useRef<string | undefined>(undefined) // Track selected layer for per-frame sync
+  const playheadRef = useRef<number>(0) // Track playhead for timeline-based handle visibility
+  const timelineTracksRef = useRef<any[]>([]) // Track timeline tracks for visibility check
+  const handlesOverlayRef = useRef<PIXI.Container | null>(null) // Overlay container for handles (doesn't inherit shape transforms)
   const handlesByIdRef = useRef<Record<string, PIXI.Graphics[]>>({}) // For text layer resize handles
   const spotlightOverlayRef = useRef<PIXI.Graphics | null>(null) // For pan_zoom spotlight blur effect
   // Ref to store updateGraphicsFromTimeline function for calling from restoreFromExport
@@ -314,6 +325,15 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   const clickMarkers = useTimeline((s) => s.clickMarkers)
   const templateClips = useTimeline((s) => s.templateClips)
   const effectClips = useTimeline((s) => s.effectClips)
+  
+  // Keep playhead and timeline tracks refs in sync for per-frame handle visibility
+  useEffect(() => {
+    playheadRef.current = playhead
+  }, [playhead])
+  
+  useEffect(() => {
+    timelineTracksRef.current = timelineTracks
+  }, [timelineTracks])
   // Convert template clips to ClipInfo for unified sampling
   const clipInfos: ClipInfo[] = useMemo(() => 
     templateClips.map(c => ({ 
@@ -636,7 +656,76 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         containerRef.current.style.overflow = 'visible'
         
         // keep rendering even if no template animation is running
-        app.ticker.add(() => app.render())
+        // ALSO sync handle positions every frame for the selected layer (like Jitter/Figma)
+        app.ticker.add(() => {
+          // Sync handles every frame if there's a selected layer
+          if (selectedLayerIdRef.current && graphicsByIdRef.current[selectedLayerIdRef.current]) {
+            const layerId = selectedLayerIdRef.current
+            const g = graphicsByIdRef.current[layerId]
+            const layer = layersRef.current.find(l => l.id === layerId)
+            if (g && layer && handlesOverlayRef.current) {
+              // Check if layer is visible at current playhead position
+              const layerTrack = timelineTracksRef.current.find((t: any) => t.layerId === layerId)
+              const layerStart = layerTrack?.startTime ?? 0
+              const layerDuration = layerTrack?.duration ?? 2000
+              const currentPlayhead = playheadRef.current
+              const isLayerVisible = currentPlayhead >= layerStart && currentPlayhead <= layerStart + layerDuration
+              
+              const outline = outlinesByIdRef.current[layerId]
+              const handles = resizeHandlesRef.current[layerId]
+              
+              if (!isLayerVisible) {
+                // Hide handles when layer is not visible on timeline
+                if (outline) outline.visible = false
+                if (handles) handles.forEach(h => h.visible = false)
+              } else {
+                // Layer is visible - show and position handles
+                const localPos = { x: g.x, y: g.y }
+                const halfW = layer.width / 2
+                const halfH = layer.height / 2
+                
+                // Update outline
+                if (outline) {
+                  outline.visible = true
+                  outline.x = localPos.x
+                  outline.y = localPos.y
+                }
+                
+                // Update handle positions
+                if (handles && handles.length === 8) {
+                  const cornerOffsets = [
+                    { x: -halfW, y: -halfH }, { x: halfW, y: -halfH },
+                    { x: halfW, y: halfH }, { x: -halfW, y: halfH }
+                  ]
+                  const edgeOffsets = [
+                    { x: 0, y: -halfH }, { x: 0, y: halfH },
+                    { x: -halfW, y: 0 }, { x: halfW, y: 0 }
+                  ]
+                  for (let i = 0; i < 4; i++) {
+                    handles[i].visible = true
+                    handles[i].x = localPos.x + cornerOffsets[i].x
+                    handles[i].y = localPos.y + cornerOffsets[i].y
+                  }
+                  for (let i = 4; i < 8; i++) {
+                    handles[i].visible = true
+                    handles[i].x = localPos.x + edgeOffsets[i - 4].x
+                    handles[i].y = localPos.y + edgeOffsets[i - 4].y
+                  }
+                }
+              }
+            }
+          }
+          app.render()
+        })
+        
+        // Create handles overlay container (always on top, doesn't inherit shape transforms)
+        const handlesOverlay = new PIXI.Container()
+        handlesOverlay.sortableChildren = true
+        handlesOverlay.zIndex = 1000  // Always on top of shapes
+        app.stage.addChild(handlesOverlay)
+        handlesOverlayRef.current = handlesOverlay
+        app.stage.sortableChildren = true  // Enable zIndex sorting on stage
+        
         setIsReady(true)
         
         // Expose canvas for export functionality
@@ -771,6 +860,87 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   // Apply timeline-sampled transforms onto Pixi graphics so playhead/scrub reflects on-canvas
   // Helper to update graphics from timeline state
   // Optional sampledData parameter for direct playback updates (bypasses React)
+  
+  // Sync handle positions to match shape's world position (Step 3 of overlay architecture)
+  // This is called every frame for the selected layer to keep handles positioned correctly
+  // Also ensures handles are visible when called
+  const syncHandlePositions = (layerId: string) => {
+    const g = graphicsByIdRef.current[layerId]
+    const layer = layersRef.current.find(l => l.id === layerId)
+    
+    if (!g || !layer || !handlesOverlayRef.current) return
+    
+    // Both the shape (g) and the overlay are children of the same stage
+    // So we can use the shape's position directly
+    const localPos = { x: g.x, y: g.y }
+    
+    // Get current dimensions for handle positioning
+    const halfW = layer.width / 2
+    const halfH = layer.height / 2
+    
+    // Update outline position and size
+    const outline = outlinesByIdRef.current[layerId]
+    if (outline) {
+      outline.visible = true // Ensure visible when syncing
+      outline.x = localPos.x
+      outline.y = localPos.y
+      // Redraw outline at correct size (doesn't scale with shape)
+      outline.clear()
+      outline.rect(-halfW, -halfH, layer.width, layer.height)
+      outline.stroke({ color: layer.type === 'text' ? 0xA855F7 : 0x9333ea, width: 2, alpha: 1 })
+    }
+    
+    // Update handle positions (relative to shape center in world space)
+    const handles = resizeHandlesRef.current[layerId]
+    if (handles && handles.length === 8) {
+      // Corner positions (relative to shape center)
+      const cornerOffsets = [
+        { x: -halfW, y: -halfH }, // tl
+        { x: halfW, y: -halfH },  // tr
+        { x: halfW, y: halfH },   // br
+        { x: -halfW, y: halfH },  // bl
+      ]
+      // Edge positions (relative to shape center)  
+      const edgeOffsets = [
+        { x: 0, y: -halfH }, // t
+        { x: 0, y: halfH },  // b
+        { x: -halfW, y: 0 }, // l
+        { x: halfW, y: 0 },  // r
+      ]
+      
+      // Position and redraw corners
+      const cornerSize = 8
+      for (let i = 0; i < 4; i++) {
+        const h = handles[i]
+        h.visible = true
+        h.alpha = 1
+        h.x = localPos.x + cornerOffsets[i].x
+        h.y = localPos.y + cornerOffsets[i].y
+        h.clear()
+        h.rect(-cornerSize / 2, -cornerSize / 2, cornerSize, cornerSize)
+        h.fill(layer.type === 'text' ? 0xA855F7 : 0x9333ea)
+      }
+      // Position and redraw edges (they need to resize with shape width/height)
+      const handleSize = 8
+      const edgeThickness = 1
+      for (let i = 4; i < 8; i++) {
+        const h = handles[i]
+        h.visible = true // Ensure edges visible
+        h.x = localPos.x + edgeOffsets[i - 4].x
+        h.y = localPos.y + edgeOffsets[i - 4].y
+        
+        // Redraw edge handles at correct size
+        h.clear()
+        if (i === 4 || i === 5) { // t, b - horizontal edges
+          h.rect(-layer.width / 2, -edgeThickness / 2, layer.width, edgeThickness)
+        } else { // l, r - vertical edges
+          h.rect(-edgeThickness / 2, -layer.height / 2, edgeThickness, layer.height)
+        }
+        h.fill(layer.type === 'text' ? 0xA855F7 : 0x9333ea)
+      }
+    }
+  }
+  
   const updateGraphicsFromTimeline = (sampledData?: Record<string, any>, manualPlayhead?: number) => {
     if (!containerRef.current) return
     
@@ -1057,7 +1227,31 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         }
       }
       // Handle Masking (mask_center and mask_top)
-      const maskScale = state.maskScale
+      let maskScale = state.maskScale
+      
+      // Check for completed mask_out clips. 
+      // Keep shape hidden ONLY if the mask_out clip ends at or after the shape's layer clip ends.
+      // If the shape clip is longer than the mask_out clip, let the shape reappear.
+      if (typeof maskScale !== 'number') {
+        const completedMaskOutClip = templateClips.find(c => 
+          c.layerId === id && 
+          (c.template === 'mask_center_out' || c.template === 'mask_top_out') &&
+          currentPlayhead >= (c.start ?? 0) + (c.duration ?? 1000) // Use >= for exact end time match
+        )
+        if (completedMaskOutClip) {
+          // Get the shape's layer clip (track) end time
+          const layerTrack = timelineTracks.find(t => t.layerId === id)
+          const layerEnd = (layerTrack?.startTime ?? 0) + (layerTrack?.duration ?? 2000)
+          const maskOutEnd = (completedMaskOutClip.start ?? 0) + (completedMaskOutClip.duration ?? 1000)
+          
+          // Only keep shape hidden if mask_out ends at or before layer ends
+          // If shape clip extends beyond mask_out, let shape reappear
+          if (maskOutEnd >= layerEnd - 50) { // 50ms tolerance for "same time"
+            maskScale = 0 // Keep shape hidden
+          }
+        }
+      }
+      
       if (typeof maskScale === 'number') {
         let mask = maskGraphicsByIdRef.current[id]
         if (!mask) {
@@ -1081,13 +1275,16 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           const layerWidth = layer.width || 100
           const layerHeight = layer.height || 100
           
-          // For diagonal angles (like 45°), the mask needs to be larger to cover corners
-          // At 45°, we need √2 (≈1.414) times the size to ensure full coverage
+          // For ANY rotation angle, the mask needs to be large enough to cover the diagonal of the shape
+          // This ensures when rotated, the mask still fully covers the shape
+          const diagonal = Math.sqrt(layerWidth * layerWidth + layerHeight * layerHeight)
           const angleRad = (maskAngle * Math.PI / 180)
-          const rotationFactor = Math.abs(Math.cos(angleRad)) + Math.abs(Math.sin(angleRad))
           
-          const maskWidth = layerWidth * 1.2 * rotationFactor
-          const maskHeight = layerHeight * 1.2 * rotationFactor
+          // Use diagonal as the mask dimension to ensure full coverage at any angle
+          // Add 20% padding to ensure no edge clipping
+          const maskSize = diagonal * 1.3
+          const maskWidth = maskSize
+          const maskHeight = maskSize
 
           mask.clear()
           
@@ -1100,9 +1297,10 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             // When scaleY=0, the mask collapses to a line at the top edge
             mask.pivot.set(0, -maskHeight / 2)
             
-            // Position at top edge of shape (accounting for pivot offset)
-            // For diagonal angles, offset more to ensure mask edge is outside the corner
-            const offsetAmount = (layerHeight / 2) * state.scale * rotationFactor
+            // Position at edge of shape (accounting for pivot offset)
+            // For diagonal angles (45°, 135°), use diagonal/2 to reach corners
+            // For cardinal angles (0°, 90°), use the appropriate edge distance
+            const offsetAmount = (diagonal / 2) * state.scale
             // Calculate offset in rotated direction
             const offsetX = Math.sin(angleRad) * offsetAmount
             const offsetY = -Math.cos(angleRad) * offsetAmount
@@ -1219,6 +1417,12 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         const layerHeight = layerData?.height || 100
         const positionOffset = slideOffsetY * layerHeight * state.scale
         g.position.y += positionOffset
+      }
+      
+      // Step 4: Sync handle positions for selected layer (handles are in overlay, don't inherit transforms)
+      // Only sync when not playing to avoid performance overhead during animation
+      if (id === selectedLayerId && !isPlaying) {
+        syncHandlePositions(id)
       }
     })
     appRef.current?.render()
@@ -1570,6 +1774,26 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       })
     })
     
+    // Re-add handles overlay (it was removed by stage.removeChildren())
+    // MAJOR FIX: Strictly destroy ALL previously created handles
+    // This prevents "ghost" handles that might become detached but not destroyed
+    allHandlesRef.current.forEach(h => {
+      if (h && typeof (h as any).destroy === 'function') {
+        (h as any).destroy()
+      }
+    })
+    allHandlesRef.current = [] // Clear the tracking array
+    
+    // Also clear overlay children as a backup
+    if (handlesOverlayRef.current) {
+      handlesOverlayRef.current.removeChildren()
+      stage.addChild(handlesOverlayRef.current)
+    }
+    
+    // Clear outline and handle refs since we're rebuilding them
+    outlinesByIdRef.current = {}
+    resizeHandlesRef.current = {}
+    
     // We need to define the ticker callback variable so we can remove it later
     let tickerCallback: ((ticker: PIXI.Ticker) => void) | null = null
     const centerX = screenWidth / 2
@@ -1578,7 +1802,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     
     graphicsByIdRef.current = {}
     textsByIdRef.current = {} // Clear text refs - they'll be repopulated with fresh objects
-    console.log('[LAYER_RENDER] Clearing all refs, starting layer rebuild')
     // templates are driven by timeline keyframes; built-in previews are disabled
     const templateEnabled = false
 
@@ -1718,13 +1941,21 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           
           const edgeThickness = 1
           const hitAreaSize = 12
+          const cornerSize = 8
           
           handles.forEach((h, i) => {
             h.x = positions[i].x
             h.y = positions[i].y
             
+            // For corner handles (indices 0-3), redraw them
+            if (i < 4) {
+              h.clear()
+              h.rect(-cornerSize / 2, -cornerSize / 2, cornerSize, cornerSize)
+              h.fill(0x9333ea)
+              h.tint = 0xffffff
+            }
             // For edge handles (indices 4-7), we must update their length and hitArea
-            if (i >= 4) {
+            else {
               h.clear()
               let w = 0, hDim = 0
               
@@ -1984,14 +2215,19 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             graphicsByIdRef.current[layer.id] = container as any
             spritesByIdRef.current[layer.id] = sprite
             
-            // Add outline
+            // Add outline to handles overlay (not container) so it doesn't inherit transforms
             const outline = new PIXI.Graphics()
             outline.rect(-layer.width / 2, -layer.height / 2, layer.width, layer.height)
             outline.stroke({ color: 0x9333ea, width: 2, alpha: 1 })
             outline.tint = 0xffffff // Prevent inheriting parent tint
             outline.visible = false
             outline.eventMode = 'none'
-            container.addChild(outline)
+            outline.zIndex = 0 // Render below handles (corners have zIndex 10)
+            if (handlesOverlayRef.current) {
+              handlesOverlayRef.current.addChild(outline)
+            } else {
+              container.addChild(outline) // Fallback if overlay not ready
+            }
             outlinesByIdRef.current[layer.id] = outline
             
             // Add bounding box resize handles (4 corners + 4 edges)
@@ -2050,7 +2286,12 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
                   startHeight: currentLayer?.height ?? layer.height,
                 }
               })
-              container.addChild(handleGfx)
+              // Add handles to overlay (not container) so they don't inherit transforms
+              if (handlesOverlayRef.current) {
+                handlesOverlayRef.current.addChild(handleGfx)
+              } else {
+                container.addChild(handleGfx) // Fallback
+              }
               handles.push(handleGfx)
             })
             resizeHandlesRef.current[layer.id] = handles
@@ -2059,6 +2300,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             if (selectedLayerId === layer.id) {
               outline.visible = true
               handles.forEach(h => h.visible = true)
+              // Sync handle positions (they're in overlay, need world coords)
+              syncHandlePositions(layer.id)
             }
             
             // Pointer events
@@ -2068,6 +2311,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
               // Show outline/handles immediately on click for SVGs
               outline.visible = true
               handles.forEach(h => h.visible = true)
+              // Position handles correctly (they're in overlay)
+              syncHandlePositions(layer.id)
               dragRef.current = { id: layer.id, offsetX: e.global.x - container.x, offsetY: e.global.y - container.y }
               stage.cursor = 'grabbing'
             })
@@ -2105,14 +2350,19 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             graphicsByIdRef.current[layer.id] = container as any
             spritesByIdRef.current[layer.id] = sprite
             
-            // Add outline
+            // Add outline to handles overlay (not container) so it doesn't inherit transforms
             const outline = new PIXI.Graphics()
             outline.rect(-layer.width / 2, -layer.height / 2, layer.width, layer.height)
             outline.stroke({ color: 0x9333ea, width: 2, alpha: 1 })
             outline.tint = 0xffffff // Prevent inheriting parent tint
             outline.visible = false
             outline.eventMode = 'none'
-            container.addChild(outline)
+            outline.zIndex = 0 // Render below handles (corners have zIndex 10)
+            if (handlesOverlayRef.current) {
+              handlesOverlayRef.current.addChild(outline)
+            } else {
+              container.addChild(outline) // Fallback if overlay not ready
+            }
             outlinesByIdRef.current[layer.id] = outline
             
             // Add resize handles (4 corners + 4 edges like images)
@@ -2165,7 +2415,12 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
                   startHeight: currentLayer?.height ?? layer.height,
                 }
               })
-              container.addChild(handleGfx)
+              // Add handles to overlay (not container) so they don't inherit transforms
+              if (handlesOverlayRef.current) {
+                handlesOverlayRef.current.addChild(handleGfx)
+              } else {
+                container.addChild(handleGfx) // Fallback
+              }
               handles.push(handleGfx)
             })
             resizeHandlesRef.current[layer.id] = handles
@@ -2174,12 +2429,19 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             if (selectedLayerId === layer.id) {
               outline.visible = true
               handles.forEach(h => h.visible = true)
+              // Sync handle positions (they're in overlay, need world coords)
+              syncHandlePositions(layer.id)
             }
             
             // Pointer events
             container.on('pointerdown', (e) => {
               e.stopPropagation()
               onSelectLayer?.(layer.id)
+              // Show outline/handles immediately on click
+              outline.visible = true
+              handles.forEach(h => h.visible = true)
+              // Position handles correctly (they're in overlay)
+              syncHandlePositions(layer.id)
               dragRef.current = { id: layer.id, offsetX: e.global.x - container.x, offsetY: e.global.y - container.y }
               stage.cursor = 'grabbing'
             })
@@ -2198,8 +2460,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           const hasTypewriterClip = templateClips.some(
             c => c.layerId === layer.id && c.template === 'typewriter'
           )
-          
-          console.log('[TEXT_CREATE] Creating text for layer:', layer.id, 'hasTypewriter:', hasTypewriterClip)
           
           const container = new PIXI.Container()
           
@@ -2274,8 +2534,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           
           // Add cursor if typewriter is active
           const finalText = showCursor ? displayText + '|' : displayText
-          
-          console.log('[TEXT_CREATE] Creating PIXI.Text with finalText:', finalText, 'playhead:', playhead, 'hasTypewriter:', !!typewriterClip)
           
           const text = new PIXI.Text({ text: finalText, style: textStyle })
           text.anchor.set(0.5)
@@ -2406,14 +2664,19 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           graphicsByIdRef.current[layer.id] = container as any
           textsByIdRef.current[layer.id] = { text, fullText: initialText, layerId: layer.id, hasTypewriter: hasTypewriterClip, parts }
           
-          // Add outline
+          // Add outline to handles overlay (not container) so it doesn't inherit transforms
           const outline = new PIXI.Graphics()
           outline.rect(-boxWidth / 2, -boxHeight / 2, boxWidth, boxHeight)
           outline.stroke({ color: 0xA855F7, width: 2, alpha: 1 })
           outline.tint = 0xffffff // Prevent inheriting parent tint
           outline.visible = false
           outline.eventMode = 'none'
-          container.addChild(outline)
+          outline.zIndex = 0 // Render below handles (corners have zIndex 10)
+          if (handlesOverlayRef.current) {
+            handlesOverlayRef.current.addChild(outline)
+          } else {
+            container.addChild(outline) // Fallback if overlay not ready
+          }
           outlinesByIdRef.current[layer.id] = outline
           
           // Add bounding box resize handles (4 corners + 4 edges) - same as shapes
@@ -2472,7 +2735,12 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
                 startHeight: currentLayer?.height ?? layer.height,
               }
             })
-            container.addChild(handleGfx)
+            // Add handles to overlay (not container) so they don't inherit transforms
+            if (handlesOverlayRef.current) {
+              handlesOverlayRef.current.addChild(handleGfx)
+            } else {
+              container.addChild(handleGfx) // Fallback
+            }
             handles.push(handleGfx)
           })
           resizeHandlesRef.current[layer.id] = handles
@@ -2481,12 +2749,19 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           if (selectedLayerId === layer.id) {
             outline.visible = true
             handles.forEach(h => h.visible = true)
+            // Sync handle positions (they're in overlay, need world coords)
+            syncHandlePositions(layer.id)
           }
           
           // Pointer events
           container.on('pointerdown', (e) => {
             e.stopPropagation()
             onSelectLayer?.(layer.id)
+            // Show outline/handles immediately on click
+            outline.visible = true
+            handles.forEach(h => h.visible = true)
+            // Position handles correctly (they're in overlay)
+            syncHandlePositions(layer.id)
             dragRef.current = { id: layer.id, offsetX: e.global.x - container.x, offsetY: e.global.y - container.y }
             stage.cursor = 'grabbing'
           })
@@ -2567,13 +2842,23 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         g.hitArea = new PIXI.Rectangle(-layer.width / 2, -layer.height / 2, layer.width, layer.height)
         // Create a separate graphics object for the selection outline
         // Always use rectangular bounding box (not shape-following outline)
+        // Add to handles overlay (not shape) so it doesn't inherit transforms
         const outline = new PIXI.Graphics()
         outline.rect(-layer.width / 2, -layer.height / 2, layer.width, layer.height)
         outline.stroke({ color: 0x9333ea, width: 2, alpha: 1 })
         outline.tint = 0xffffff // Prevent inheriting parent tint
-        outline.visible = false // Hidden by default
+        outline.stroke({ color: 0x9333ea, width: 2, alpha: 1 })
+        outline.tint = 0xffffff // Prevent inheriting parent tint
+        outline.x = posX // Set valid position immediately
+        outline.y = posY 
+        outline.visible = selectedLayerId === layer.id // Show immediately if selected
         outline.eventMode = 'none' // CRITICAL: Don't intercept pointer events
-        g.addChild(outline)
+        outline.zIndex = 0 // Render below handles (corners have zIndex 10)
+        if (handlesOverlayRef.current) {
+          handlesOverlayRef.current.addChild(outline)
+        } else {
+          g.addChild(outline) // Fallback if overlay not ready
+        }
         outlinesByIdRef.current[layer.id] = outline
         
         // Add bounding box resize handles (4 corners + 4 edges) for shapes
@@ -2612,11 +2897,11 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             handleGfx.hitArea = new PIXI.Rectangle(-shapeHandleSize, -shapeHandleSize, shapeHandleSize * 2, shapeHandleSize * 2)
           }
           
-          handleGfx.x = x
-          handleGfx.y = y
+          handleGfx.x = posX + x // Set valid world position immediately (no ghost at 0,0)
+          handleGfx.y = posY + y
           handleGfx.eventMode = 'static'
           handleGfx.cursor = cursor
-          handleGfx.visible = false
+          handleGfx.visible = selectedLayerId === layer.id // Show immediately if selected
           // Corners have higher priority than edges
           handleGfx.zIndex = ['tl', 'tr', 'br', 'bl'].includes(handleType) ? 10 : 1
           handleGfx.on('pointerdown', (e) => {
@@ -2632,14 +2917,28 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
               startHeight: currentLayer?.height ?? layer.height,
             }
           })
-          g.addChild(handleGfx)
+          // Add handles to overlay (not shape) so they don't inherit transforms
+          if (handlesOverlayRef.current) {
+            handlesOverlayRef.current.addChild(handleGfx)
+          } else {
+            g.addChild(handleGfx) // Fallback
+          }
           handles.push(handleGfx)
+          allHandlesRef.current.push(handleGfx) // Track for cleanup
         })
         resizeHandlesRef.current[layer.id] = handles
+        
+        // IMPORTANT: Store graphics ref and add to stage BEFORE syncHandlePositions,
+        // otherwise sync will fail because g doesn't exist in the ref yet
+        graphicsByIdRef.current[layer.id] = g
+        stage.addChild(g)
+        stage.sortChildren() // Force sort by zIndex after each layer
+        
         // If this layer is already selected (e.g., auto-selected on creation), show outline/handles immediately
         if (selectedLayerId === layer.id) {
           outline.visible = true
-          handles.forEach(h => (h.visible = true))
+          // Sync handle positions synchronously - graphics are already set up at this point
+          syncHandlePositions(layer.id)
         }
         
         g.on('pointerdown', (e) => {
@@ -2652,6 +2951,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           // Show outline/handles immediately on click for shape/icon layers
           outline.visible = true
           handles.forEach(h => (h.visible = true))
+          // Position handles correctly (they're in overlay, not on shape)
+          syncHandlePositions(layer.id)
           dragRef.current = {
             id: layer.id,
             offsetX: pos.x - g.x,
@@ -2659,10 +2960,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           }
           stage.cursor = 'grabbing'
         })
-        
-        graphicsByIdRef.current[layer.id] = g
-        stage.addChild(g)
-        stage.sortChildren() // Force sort by zIndex after each layer
 
         const shouldAnimateTemplate = selectedLayerId ? layer.id === selectedLayerId : true
 
@@ -2819,6 +3116,10 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       Promise.all(renderLayers.map(async (layer, layerIndex) => {
         await updateGraphicsFromTimeline()
       })).then(() => {
+        // Sync handle positions for selected layer after all graphics are updated
+        if (selectedLayerId && resizeHandlesRef.current[selectedLayerId]) {
+          syncHandlePositions(selectedLayerId)
+        }
         app.render()
       })
 
@@ -2977,9 +3278,14 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         })
       }
     })
-    if (needsRender) {
-      appRef.current.render()
+    
+    // Sync handle positions for newly selected layer (handles are in overlay)
+    if (selectedLayerId && !isPlaying) {
+      syncHandlePositions(selectedLayerId)
     }
+    
+    // Force render to ensure changes are visible
+    appRef.current.render()
   }, [selectedLayerId, isReady, isPlaying])
 
   // 4. Sync dimensions from panel to canvas (for BOTH images AND shapes)

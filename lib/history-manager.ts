@@ -122,6 +122,7 @@ export interface TemplateClip {
     panZoomBlurIntensity?: number // Blur intensity (0 = no blur, 10 = max blur)
     // Mask Center parameters
     maskAngle?: number // Angle in degrees (0 = horizontal, 90 = vertical)
+    maskEasing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'
     // Text animation parameters
     textAnimation?: 'typewriter' | 'bounce_in' | 'bounce_out' | 'scramble'
     showCursor?: boolean

@@ -3396,7 +3396,7 @@ export default function DashboardLayout({
             </div>
             
             {/* Duration Control - Show if a clip is selected, but NOT for templates that have their own duration slider */}
-            {selectedClipDuration !== undefined && !['pulse', 'shake', 'spin', 'counter', 'pan_zoom', 'mask_center', 'mask_top'].includes(selectedTemplate) && (
+            {selectedClipDuration !== undefined && !['pulse', 'shake', 'spin', 'counter', 'pan_zoom', 'mask_center', 'mask_top', 'mask_center_out', 'mask_top_out'].includes(selectedTemplate) && (
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[11px] font-semibold text-neutral-200">
@@ -4035,6 +4035,7 @@ export default function DashboardLayout({
               const maskClip = templateClips.find(c => c.id === selectedClipId && c.template === 'mask_center_out')
               if (!maskClip) return null
               const maskAngle = maskClip.parameters?.maskAngle ?? 0
+              const maskEasing = maskClip.parameters?.maskEasing ?? 'linear'
               
               const presetAngles = [
                 { angle: 0, icon: '—', label: 'Horizontal' },
@@ -4089,6 +4090,30 @@ export default function DashboardLayout({
                       />
                     </div>
                   </div>
+                  
+                  {/* Easing */}
+                  <div className="mb-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-semibold text-neutral-200">Easing</span>
+                    </div>
+                    <select
+                      value={maskEasing}
+                      onChange={(e) => {
+                        if (selectedLayerId) {
+                          timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
+                            parameters: { ...maskClip.parameters, maskEasing: e.target.value }
+                          })
+                        }
+                      }}
+                      className="w-full bg-neutral-800 border border-white/10 rounded-md px-2 py-1.5 text-[11px] text-white"
+                    >
+                      <option value="linear">Linear</option>
+                      <option value="ease-in">Ease In</option>
+                      <option value="ease-out">Ease Out</option>
+                      <option value="ease-in-out">Ease In Out</option>
+                    </select>
+                  </div>
+                  
                   <div className="mb-4">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-[11px] font-semibold text-neutral-200">Duration</span>
@@ -4113,6 +4138,7 @@ export default function DashboardLayout({
               const maskClip = templateClips.find(c => c.id === selectedClipId && c.template === 'mask_top_out')
               if (!maskClip) return null
               const maskAngle = maskClip.parameters?.maskAngle ?? 0
+              const maskEasing = maskClip.parameters?.maskEasing ?? 'linear'
               
               const presetAngles = [
                 { angle: 0, icon: '—', label: 'Horizontal' },
@@ -4167,6 +4193,30 @@ export default function DashboardLayout({
                       />
                     </div>
                   </div>
+                  
+                  {/* Easing */}
+                  <div className="mb-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-semibold text-neutral-200">Easing</span>
+                    </div>
+                    <select
+                      value={maskEasing}
+                      onChange={(e) => {
+                        if (selectedLayerId) {
+                          timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
+                            parameters: { ...maskClip.parameters, maskEasing: e.target.value }
+                          })
+                        }
+                      }}
+                      className="w-full bg-neutral-800 border border-white/10 rounded-md px-2 py-1.5 text-[11px] text-white"
+                    >
+                      <option value="linear">Linear</option>
+                      <option value="ease-in">Ease In</option>
+                      <option value="ease-out">Ease Out</option>
+                      <option value="ease-in-out">Ease In Out</option>
+                    </select>
+                  </div>
+                  
                   <div className="mb-4">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-[11px] font-semibold text-neutral-200">Duration</span>
