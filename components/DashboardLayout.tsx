@@ -211,6 +211,10 @@ interface DashboardLayoutProps {
   exportRenderRef?: React.MutableRefObject<(() => void) | null>
   exportHideHandlesRef?: React.MutableRefObject<(() => void) | null>
   exportShowHandlesRef?: React.MutableRefObject<(() => void) | null>
+  exportResetStagePositionRef?: React.MutableRefObject<(() => void) | null>
+  exportRestoreStagePositionRef?: React.MutableRefObject<(() => void) | null>
+  exportResizeForExportRef?: React.MutableRefObject<((width: number, height: number) => void) | null>
+  exportRestoreFromExportRef?: React.MutableRefObject<(() => void) | null>
 }
 
 export default function DashboardLayout({ 
@@ -315,6 +319,10 @@ export default function DashboardLayout({
   exportRenderRef,
   exportHideHandlesRef,
   exportShowHandlesRef,
+  exportResetStagePositionRef,
+  exportRestoreStagePositionRef,
+  exportResizeForExportRef,
+  exportRestoreFromExportRef,
 }: DashboardLayoutProps) {
   const router = useRouter()
   const supabase = createClient()
@@ -572,7 +580,7 @@ export default function DashboardLayout({
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement
-      if (!target.closest('[data-canvas-container]')) {
+      if (!target.closest('[data-canvas-container]') && !target.closest('aside')) {
         setIsCanvasSelected(false)
       }
     }
@@ -4586,11 +4594,16 @@ export default function DashboardLayout({
         duration={contentDuration}
         canvasWidth={canvasWidth}
         canvasHeight={canvasHeight}
+        background={background}
         onSeek={(time) => timeline.setCurrentTime(time)}
         onRender={() => exportRenderRef?.current?.()}
         onSetPlaying={(playing) => timeline.setPlaying(playing)}
         onHideHandles={() => exportHideHandlesRef?.current?.()}
         onShowHandles={() => exportShowHandlesRef?.current?.()}
+        onResetStagePosition={() => exportResetStagePositionRef?.current?.()}
+        onRestoreStagePosition={() => exportRestoreStagePositionRef?.current?.()}
+        onResizeForExport={(width, height) => exportResizeForExportRef?.current?.(width, height)}
+        onRestoreFromExport={() => exportRestoreFromExportRef?.current?.()}
       />
     </div>
   )

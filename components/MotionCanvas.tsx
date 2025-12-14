@@ -88,7 +88,11 @@ interface MotionCanvasProps {
     canvas: HTMLCanvasElement, 
     render: () => void, 
     hideHandles: () => void,
-    showHandles: () => void
+    showHandles: () => void,
+    resetStagePosition: () => void,
+    restoreStagePosition: () => void,
+    resizeForExport: (width: number, height: number) => void,
+    restoreFromExport: () => void
   ) => void
 }
 
@@ -259,6 +263,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   // ... (rest of component)
   const dragRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null)
   const graphicsByIdRef = useRef<Record<string, PIXI.Graphics>>({})
+  // Export dimensions override - when set, updateGraphicsFromTimeline uses these instead of container bounds
+  const exportDimensionsRef = useRef<{ width: number; height: number } | null>(null)
   const maskGraphicsByIdRef = useRef<Record<string, PIXI.Graphics>>({})
   const outlinesByIdRef = useRef<Record<string, PIXI.Graphics>>({})
   const filtersByLayerIdRef = useRef<Record<string, PIXI.Filter[]>>({})
@@ -269,6 +275,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   const resizeHandlesRef = useRef<Record<string, PIXI.Graphics[]>>({})
   const handlesByIdRef = useRef<Record<string, PIXI.Graphics[]>>({}) // For text layer resize handles
   const spotlightOverlayRef = useRef<PIXI.Graphics | null>(null) // For pan_zoom spotlight blur effect
+  // Ref to store updateGraphicsFromTimeline function for calling from restoreFromExport
+  const updateGraphicsFnRef = useRef<(() => void) | null>(null)
   // Track layer dimensions, color, and rotation to detect changes from control panel
   const layerDimensionsRef = useRef<Record<string, { width: number; height: number; fillColor: number; rotation: number }>>({})
   const resizeStateRef = useRef<{
@@ -655,11 +663,95 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             app.render()
           }
           
+          // Store current stage position for restore
+          let savedStageX = 0
+          let savedStageY = 0
+          
+          // Function to reset stage position to (0,0) for export
+          const resetStagePosition = () => {
+            if (app.stage) {
+              savedStageX = app.stage.position.x
+              savedStageY = app.stage.position.y
+              app.stage.position.set(0, 0)
+              app.render()
+            }
+          }
+          
+          // Function to restore stage position after export
+          const restoreStagePosition = () => {
+            if (app.stage) {
+              app.stage.position.set(savedStageX, savedStageY)
+              app.render()
+            }
+          }
+          
+          // Store original canvas dimensions for restore (LOGICAL dimensions, not physical)
+          // app.canvas.width is scaled by devicePixelRatio, but renderer.resize() expects logical dimensions
+          const dpr = window.devicePixelRatio || 1
+          let savedLogicalWidth = app.canvas.width / dpr
+          let savedLogicalHeight = app.canvas.height / dpr
+          let savedCSSWidth = app.canvas.style.width
+          let savedCSSHeight = app.canvas.style.height
+          
+          // Function to resize PIXI renderer to exact export dimensions
+          const resizeForExport = (width: number, height: number) => {
+            // Save current LOGICAL dimensions (divide by DPR since canvas.width is scaled)
+            savedLogicalWidth = app.canvas.width / dpr
+            savedLogicalHeight = app.canvas.height / dpr
+            savedCSSWidth = app.canvas.style.width
+            savedCSSHeight = app.canvas.style.height
+            
+            // Save current stage position BEFORE resetting to 0,0
+            savedStageX = app.stage.position.x
+            savedStageY = app.stage.position.y
+            
+            // Set export dimensions for updateGraphicsFromTimeline to use
+            exportDimensionsRef.current = { width, height }
+            
+            // Resize the renderer to exact export dimensions
+            app.renderer.resize(width, height)
+            
+            // Update canvas CSS to match
+            app.canvas.style.width = `${width}px`
+            app.canvas.style.height = `${height}px`
+            
+            // Reset stage position to (0,0) so content is centered
+            app.stage.position.set(0, 0)
+            
+            app.render()
+          }
+          
+          // Function to restore original canvas dimensions after export
+          const restoreFromExport = () => {
+            // Clear export dimensions override
+            exportDimensionsRef.current = null
+            
+            // Restore renderer to original LOGICAL dimensions
+            // renderer.resize() takes logical dimensions and applies devicePixelRatio internally
+            app.renderer.resize(savedLogicalWidth, savedLogicalHeight)
+            
+            // Restore CSS dimensions
+            app.canvas.style.width = savedCSSWidth
+            app.canvas.style.height = savedCSSHeight
+            
+            // Restore stage position
+            app.stage.position.set(savedStageX, savedStageY)
+            
+            // Recalculate content positions with container dimensions
+            updateGraphicsFnRef.current?.()
+            
+            app.render()
+          }
+          
           onCanvasReady(
             app.canvas as HTMLCanvasElement, 
             () => app.render(),
             hideHandles,
-            showHandles
+            showHandles,
+            resetStagePosition,
+            restoreStagePosition,
+            resizeForExport,
+            restoreFromExport
           )
         }
       }
@@ -679,14 +771,24 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   // Apply timeline-sampled transforms onto Pixi graphics so playhead/scrub reflects on-canvas
   // Helper to update graphics from timeline state
   // Optional sampledData parameter for direct playback updates (bypasses React)
-  const updateGraphicsFromTimeline = (sampledData?: Record<string, any>) => {
+  const updateGraphicsFromTimeline = (sampledData?: Record<string, any>, manualPlayhead?: number) => {
     if (!containerRef.current) return
-    const bounds = containerRef.current.getBoundingClientRect()
-    const screenWidth = bounds.width || 1
-    const screenHeight = bounds.height || 1
+    
+    // During export, use export dimensions for positioning; otherwise use container bounds
+    let screenWidth: number
+    let screenHeight: number
+    if (exportDimensionsRef.current) {
+      screenWidth = exportDimensionsRef.current.width
+      screenHeight = exportDimensionsRef.current.height
+    } else {
+      const bounds = containerRef.current.getBoundingClientRect()
+      screenWidth = bounds.width || 1
+      screenHeight = bounds.height || 1
+    }
     
     // Use provided sampledData (for playback) or fall back to React's sampledTimeline
     const timelineData = sampledData || sampledTimeline
+    const currentPlayhead = manualPlayhead ?? playhead
     
     renderLayers.forEach((layer, idx) => {
       const { id } = layer
@@ -821,7 +923,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       // If playhead < startTime or playhead > startTime + duration, alpha = 0
       const trackStartTime = track?.startTime ?? 0
       const trackDuration = track?.duration ?? 2000
-      const isVisibleInTime = playhead >= trackStartTime && playhead <= trackStartTime + trackDuration
+      const isVisibleInTime = currentPlayhead >= trackStartTime && currentPlayhead <= trackStartTime + trackDuration
       
       let finalOpacity = state.opacity
       let transitionScale = 1
@@ -844,10 +946,10 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           const clipEnd = clipStart + (clip.duration ?? 1000)
           
           // Only process if playhead is within this transition
-          if (playhead < clipStart || playhead > clipEnd) return
+          if (currentPlayhead < clipStart || currentPlayhead > clipEnd) return
           
           const clipDuration = clip.duration ?? 1000
-          const progress = Math.min(1, Math.max(0, (playhead - clipStart) / clipDuration))
+          const progress = Math.min(1, Math.max(0, (currentPlayhead - clipStart) / clipDuration))
           
           // Check if this layer is the "from" layer (fades OUT)
           if (clip.layerId === id) {
@@ -1300,6 +1402,11 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   useEffect(() => {
     updateGraphicsFromTimeline()
   }, [orderedLayers, layers, selectedLayerId])
+  
+  // Store updateGraphicsFromTimeline in ref for restoreFromExport to call
+  useEffect(() => {
+    updateGraphicsFnRef.current = updateGraphicsFromTimeline
+  })
 
   // HIGH-PERFORMANCE PLAYBACK: Use PixiJS ticker to update graphics at 60fps
   // This bypasses React completely during playback for smooth animation
@@ -1338,7 +1445,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       }
       
       // Update graphics directly (bypasses React state)
-      updateGraphicsFromTimeline(sampled)
+      updateGraphicsFromTimeline(sampled, currentPlayhead)
     }
     
     // Add to PixiJS ticker for 60fps updates

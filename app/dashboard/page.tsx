@@ -100,6 +100,10 @@ function DashboardContent() {
   const exportRenderRef = useRef<(() => void) | null>(null)
   const exportHideHandlesRef = useRef<(() => void) | null>(null)
   const exportShowHandlesRef = useRef<(() => void) | null>(null)
+  const exportResetStagePositionRef = useRef<(() => void) | null>(null)
+  const exportRestoreStagePositionRef = useRef<(() => void) | null>(null)
+  const exportResizeForExportRef = useRef<((width: number, height: number) => void) | null>(null)
+  const exportRestoreFromExportRef = useRef<(() => void) | null>(null)
   
   const [background, setBackground] = useState<BackgroundSettings>({
     mode: 'transparent',
@@ -2179,6 +2183,10 @@ function DashboardContent() {
         exportRenderRef={exportRenderRef}
         exportHideHandlesRef={exportHideHandlesRef}
         exportShowHandlesRef={exportShowHandlesRef}
+        exportResetStagePositionRef={exportResetStagePositionRef}
+        exportRestoreStagePositionRef={exportRestoreStagePositionRef}
+        exportResizeForExportRef={exportResizeForExportRef}
+        exportRestoreFromExportRef={exportRestoreFromExportRef}
       >
         <MotionCanvas 
           template={selectedTemplate} 
@@ -2208,11 +2216,15 @@ function DashboardContent() {
           onCanvasBackgroundClick={handleDeselectShape}
           selectedClipId={selectedClipId}
           onUpdatePanZoomRegions={handleUpdatePanZoomRegions}
-          onCanvasReady={(canvas, render, hideHandles, showHandles) => {
+          onCanvasReady={(canvas, render, hideHandles, showHandles, resetStagePosition, restoreStagePosition, resizeForExport, restoreFromExport) => {
             exportCanvasRef.current = canvas
             exportRenderRef.current = render
             exportHideHandlesRef.current = hideHandles
             exportShowHandlesRef.current = showHandles
+            exportResetStagePositionRef.current = resetStagePosition
+            exportRestoreStagePositionRef.current = restoreStagePosition
+            exportResizeForExportRef.current = resizeForExport
+            exportRestoreFromExportRef.current = restoreFromExport
           }}
         />
       </DashboardLayout>

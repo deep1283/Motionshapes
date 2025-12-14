@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { X, Download, Monitor } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { exportToWebM, downloadBlob, estimateFileSize, ExportQuality, ExportFPS, convertToMP4 } from '@/lib/video-exporter'
+import { exportToWebM, downloadBlob, estimateFileSize, ExportQuality, ExportFPS, ExportBackground, convertToMP4 } from '@/lib/video-exporter'
 
 interface ExportModalProps {
   isOpen: boolean
@@ -12,11 +12,16 @@ interface ExportModalProps {
   duration: number // ms
   canvasWidth: number
   canvasHeight: number
+  background?: ExportBackground
   onSeek: (time: number) => void
   onRender: () => void
   onSetPlaying: (playing: boolean) => void
   onHideHandles?: () => void
   onShowHandles?: () => void
+  onResetStagePosition?: () => void
+  onRestoreStagePosition?: () => void
+  onResizeForExport?: (width: number, height: number) => void
+  onRestoreFromExport?: () => void
 }
 
 export function ExportModal({
@@ -26,11 +31,16 @@ export function ExportModal({
   duration,
   canvasWidth,
   canvasHeight,
+  background,
   onSeek,
   onRender,
   onSetPlaying,
   onHideHandles,
   onShowHandles,
+  onResetStagePosition,
+  onRestoreStagePosition,
+  onResizeForExport,
+  onRestoreFromExport,
 }: ExportModalProps) {
   const [quality, setQuality] = useState<ExportQuality>('standard')
   const [fps, setFps] = useState<ExportFPS>(30)
@@ -84,20 +94,38 @@ export function ExportModal({
     // Directly hide PIXI handles (more reliable than waiting for React re-render)
     onHideHandles?.()
     
+    // Resize PIXI canvas to exact viewport dimensions for clean export
+    // This eliminates black bars by making the canvas exactly match the export size
+    onResizeForExport?.(canvasWidth, canvasHeight)
+    
     // Seek to start and force render to ensure UI is updated before capture
     onSeek(0)
     onRender()
     
-    // Wait for PIXI to render the hidden handles
+    // Wait for PIXI to render at new size
     await new Promise(resolve => requestAnimationFrame(resolve))
     await new Promise(resolve => requestAnimationFrame(resolve))
+    await new Promise(resolve => setTimeout(resolve, 100))
 
     try {
+      // For MP4 with transparent background, force black background
+      // (H.264 + yuv420p doesn't support alpha channel)
+      let exportBackground = background
+      if (format === 'mp4' && (!background || background.mode === 'transparent')) {
+        exportBackground = {
+          mode: 'solid',
+          solid: '#000000',
+          from: '#000000',
+          to: '#000000',
+        }
+      }
+
       const blob = await exportToWebM({
         canvas: canvasRef,
         duration,
         fps,
         quality,
+        background: exportBackground,
         onProgress: (prog, frame, total, phase) => {
           setProgress(prog)
           setCurrentFrame(frame)
@@ -129,6 +157,11 @@ export function ExportModal({
       console.error('Export failed:', error)
       alert('Export failed. Please try again.')
     } finally {
+      // Restore canvas size and stage position
+      onRestoreFromExport?.()
+      // Force position recalculation with container dimensions
+      onSeek(0)
+      onRender()
       // Reset playing state and restore handles
       onShowHandles?.()
       onSetPlaying(false)
@@ -154,14 +187,27 @@ export function ExportModal({
             </div>
             <h2 className="text-lg font-semibold text-white">Export Animation</h2>
           </div>
-          {!isExporting && (
-            <button
-              onClick={onClose}
-              className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors"
-            >
-              <X className="w-4 h-4 text-neutral-400" />
-            </button>
-          )}
+          <button
+            onClick={() => {
+              if (isExporting) {
+                // Allow cancel during export - confirm first
+                if (confirm('Export is in progress. Cancel and return to dashboard?')) {
+                  // Restore state and close
+                  onRestoreStagePosition?.()
+                  onShowHandles?.()
+                  onSetPlaying(false)
+                  setIsExporting(false)
+                  onClose()
+                }
+              } else {
+                onClose()
+              }
+            }}
+            className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors"
+            title={isExporting ? "Cancel export" : "Close"}
+          >
+            <X className="w-4 h-4 text-neutral-400" />
+          </button>
         </div>
         
         {/* Format Tabs */}

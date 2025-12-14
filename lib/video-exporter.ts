@@ -12,11 +12,22 @@
 export type ExportQuality = 'standard' | 'high'
 export type ExportFPS = 24 | 30 | 60
 
+// Background settings for export
+export interface ExportBackground {
+  mode: 'transparent' | 'solid' | 'gradient'
+  solid: string
+  from: string
+  to: string
+  gradientType?: 'linear' | 'radial'
+  gradientPosition?: number  // 0-1's for radial position
+}
+
 interface ExportOptions {
   canvas: HTMLCanvasElement
   duration: number // ms
   fps: ExportFPS
   quality: ExportQuality
+  background?: ExportBackground
   onProgress?: (progress: number, currentFrame: number, totalFrames: number, phase: 'capturing' | 'encoding') => void
   onSeek: (time: number) => void // Function to seek the timeline
   onRender: () => void // Function to force render
@@ -30,30 +41,60 @@ const QUALITY_BITRATE: Record<ExportQuality, number> = {
 
 /**
  * Capture a single frame from canvas as ImageData
- * Works with both 2D and WebGL canvases by drawing to a temporary 2D canvas
+ * Draws background first (if specified), then PIXI content on top.
+ * Works with both 2D and WebGL canvases by drawing to a temporary 2D canvas.
  */
-function captureFrame(canvas: HTMLCanvasElement): ImageData {
+function captureFrame(canvas: HTMLCanvasElement, background?: ExportBackground): ImageData {
   // Create a temporary 2D canvas to capture the frame
-  // This works for both WebGL and 2D source canvases
   const tempCanvas = document.createElement('canvas')
   tempCanvas.width = canvas.width
   tempCanvas.height = canvas.height
   const ctx = tempCanvas.getContext('2d', { willReadFrequently: true })
   if (!ctx) throw new Error('Could not create 2D context for frame capture')
   
-  // Draw the source canvas (WebGL or 2D) to our 2D canvas
+  // Draw background FIRST (if not transparent)
+  if (background && background.mode !== 'transparent') {
+    if (background.mode === 'solid') {
+      ctx.fillStyle = background.solid
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+    } else if (background.mode === 'gradient') {
+      let gradient: CanvasGradient
+      if (background.gradientType === 'radial') {
+        // Radial gradient from center
+        const centerX = canvas.width / 2
+        const centerY = canvas.height / 2
+        const radius = Math.max(canvas.width, canvas.height) / 2
+        gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius)
+      } else {
+        // Linear gradient top to bottom
+        gradient = ctx.createLinearGradient(0, 0, 0, canvas.height)
+      }
+      gradient.addColorStop(0, background.from)
+      gradient.addColorStop(1, background.to)
+      ctx.fillStyle = gradient
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+    }
+  }
+  
+  // Draw PIXI canvas on top
   ctx.drawImage(canvas, 0, 0)
   
-  // Now we can get the ImageData from the 2D canvas
   return ctx.getImageData(0, 0, canvas.width, canvas.height)
 }
 
 /**
- * Wait for next animation frame + small delay for render completion
+ * Wait for next animation frame + extra delay to ensure full render quality
  */
-async function waitForRender(): Promise<void> {
+async function waitForRender(isFirstFrame: boolean = false): Promise<void> {
+  // Wait for 2 animation frames to ensure render is complete
   await new Promise(resolve => requestAnimationFrame(resolve))
   await new Promise(resolve => requestAnimationFrame(resolve))
+  
+  // For first frame, add extra delay to ensure textures/images are fully loaded
+  if (isFirstFrame) {
+    await new Promise(resolve => setTimeout(resolve, 100))
+    await new Promise(resolve => requestAnimationFrame(resolve))
+  }
 }
 
 /**
@@ -63,7 +104,7 @@ async function waitForRender(): Promise<void> {
  * This ensures smooth output regardless of system performance during capture.
  */
 export async function exportToWebM(options: ExportOptions): Promise<Blob> {
-  const { canvas, duration, fps, quality, onProgress, onSeek, onRender } = options
+  const { canvas, duration, fps, quality, background, onProgress, onSeek, onRender } = options
   
   const frameInterval = 1000 / fps
   const totalFrames = Math.ceil(duration / frameInterval)
@@ -76,16 +117,18 @@ export async function exportToWebM(options: ExportOptions): Promise<Blob> {
   
   for (let frame = 0; frame < totalFrames; frame++) {
     const time = frame * frameInterval
+    const isFirstFrame = frame === 0
     
     // Seek timeline to this time
     onSeek(time)
     
     // Force render and wait for it to complete
+    // First frame gets extra delay for quality
     onRender()
-    await waitForRender()
+    await waitForRender(isFirstFrame)
     
-    // Capture frame
-    frames.push(captureFrame(canvas))
+    // Capture frame with background
+    frames.push(captureFrame(canvas, background))
     
     // Report progress (Phase 1: 0% - 50%)
     if (onProgress) {
@@ -98,7 +141,7 @@ export async function exportToWebM(options: ExportOptions): Promise<Blob> {
   // PHASE 2: Encode frames to video
   // ============================================
   
-  // Create offscreen canvas for encoding
+  // Create offscreen canvas for encoding at canvas size
   const encodeCanvas = document.createElement('canvas')
   encodeCanvas.width = canvas.width
   encodeCanvas.height = canvas.height
@@ -194,6 +237,9 @@ export function estimateFileSize(
 /**
  * Convert WebM blob to MP4 using FFmpeg.wasm
  * FFmpeg is lazy-loaded on first use (~25MB download, cached after)
+ * 
+ * Note: Requires Cross-Origin-Opener-Policy and Cross-Origin-Embedder-Policy
+ * headers to be set in next.config.ts for SharedArrayBuffer support.
  */
 export async function convertToMP4(
   webmBlob: Blob,
@@ -205,49 +251,67 @@ export async function convertToMP4(
   
   const ffmpeg = new FFmpeg()
   
-  // Load FFmpeg WASM (downloads ~25MB on first load, cached after)
-  if (!ffmpeg.loaded) {
-    onProgress?.(0.1) // 10% - loading FFmpeg
-    await ffmpeg.load()
+  // Set up progress handler for real-time updates
+  ffmpeg.on('progress', ({ progress }) => {
+    // Map FFmpeg progress (0-1) to our progress range (0.3 - 0.9)
+    const mappedProgress = 0.3 + (progress * 0.6)
+    onProgress?.(mappedProgress)
+  })
+  
+  // Set up log handler for debugging
+  ffmpeg.on('log', ({ message }) => {
+    console.log('[FFmpeg]', message)
+  })
+  
+  try {
+    // Load FFmpeg WASM (downloads ~25MB on first load, cached after)
+    if (!ffmpeg.loaded) {
+      onProgress?.(0.1) // 10% - loading FFmpeg
+      await ffmpeg.load()
+    }
+    
+    onProgress?.(0.2) // 20% - FFmpeg loaded
+    
+    // Write WebM to FFmpeg virtual filesystem
+    const inputData = await fetchFile(webmBlob)
+    await ffmpeg.writeFile('input.webm', inputData)
+    
+    onProgress?.(0.3) // 30% - Input written
+    
+    // Convert WebM to MP4 using H.264 codec
+    // -c:v libx264 = use H.264 video codec  
+    // -preset ultrafast = fastest encoding (less compression but much faster)
+    // -crf 23 = quality level (18-28, lower = better)
+    // -pix_fmt yuv420p = ensure compatibility with all players
+    await ffmpeg.exec([
+      '-i', 'input.webm',
+      '-c:v', 'libx264',
+      '-preset', 'ultrafast', // Changed from 'fast' for speed
+      '-crf', '23',
+      '-pix_fmt', 'yuv420p',
+      '-movflags', '+faststart', // Optimize for web streaming
+      'output.mp4'
+    ])
+    
+    onProgress?.(0.9) // 90% - Conversion complete
+    
+    // Read the output MP4
+    const outputData = await ffmpeg.readFile('output.mp4')
+    
+    // Clean up
+    await ffmpeg.deleteFile('input.webm')
+    await ffmpeg.deleteFile('output.mp4')
+    
+    onProgress?.(1) // 100% - Done
+    
+    // Return as Blob (convert Uint8Array to proper ArrayBuffer)
+    const buffer = outputData instanceof Uint8Array 
+      ? outputData.buffer.slice(outputData.byteOffset, outputData.byteOffset + outputData.byteLength) as ArrayBuffer
+      : outputData as BlobPart
+    return new Blob([buffer], { type: 'video/mp4' })
+  } catch (error) {
+    console.error('[FFmpeg] Conversion failed:', error)
+    throw new Error('MP4 conversion failed. Try exporting as WebM instead.')
   }
-  
-  onProgress?.(0.2) // 20% - FFmpeg loaded
-  
-  // Write WebM to FFmpeg virtual filesystem
-  const inputData = await fetchFile(webmBlob)
-  await ffmpeg.writeFile('input.webm', inputData)
-  
-  onProgress?.(0.3) // 30% - Input written
-  
-  // Convert WebM to MP4 using H.264 codec
-  // -c:v libx264 = use H.264 video codec
-  // -preset fast = balance between speed and compression
-  // -crf 23 = quality level (18-28, lower = better)
-  // -pix_fmt yuv420p = ensure compatibility with all players
-  await ffmpeg.exec([
-    '-i', 'input.webm',
-    '-c:v', 'libx264',
-    '-preset', 'fast',
-    '-crf', '23',
-    '-pix_fmt', 'yuv420p',
-    '-movflags', '+faststart', // Optimize for web streaming
-    'output.mp4'
-  ])
-  
-  onProgress?.(0.9) // 90% - Conversion complete
-  
-  // Read the output MP4
-  const outputData = await ffmpeg.readFile('output.mp4')
-  
-  // Clean up
-  await ffmpeg.deleteFile('input.webm')
-  await ffmpeg.deleteFile('output.mp4')
-  
-  onProgress?.(1) // 100% - Done
-  
-  // Return as Blob (convert Uint8Array to proper ArrayBuffer)
-  const buffer = outputData instanceof Uint8Array 
-    ? outputData.buffer.slice(outputData.byteOffset, outputData.byteOffset + outputData.byteLength) as ArrayBuffer
-    : outputData as BlobPart
-  return new Blob([buffer], { type: 'video/mp4' })
 }
+
