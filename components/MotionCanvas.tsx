@@ -1001,6 +1001,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       // Apply transition scale if modified
       if (transitionScale !== 1) {
         g.scale.set(finalScale * transitionScale)
+        // No need to adjust handles - transitions are brief and handles hidden during playback
       }
       
       g.alpha = hasOpacityAnim ? finalOpacity : (isVisibleInTime ? (finalOpacity < 1 ? finalOpacity : 1) : 0)
@@ -1035,6 +1036,15 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         // Apply Color Animation (Tint)
         // 1. Shapes (Graphics)
         g.tint = finalColor
+        
+        // Reset outline and resize handle tints so they don't inherit shape color
+        // (They are children of the container and inherit tint)
+        const outline = outlinesByIdRef.current[id]
+        if (outline) outline.tint = 0xffffff
+        const handles = resizeHandlesRef.current[id]
+        if (handles) {
+          handles.forEach(h => { h.tint = 0xffffff })
+        }
 
         // 2. Icons (Sprites)
         if (spritesByIdRef.current[id]) {
@@ -1706,7 +1716,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             { x: halfW, y: 0 },       // r
           ]
           
-          const edgeThickness = 2
+          const edgeThickness = 1
           const hitAreaSize = 12
           
           handles.forEach((h, i) => {
@@ -1730,6 +1740,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
               
               h.rect(-w / 2, -hDim / 2, w, hDim)
               h.fill(0x9333ea)
+              h.tint = 0xffffff // Prevent inheriting parent tint
             }
           })
         }
@@ -1977,6 +1988,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             const outline = new PIXI.Graphics()
             outline.rect(-layer.width / 2, -layer.height / 2, layer.width, layer.height)
             outline.stroke({ color: 0x9333ea, width: 2, alpha: 1 })
+            outline.tint = 0xffffff // Prevent inheriting parent tint
             outline.visible = false
             outline.eventMode = 'none'
             container.addChild(outline)
@@ -1984,7 +1996,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             
             // Add bounding box resize handles (4 corners + 4 edges)
             const handleSize = 8
-            const edgeThickness = 2
+            const edgeThickness = 1
             const hitAreaSize = 12
             const halfW = layer.width / 2
             const halfH = layer.height / 2
@@ -2006,6 +2018,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
               const handleGfx = new PIXI.Graphics()
               handleGfx.rect(-w / 2, -h / 2, w, h)
               handleGfx.fill(0x9333ea)
+              handleGfx.tint = 0xffffff // Prevent inheriting parent tint
               
               // Set larger hit area for easier grabbing
               if (['t', 'b'].includes(handleType)) {
@@ -2096,6 +2109,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             const outline = new PIXI.Graphics()
             outline.rect(-layer.width / 2, -layer.height / 2, layer.width, layer.height)
             outline.stroke({ color: 0x9333ea, width: 2, alpha: 1 })
+            outline.tint = 0xffffff // Prevent inheriting parent tint
             outline.visible = false
             outline.eventMode = 'none'
             container.addChild(outline)
@@ -2103,7 +2117,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             
             // Add resize handles (4 corners + 4 edges like images)
             const handleSize = 8
-            const edgeThickness = 2
+            const edgeThickness = 1
             const hitAreaSize = 12
             const halfW = layer.width / 2
             const halfH = layer.height / 2
@@ -2123,6 +2137,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
               const handleGfx = new PIXI.Graphics()
               handleGfx.rect(-w / 2, -h / 2, w, h)
               handleGfx.fill(0x9333ea)
+              handleGfx.tint = 0xffffff // Prevent inheriting parent tint
               
               if (['t', 'b'].includes(handleType)) {
                 handleGfx.hitArea = new PIXI.Rectangle(-w / 2, -hitAreaSize / 2, w, hitAreaSize)
@@ -2395,6 +2410,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           const outline = new PIXI.Graphics()
           outline.rect(-boxWidth / 2, -boxHeight / 2, boxWidth, boxHeight)
           outline.stroke({ color: 0xA855F7, width: 2, alpha: 1 })
+          outline.tint = 0xffffff // Prevent inheriting parent tint
           outline.visible = false
           outline.eventMode = 'none'
           container.addChild(outline)
@@ -2402,7 +2418,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           
           // Add bounding box resize handles (4 corners + 4 edges) - same as shapes
           const handleSize = 8
-          const edgeThickness = 2
+          const edgeThickness = 1
           const hitAreaSize = 12
           const halfW = boxWidth / 2
           const halfH = boxHeight / 2
@@ -2424,6 +2440,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             const handleGfx = new PIXI.Graphics()
             handleGfx.rect(-w / 2, -h / 2, w, h)
             handleGfx.fill(0xA855F7)
+            handleGfx.tint = 0xffffff // Prevent inheriting parent tint
             
             // Set larger hit area for easier grabbing
             if (['t', 'b'].includes(handleType)) {
@@ -2549,36 +2566,11 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         g.cursor = 'pointer'
         g.hitArea = new PIXI.Rectangle(-layer.width / 2, -layer.height / 2, layer.width, layer.height)
         // Create a separate graphics object for the selection outline
+        // Always use rectangular bounding box (not shape-following outline)
         const outline = new PIXI.Graphics()
-        switch (layer.shapeKind) {
-          case 'square':
-            outline.rect(-layer.width / 2, -layer.height / 2, layer.width, layer.height)
-            break
-          case 'heart':
-            drawHeart(outline, layer.width, layer.height)
-            break
-          case 'star':
-            drawStar(outline, layer.width, layer.height)
-            break
-          case 'triangle':
-            drawTriangle(outline, layer.width, layer.height)
-            break
-          case 'pill':
-            drawPill(outline, layer.width, layer.height)
-            break
-          case 'like':
-          case 'comment':
-          case 'share':
-          case 'cursor':
-            // For SVG icon shapes, draw a simple rectangle outline
-            outline.rect(-layer.width / 2, -layer.height / 2, layer.width, layer.height)
-            break
-          case 'circle':
-          default:
-            outline.circle(0, 0, layer.width / 2)
-            break
-        }
+        outline.rect(-layer.width / 2, -layer.height / 2, layer.width, layer.height)
         outline.stroke({ color: 0x9333ea, width: 2, alpha: 1 })
+        outline.tint = 0xffffff // Prevent inheriting parent tint
         outline.visible = false // Hidden by default
         outline.eventMode = 'none' // CRITICAL: Don't intercept pointer events
         g.addChild(outline)
@@ -2608,6 +2600,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           const handleGfx = new PIXI.Graphics()
           handleGfx.rect(-w / 2, -h / 2, w, h)
           handleGfx.fill(0x9333ea)
+          handleGfx.tint = 0xffffff // Prevent inheriting parent tint
           
           // Set larger hit area for easier grabbing
           if (['t', 'b'].includes(handleType)) {
@@ -3284,7 +3277,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
               const handles = resizeHandlesRef.current[layer.id]
               if (handles && handles.length === 8) {
                 const handleSize = 8
-                const edgeThickness = 2
+                const edgeThickness = 1
                 const hitAreaSize = 12
                 
                 // Handle positions: tl, tr, br, bl, t, b, l, r
@@ -3415,42 +3408,20 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       // Update hit area
       g.hitArea = new PIXI.Rectangle(-layer.width / 2, -layer.height / 2, layer.width, layer.height)
       
-        // Update outline for selection
+        // Update outline for selection - always use rectangular bounding box
         const outline = outlinesByIdRef.current[layer.id]
         if (outline && outline instanceof PIXI.Graphics) {
           outline.clear()
-          if (layer.shapeKind === 'heart') {
-            drawHeartPath(outline, layer.width, layer.height)
-          } else if (layer.shapeKind === 'star') {
-            const spikes = 5, rx = layer.width / 2, ry = layer.height / 2
-            const innerRx = rx * 0.5, innerRy = ry * 0.5
-            let rotation = Math.PI / 2 * 3
-          outline.moveTo(0, -ry)
-          for (let i = 0; i < spikes; i++) {
-            outline.lineTo(Math.cos(rotation) * rx, Math.sin(rotation) * ry)
-            rotation += Math.PI / spikes
-            outline.lineTo(Math.cos(rotation) * innerRx, Math.sin(rotation) * innerRy)
-            rotation += Math.PI / spikes
-          }
-          outline.closePath()
-        } else if (layer.shapeKind === 'triangle') {
-          outline.moveTo(-layer.width / 2, layer.height / 2)
-          outline.lineTo(layer.width / 2, layer.height / 2)
-          outline.lineTo(0, -layer.height / 2)
-          outline.closePath()
-        } else if (layer.shapeKind === 'circle') {
-          outline.ellipse(0, 0, layer.width / 2, layer.height / 2)
-        } else {
+          // Simple rectangular bounding box for all shapes
           outline.rect(-layer.width / 2, -layer.height / 2, layer.width, layer.height)
+          outline.stroke({ color: 0x9333ea, width: 2, alpha: 1 })
         }
-        outline.stroke({ color: 0x9333ea, width: 2, alpha: 1 })
-      }
       
       // Update handle positions and geometry (4 corners or 8 with edges)
       const handles = resizeHandlesRef.current[layer.id]
       if (handles) {
         const halfW = layer.width / 2, halfH = layer.height / 2
-        const edgeThickness = 2
+        const edgeThickness = 1
         const hitAreaSize = 12
         
         if (handles.length === 8) {
@@ -3491,6 +3462,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             }
             h.rect(-w / 2, -hDim / 2, w, hDim)
             h.fill(0x9333ea)
+            h.tint = 0xffffff // Prevent inheriting parent tint
           }
         } else {
           // 4 corner handles only

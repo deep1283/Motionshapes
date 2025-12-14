@@ -2230,10 +2230,14 @@ export default function DashboardLayout({
                               inputMode="numeric"
                               value={customColorDuration / 1000}
                               onChange={(e) => {
-                                const newDur = Number(e.target.value) * 1000
-                                setCustomColorDuration(newDur)
-                                const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'color')
-                                if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { duration: newDur })
+                                const filtered = e.target.value.replace(/[^0-9.]/g, '')
+                                const val = parseFloat(filtered)
+                                if (!isNaN(val) && val > 0) {
+                                  const newDur = val * 1000
+                                  setCustomColorDuration(newDur)
+                                  const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'color')
+                                  if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { duration: newDur })
+                                }
                               }}
                               className="w-full px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200 text-right pr-4 focus:outline-none focus:border-violet-500/50 transition-colors"
                             />
@@ -2300,10 +2304,15 @@ export default function DashboardLayout({
                               inputMode="numeric"
                               value={customResizeFromWidth}
                               onChange={(e) => {
-                                const val = Number(e.target.value)
-                                setCustomResizeFromWidth(val)
-                                const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
-                                if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { resizeFromWidth: val } })
+                                const filtered = e.target.value.replace(/[^0-9.-]/g, '')
+                                const val = parseFloat(filtered)
+                                if (!isNaN(val) && val >= 0) {
+                                  setCustomResizeFromWidth(val)
+                                  const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
+                                  if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { resizeFromWidth: val } })
+                                } else if (filtered === '' || filtered === '-') {
+                                  // Allow empty or typing minus sign
+                                }
                               }}
                               className="w-20 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-400 text-right focus:outline-none focus:border-violet-500/50"
                             />
@@ -2315,10 +2324,13 @@ export default function DashboardLayout({
                               inputMode="numeric"
                               value={customResizeFromHeight}
                               onChange={(e) => {
-                                const val = Number(e.target.value)
-                                setCustomResizeFromHeight(val)
-                                const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
-                                if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { resizeFromHeight: val } })
+                                const filtered = e.target.value.replace(/[^0-9.-]/g, '')
+                                const val = parseFloat(filtered)
+                                if (!isNaN(val) && val >= 0) {
+                                  setCustomResizeFromHeight(val)
+                                  const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
+                                  if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { resizeFromHeight: val } })
+                                }
                               }}
                               className="w-20 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-400 text-right focus:outline-none focus:border-violet-500/50"
                             />
@@ -2339,10 +2351,13 @@ export default function DashboardLayout({
                               inputMode="numeric"
                               value={customResizeToWidth}
                               onChange={(e) => {
-                                const val = Number(e.target.value)
-                                setCustomResizeToWidth(val)
-                                const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
-                                if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { resizeToWidth: val } })
+                                const filtered = e.target.value.replace(/[^0-9.-]/g, '')
+                                const val = parseFloat(filtered)
+                                if (!isNaN(val) && val >= 0) {
+                                  setCustomResizeToWidth(val)
+                                  const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
+                                  if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { resizeToWidth: val } })
+                                }
                               }}
                               className="w-20 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200 text-right focus:outline-none focus:border-violet-500/50"
                             />
@@ -2354,10 +2369,13 @@ export default function DashboardLayout({
                               inputMode="numeric"
                               value={customResizeToHeight}
                               onChange={(e) => {
-                                const val = Number(e.target.value)
-                                setCustomResizeToHeight(val)
-                                const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
-                                if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { resizeToHeight: val } })
+                                const filtered = e.target.value.replace(/[^0-9.-]/g, '')
+                                const val = parseFloat(filtered)
+                                if (!isNaN(val) && val >= 0) {
+                                  setCustomResizeToHeight(val)
+                                  const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
+                                  if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { resizeToHeight: val } })
+                                }
                               }}
                               className="w-20 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200 text-right focus:outline-none focus:border-violet-500/50"
                             />
@@ -2377,10 +2395,14 @@ export default function DashboardLayout({
                               inputMode="numeric"
                               value={customResizeDuration / 1000}
                               onChange={(e) => {
-                                const newDur = Number(e.target.value) * 1000
-                                setCustomResizeDuration(newDur)
-                                const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
-                                if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { duration: newDur })
+                                const filtered = e.target.value.replace(/[^0-9.]/g, '')
+                                const val = parseFloat(filtered)
+                                if (!isNaN(val) && val > 0) {
+                                  const newDur = val * 1000
+                                  setCustomResizeDuration(newDur)
+                                  const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
+                                  if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { duration: newDur })
+                                }
                               }}
                               className="w-full px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200 text-right pr-4 focus:outline-none focus:border-violet-500/50 transition-colors"
                             />
@@ -2443,10 +2465,13 @@ export default function DashboardLayout({
                             inputMode="numeric"
                             value={customRotateFromAngle}
                             onChange={(e) => {
-                              const val = Number(e.target.value)
-                              setCustomRotateFromAngle(val)
-                              const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'rotate')
-                              if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { rotateFromAngle: val } })
+                              const filtered = e.target.value.replace(/[^0-9.-]/g, '')
+                              const val = parseFloat(filtered)
+                              if (!isNaN(val)) {
+                                setCustomRotateFromAngle(val)
+                                const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'rotate')
+                                if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { rotateFromAngle: val } })
+                              }
                             }}
                             className="flex-1 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-400 text-right focus:outline-none focus:border-violet-500/50"
                           />
@@ -2465,10 +2490,13 @@ export default function DashboardLayout({
                             inputMode="numeric"
                             value={customRotateToAngle}
                             onChange={(e) => {
-                              const val = Number(e.target.value)
-                              setCustomRotateToAngle(val)
-                              const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'rotate')
-                              if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { rotateToAngle: val } })
+                              const filtered = e.target.value.replace(/[^0-9.-]/g, '')
+                              const val = parseFloat(filtered)
+                              if (!isNaN(val)) {
+                                setCustomRotateToAngle(val)
+                                const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'rotate')
+                                if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { rotateToAngle: val } })
+                              }
                             }}
                             className="flex-1 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-400 text-right focus:outline-none focus:border-violet-500/50"
                           />
@@ -2488,10 +2516,14 @@ export default function DashboardLayout({
                               inputMode="numeric"
                               value={(customRotateDuration / 1000).toFixed(1)}
                               onChange={(e) => {
-                                const val = Math.max(0.1, Number(e.target.value)) * 1000
-                                setCustomRotateDuration(val)
-                                const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'rotate')
-                                if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { duration: val })
+                                const filtered = e.target.value.replace(/[^0-9.]/g, '')
+                                const val = parseFloat(filtered)
+                                if (!isNaN(val) && val >= 0.1) {
+                                  const newDur = val * 1000
+                                  setCustomRotateDuration(newDur)
+                                  const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'rotate')
+                                  if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { duration: newDur })
+                                }
                               }}
                               className="w-12 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200 text-right focus:outline-none focus:border-violet-500/50"
                             />

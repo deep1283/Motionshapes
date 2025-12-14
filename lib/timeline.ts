@@ -257,12 +257,29 @@ export const sampleLayerTracks = (
   let pathResult: Vec2 | null = null
   let activePathId: string | undefined
   if (layer.paths && layer.paths.length > 0) {
+    // First pass: find a path that is CURRENTLY within its time range (actively animating)
     for (const clip of layer.paths) {
-      const p = samplePathClip(clip, time)
-      if (p) {
-        pathResult = p
-        activePathId = clip.id
-        break
+      if (time >= clip.startTime && time <= clip.startTime + clip.duration) {
+        const p = samplePathClip(clip, time)
+        if (p) {
+          pathResult = p
+          activePathId = clip.id
+          break
+        }
+      }
+    }
+    // Second pass: if no active path, use the last completed path (most recent end position)
+    if (!pathResult) {
+      let latestEndTime = -Infinity
+      for (const clip of layer.paths) {
+        if (time > clip.startTime + clip.duration) {
+          const endTime = clip.startTime + clip.duration
+          if (endTime > latestEndTime) {
+            latestEndTime = endTime
+            pathResult = clip.points[clip.points.length - 1]
+            activePathId = clip.id
+          }
+        }
       }
     }
   }
@@ -394,16 +411,33 @@ export const sampleLayerTracksUnified = (
     }
   }
 
-  // Handle paths
+  // Handle paths - prioritize active paths over completed ones
   let pathResult: Vec2 | null = null
   let activePathId: string | undefined
   if (layer.paths && layer.paths.length > 0) {
+    // First pass: find a path that is CURRENTLY within its time range (actively animating)
     for (const clip of layer.paths) {
-      const p = samplePathClip(clip, time)
-      if (p) {
-        pathResult = p
-        activePathId = clip.id
-        break
+      if (time >= clip.startTime && time <= clip.startTime + clip.duration) {
+        const p = samplePathClip(clip, time)
+        if (p) {
+          pathResult = p
+          activePathId = clip.id
+          break
+        }
+      }
+    }
+    // Second pass: if no active path, use the last completed path (most recent end position)
+    if (!pathResult) {
+      let latestEndTime = -Infinity
+      for (const clip of layer.paths) {
+        if (time > clip.startTime + clip.duration) {
+          const endTime = clip.startTime + clip.duration
+          if (endTime > latestEndTime) {
+            latestEndTime = endTime
+            pathResult = clip.points[clip.points.length - 1]
+            activePathId = clip.id
+          }
+        }
       }
     }
   }
