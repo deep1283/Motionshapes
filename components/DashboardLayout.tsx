@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import Image from 'next/image'
 import type { SVGProps } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -37,7 +37,11 @@ import {
   Undo,
   Redo,
   Type,
-  Sparkles
+  Sparkles,
+  ChevronUp,
+  ChevronDown,
+  ChevronRight,
+  Trash2
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
@@ -47,14 +51,406 @@ import { TemplatePreview } from '@/components/TemplatePreview'
 import TimelinePanel from '@/components/TimelinePanel'
 import FontPicker from '@/components/FontPicker'
 import { ExploreShapesModal } from '@/components/ExploreShapesModal'
+import { ExportModal } from '@/components/ExportModal'
 import { useTimeline, useTimelineActions } from '@/lib/timeline-store'
 
+const parseNum = (value: string, fallback: number = 0): number => {
+  const num = parseFloat(value)
+  return isNaN(num) ? fallback : num
+}
+
+const EASING_OPTIONS = [
+  { label: 'None', value: 'linear' },
+  { label: 'Ease In', value: 'easeInQuad' },
+  { label: 'Ease Out', value: 'easeOutQuad' },
+  { label: 'Ease In Out', value: 'easeInOutQuad' },
+  { label: 'Jittery (Quint)', value: 'easeInOutQuint' }
+]
+
+const ResizeClipItem = ({
+  clip,
+  index,
+  timeline,
+}: {
+  clip: any
+  index: number
+  timeline: any
+}) => {
+  const [expanded, setExpanded] = useState(true)
+  const [widthFrom, setWidthFrom] = useState(String(clip.parameters?.resizeFromWidth ?? 100))
+  const [heightFrom, setHeightFrom] = useState(String(clip.parameters?.resizeFromHeight ?? 100))
+  const [widthTo, setWidthTo] = useState(String(clip.parameters?.resizeToWidth ?? 100))
+  const [heightTo, setHeightTo] = useState(String(clip.parameters?.resizeToHeight ?? 100))
+  const [duration, setDuration] = useState(String(clip.duration ?? 800))
+
+  const [easing, setEasing] = useState(clip.parameters?.resizeEasing ?? 'linear')
+  const [anchor, setAnchor] = useState(clip.parameters?.resizeAnchor ?? 'middle')
+
+  useEffect(() => {
+    setWidthFrom(String(clip.parameters?.resizeFromWidth ?? 100))
+    setHeightFrom(String(clip.parameters?.resizeFromHeight ?? 100))
+    setWidthTo(String(clip.parameters?.resizeToWidth ?? 100))
+    setHeightTo(String(clip.parameters?.resizeToHeight ?? 100))
+    setDuration(String(clip.duration ?? 800))
+
+    setEasing(clip.parameters?.resizeEasing ?? 'linear')
+    setAnchor(clip.parameters?.resizeAnchor ?? 'middle')
+  }, [clip])
+
+  const updateParam = (key: string, value: any) => {
+    timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { [key]: value } })
+  }
+
+  return (
+    <div className="mt-4 rounded-xl border border-violet-500/20 bg-violet-500/5 overflow-hidden">
+      <div 
+        className="flex items-center justify-between p-3 bg-violet-500/10 cursor-pointer hover:bg-violet-500/20 transition-colors"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <div className="flex items-center gap-2">
+          <ChevronRight className={cn("w-3 h-3 text-violet-400 transition-transform", expanded && "rotate-90")} />
+          <span className="text-[10px] uppercase text-violet-300 font-medium">Resize {index + 1}</span>
+        </div>
+        <button
+          className="p-1 hover:bg-white/10 rounded group"
+          onClick={(e) => {
+            e.stopPropagation()
+            timeline.removeTemplateClip(clip.layerId, clip.id)
+          }}
+        >
+          <Trash2 className="w-3 h-3 text-neutral-500 group-hover:text-red-400 transition-colors" />
+        </button>
+      </div>
+      {expanded && (
+        <div className="p-4 pt-0 space-y-4 pt-4 border-t border-violet-500/20 bg-black/20">
+          {/* From */}
+          <div>
+            <span className="text-[10px] text-neutral-400 block mb-2">Initial value</span>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-neutral-500">Width</span>
+                <input type="text" inputMode="numeric" value={widthFrom} 
+                  onChange={e => setWidthFrom(e.target.value)}
+                  onBlur={e => {
+                    const v = parseNum(e.target.value, 0)
+                    setWidthFrom(String(v))
+                    updateParam('resizeFromWidth', v)
+                  }}
+                  className="w-20 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-400 text-right focus:outline-none focus:border-violet-500/50"
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-neutral-500">Height</span>
+                <input type="text" inputMode="numeric" value={heightFrom}
+                  onChange={e => setHeightFrom(e.target.value)}
+                  onBlur={e => {
+                    const v = parseNum(e.target.value, 0)
+                    setHeightFrom(String(v))
+                    updateParam('resizeFromHeight', v)
+                  }}
+                  className="w-20 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-400 text-right focus:outline-none focus:border-violet-500/50"
+                />
+              </div>
+            </div>
+          </div>
+          <div className="h-px bg-white/10" />
+          {/* To */}
+          <div>
+            <span className="text-[10px] text-neutral-400 block mb-2">To</span>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-neutral-500">Width</span>
+                <input type="text" inputMode="numeric" value={widthTo}
+                  onChange={e => setWidthTo(e.target.value)}
+                  onBlur={e => {
+                    const v = parseNum(e.target.value, 0)
+                    setWidthTo(String(v))
+                    updateParam('resizeToWidth', v)
+                  }}
+                  className="w-20 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200 text-right focus:outline-none focus:border-violet-500/50"
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-neutral-500">Height</span>
+                <input type="text" inputMode="numeric" value={heightTo}
+                  onChange={e => setHeightTo(e.target.value)}
+                  onBlur={e => {
+                    const v = parseNum(e.target.value, 0)
+                    setHeightTo(String(v))
+                    updateParam('resizeToHeight', v)
+                  }}
+                  className="w-20 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200 text-right focus:outline-none focus:border-violet-500/50"
+                />
+              </div>
+            </div>
+          </div>
+          <div className="h-px bg-white/10" />
+          {/* Duration & Easing */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] text-neutral-400">Duration</span>
+              <div className="relative w-16">
+                <input type="text" inputMode="numeric" value={parseFloat(duration) / 1000}
+                  onChange={e => {
+                    const val = parseFloat(e.target.value)
+                    if (!isNaN(val) && val > 0) {
+                      setDuration(String(val * 1000))
+                      timeline.updateTemplateClip(clip.layerId, clip.id, { duration: val * 1000 })
+                    }
+                  }}
+                  className="w-full px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200 text-right pr-4 focus:outline-none focus:border-violet-500/50"
+                />
+                <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-neutral-500">s</span>
+              </div>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-neutral-400">Easing</span>
+              <select value={easing}
+                onChange={e => {
+                  setEasing(e.target.value)
+                  updateParam('resizeEasing', e.target.value)
+                }}
+                className="px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200"
+              >
+                {EASING_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-neutral-400">Anchor</span>
+              <select value={anchor}
+                onChange={e => {
+                  setAnchor(e.target.value)
+                  updateParam('resizeAnchor', e.target.value)
+                }}
+                className="px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200"
+              >
+                <option value="middle">Middle</option>
+                <option value="top">Top</option>
+                <option value="bottom">Bottom</option>
+                <option value="left">Left</option>
+                <option value="right">Right</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+const RotateClipItem = ({
+  clip,
+  index,
+  timeline,
+}: {
+  clip: any
+  index: number
+  timeline: any
+}) => {
+  const [expanded, setExpanded] = useState(true)
+  const [angleFrom, setAngleFrom] = useState(String(clip.parameters?.rotateFromAngle ?? 0))
+  const [angleTo, setAngleTo] = useState(String(clip.parameters?.rotateToAngle ?? 0))
+  const [duration, setDuration] = useState(String(clip.duration ?? 800))
+  const [easing, setEasing] = useState(clip.parameters?.rotateEasing ?? 'linear')
+
+  useEffect(() => {
+    setAngleFrom(String(clip.parameters?.rotateFromAngle ?? 0))
+    setAngleTo(String(clip.parameters?.rotateToAngle ?? 0))
+    setDuration(String(clip.duration ?? 800))
+    setEasing(clip.parameters?.rotateEasing ?? 'linear')
+  }, [clip])
+
+  const updateParam = (key: string, value: any) => {
+    timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { [key]: value } })
+  }
+
+  return (
+    <div className="mt-4 rounded-xl border border-violet-500/20 bg-violet-500/5 overflow-hidden">
+      <div 
+        className="flex items-center justify-between p-3 bg-violet-500/10 cursor-pointer hover:bg-violet-500/20 transition-colors"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <div className="flex items-center gap-2">
+          <ChevronRight className={cn("w-3 h-3 text-violet-400 transition-transform", expanded && "rotate-90")} />
+          <span className="text-[10px] uppercase text-violet-300 font-medium">Rotate {index + 1}</span>
+        </div>
+        <button className="p-1 hover:bg-white/10 rounded group" onClick={(e) => { e.stopPropagation(); timeline.removeTemplateClip(clip.layerId, clip.id) }}>
+          <Trash2 className="w-3 h-3 text-neutral-500 group-hover:text-red-400 transition-colors" />
+        </button>
+      </div>
+      {expanded && (
+        <div className="p-4 pt-0 space-y-4 pt-4 border-t border-violet-500/20 bg-black/20">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-neutral-500">From</span>
+            <div className="relative w-20">
+              <input type="text" inputMode="numeric" value={angleFrom}
+                onChange={e => setAngleFrom(e.target.value)}
+                onBlur={e => {
+                  const v = parseNum(e.target.value, 0)
+                  setAngleFrom(String(v))
+                  updateParam('rotateFromAngle', v)
+                }}
+                className="w-full px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-400 text-right pr-4 focus:outline-none focus:border-violet-500/50"
+              />
+              <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-neutral-500">°</span>
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-neutral-500">To</span>
+            <div className="relative w-20">
+              <input type="text" inputMode="numeric" value={angleTo}
+                onChange={e => setAngleTo(e.target.value)}
+                onBlur={e => {
+                  const v = parseNum(e.target.value, 0)
+                  setAngleTo(String(v))
+                  updateParam('rotateToAngle', v)
+                }}
+                className="w-full px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200 text-right pr-4 focus:outline-none focus:border-violet-500/50"
+              />
+              <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-neutral-500">°</span>
+            </div>
+          </div>
+          <div className="h-px bg-white/10" />
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-neutral-400">Duration</span>
+            <div className="relative w-16">
+              <input type="text" inputMode="numeric" value={parseFloat(duration) / 1000}
+                onChange={e => {
+                   const val = parseFloat(e.target.value)
+                   if (!isNaN(val) && val > 0) {
+                     setDuration(String(val * 1000))
+                     timeline.updateTemplateClip(clip.layerId, clip.id, { duration: val * 1000 })
+                   }
+                }}
+                className="w-full px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200 text-right pr-4 focus:outline-none focus:border-violet-500/50"
+              />
+              <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-neutral-500">s</span>
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-neutral-400">Easing</span>
+            <select value={easing} onChange={e => { setEasing(e.target.value); updateParam('rotateEasing', e.target.value) }}
+              className="px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200"
+            >
+               {EASING_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+            </select>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+const ColorClipItem = ({
+  clip,
+  index,
+  timeline,
+}: {
+  clip: any
+  index: number
+  timeline: any
+}) => {
+  const [expanded, setExpanded] = useState(true)
+  const [colorFrom, setColorFrom] = useState(() => '#' + (clip.parameters?.colorFrom ?? 0xffffff).toString(16).toUpperCase().padStart(6, '0'))
+  const [colorTo, setColorTo] = useState(() => '#' + (clip.parameters?.colorTo ?? 0xffffff).toString(16).toUpperCase().padStart(6, '0'))
+  const [duration, setDuration] = useState(String(clip.duration ?? 800))
+  const [easing, setEasing] = useState(clip.parameters?.colorEasing ?? 'linear')
+
+  useEffect(() => {
+    setColorFrom('#' + (clip.parameters?.colorFrom ?? 0xffffff).toString(16).toUpperCase().padStart(6, '0'))
+    setColorTo('#' + (clip.parameters?.colorTo ?? 0xffffff).toString(16).toUpperCase().padStart(6, '0'))
+    setDuration(String(clip.duration ?? 800))
+    setEasing(clip.parameters?.colorEasing ?? 'linear')
+  }, [clip])
+
+  const updateParam = (key: string, value: any) => {
+    timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { [key]: value } })
+  }
+
+  const handleColorChange = (key: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value
+    if (key === 'colorFrom') setColorFrom(val)
+    else setColorTo(val)
+    
+    // If valid hex, update
+    if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
+       const num = parseInt(val.substring(1), 16)
+       updateParam(key, num)
+    }
+  }
+
+  return (
+     <div className="mt-4 rounded-xl border border-violet-500/20 bg-violet-500/5 overflow-hidden">
+      <div 
+        className="flex items-center justify-between p-3 bg-violet-500/10 cursor-pointer hover:bg-violet-500/20 transition-colors"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <div className="flex items-center gap-2">
+          <ChevronRight className={cn("w-3 h-3 text-violet-400 transition-transform", expanded && "rotate-90")} />
+          <span className="text-[10px] uppercase text-violet-300 font-medium">Color {index + 1}</span>
+        </div>
+        <button className="p-1 hover:bg-white/10 rounded group" onClick={(e) => { e.stopPropagation(); timeline.removeTemplateClip(clip.layerId, clip.id) }}>
+          <Trash2 className="w-3 h-3 text-neutral-500 group-hover:text-red-400 transition-colors" />
+        </button>
+      </div>
+      {expanded && (
+        <div className="p-4 pt-0 space-y-4 pt-4 border-t border-violet-500/20 bg-black/20">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-neutral-500">From</span>
+            <div className="flex items-center gap-2">
+               <input type="color" value={colorFrom} onChange={e => handleColorChange('colorFrom', e)} className="w-6 h-6 rounded bg-transparent border-0 cursor-pointer" />
+               <input type="text" value={colorFrom} onChange={e => handleColorChange('colorFrom', e)} className="w-16 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-400 text-right focus:outline-none focus:border-violet-500/50" />
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-neutral-500">To</span>
+            <div className="flex items-center gap-2">
+               <input type="color" value={colorTo} onChange={e => handleColorChange('colorTo', e)} className="w-6 h-6 rounded bg-transparent border-0 cursor-pointer" />
+               <input type="text" value={colorTo} onChange={e => handleColorChange('colorTo', e)} className="w-16 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200 text-right focus:outline-none focus:border-violet-500/50" />
+            </div>
+          </div>
+          <div className="h-px bg-white/10" />
+           <div className="flex items-center justify-between">
+            <span className="text-[10px] text-neutral-400">Duration</span>
+            <div className="relative w-16">
+              <input type="text" inputMode="numeric" value={parseFloat(duration) / 1000}
+                onChange={e => {
+                   const val = parseFloat(e.target.value)
+                   if (!isNaN(val) && val > 0) {
+                     setDuration(String(val * 1000))
+                     timeline.updateTemplateClip(clip.layerId, clip.id, { duration: val * 1000 })
+                   }
+                }}
+                className="w-full px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200 text-right pr-4 focus:outline-none focus:border-violet-500/50"
+              />
+              <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-neutral-500">s</span>
+            </div>
+          </div>
+           <div className="flex items-center justify-between">
+            <span className="text-[10px] text-neutral-400">Easing</span>
+            <select value={easing} onChange={e => { setEasing(e.target.value); updateParam('colorEasing', e.target.value) }}
+              className="px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200"
+            >
+               {EASING_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+            </select>
+          </div>
+        </div>
+      )}
+     </div>
+  )
+}
+
 export type BackgroundSettings = {
-  mode: 'solid' | 'gradient'
+  mode: 'transparent' | 'solid' | 'gradient'
   solid: string
   from: string
   to: string
   opacity: number
+  gradientType?: 'linear' | 'radial'
+  gradientPosition?: number  // 0-1, default 0.5 (center)
 }
 
 export type EffectType = 'glow' | 'dropShadow' | 'blur' | 'glitch' | 'pixelate' | 'sparkles' | 'confetti'
@@ -123,6 +519,7 @@ interface DashboardLayoutProps {
   // Timeline controls
   templateSpeed?: number
   rollDistance?: number
+  rollRotation?: number
   jumpHeight?: number
   jumpVelocity?: number
   popScale?: number
@@ -131,6 +528,7 @@ interface DashboardLayoutProps {
   popReappear?: boolean
   onTemplateSpeedChange?: (value: number) => void
   onRollDistanceChange?: (value: number) => void
+  onRollRotationChange?: (value: number) => void
   onJumpHeightChange?: (value: number) => void
   onJumpVelocityChange?: (value: number) => void
   onPopScaleChange?: (scale: number) => void
@@ -192,13 +590,23 @@ interface DashboardLayoutProps {
   // Path smoothing
   showSmoothPathButton?: boolean
   onSmoothPath?: () => void
-  // Text animations
   onAddTypewriter?: (layerId: string) => void
   onAddBounceIn?: (layerId: string) => void
   onAddBounceOut?: (layerId: string) => void
   onAddScramble?: (layerId: string) => void
+  onAddFadeInChar?: (layerId: string) => void
+  onAddFadeOutChar?: (layerId: string) => void
   // Transitions
   onAddTransition?: (fromLayerId: string, toLayerId: string, transitionType: 'fade' | 'slide' | 'zoom' | 'blur') => void
+  // Export support - refs from parent for canvas access
+  exportCanvasRef?: React.MutableRefObject<HTMLCanvasElement | null>
+  exportRenderRef?: React.MutableRefObject<(() => void) | null>
+  exportHideHandlesRef?: React.MutableRefObject<(() => void) | null>
+  exportShowHandlesRef?: React.MutableRefObject<(() => void) | null>
+  exportResetStagePositionRef?: React.MutableRefObject<(() => void) | null>
+  exportRestoreStagePositionRef?: React.MutableRefObject<(() => void) | null>
+  exportResizeForExportRef?: React.MutableRefObject<((width: number, height: number) => void) | null>
+  exportRestoreFromExportRef?: React.MutableRefObject<(() => void) | null>
 }
 
 export default function DashboardLayout({ 
@@ -225,6 +633,7 @@ export default function DashboardLayout({
   onBackgroundChange,
   templateSpeed = 1,
   rollDistance = 0.2,
+  rollRotation = 1,
   jumpHeight = 0.25,
   jumpVelocity = 1.5,
   popScale = 1.6,
@@ -238,6 +647,7 @@ export default function DashboardLayout({
   shakeDistance,
   onTemplateSpeedChange,
   onRollDistanceChange,
+  onRollRotationChange,
   onJumpHeightChange,
   onJumpVelocityChange,
   onPopScaleChange,
@@ -296,16 +706,166 @@ export default function DashboardLayout({
   onAddBounceIn,
   onAddBounceOut,
   onAddScramble,
+  onAddFadeInChar,
+  onAddFadeOutChar,
   onAddTransition,
+  exportCanvasRef,
+  exportRenderRef,
+  exportHideHandlesRef,
+  exportShowHandlesRef,
+  exportResetStagePositionRef,
+  exportRestoreStagePositionRef,
+  exportResizeForExportRef,
+  exportRestoreFromExportRef,
 }: DashboardLayoutProps) {
   const router = useRouter()
   const supabase = createClient()
   const templateClips = useTimeline((s) => s.templateClips)
+  const effectClips = useTimeline((s) => s.effectClips)
+  const timelineTracks = useTimeline((s) => s.tracks)
+  const clickMarkers = useTimeline((s) => s.clickMarkers)
+  const timelineDuration = useTimeline((s) => s.duration)
   const timeline = useTimelineActions()
+  
+  // Helper to safely parse number input - defaults to 0 if empty or NaN
+  const parseNum = (value: string, fallback: number = 0): number => {
+    if (value === '' || value === null || value === undefined) return fallback
+    const num = parseFloat(value)
+    return isNaN(num) ? fallback : num
+  }
+  
+  // Calculate actual content duration for export (not fixed 5s)
+  const contentDuration = useMemo(() => {
+    const clipsEnd = templateClips.reduce((max, c) => Math.max(max, (c.start ?? 0) + (c.duration ?? 0)), 0)
+    const layersEnd = timelineTracks.reduce((max, t) => Math.max(max, (t.startTime ?? 0) + (t.duration ?? 0)), 0)
+    const effectsEnd = effectClips.reduce((max, c) => Math.max(max, (c.start ?? 0) + (c.duration ?? 0)), 0)
+    const markersEnd = clickMarkers.reduce((max, m) => Math.max(max, m.time), 0)
+    // Return max of all, minimum 100ms to avoid empty exports
+    return Math.max(100, clipsEnd, layersEnd, effectsEnd, markersEnd)
+  }, [templateClips, timelineTracks, effectClips, clickMarkers])
   const [showBackgroundPanel, setShowBackgroundPanel] = useState(false)
-  const [activeTab, setActiveTab] = useState<'templates' | 'shapes' | 'effects' | 'animations' | 'transitions'>('shapes')
+  const [isBackgroundPanelCollapsed, setIsBackgroundPanelCollapsed] = useState(false)
+  const [isTransformPanelCollapsed, setIsTransformPanelCollapsed] = useState(false)
+  const [activeTab, setActiveTab] = useState<'templates' | 'shapes' | 'effects' | 'animations' | 'transitions' | 'custom'>('shapes')
   const [animationType, setAnimationType] = useState<'in' | 'out' | 'custom'>('in')
   const [showExploreModal, setShowExploreModal] = useState(false)
+  
+  // Export modal state
+  const [showExportModal, setShowExportModal] = useState(false)
+  
+  // Custom animation state - Set allows multiple panels to be expanded simultaneously
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set())
+  // Clip order - most recently added/clicked clip ID appears first
+  const [clipOrder, setClipOrder] = useState<string[]>([])
+  
+  // Helper to bring a clip to the front of the order
+  const bringClipToFront = (clipId: string) => {
+    setClipOrder(prev => {
+      const filtered = prev.filter(id => id !== clipId)
+      return [clipId, ...filtered]
+    })
+  }
+  
+  const [customColorFrom, setCustomColorFrom] = useState('#FFFFFF')
+  const [customColorTo, setCustomColorTo] = useState('#FF9042')
+  const [customColorDuration, setCustomColorDuration] = useState(800) // in ms
+  const [customColorEasing, setCustomColorEasing] = useState<'none' | 'ease-in' | 'ease-out' | 'ease-in-out'>('none')
+
+  // Sync color animation controls with timeline clip (for real-time updates when bar is dragged)
+  useEffect(() => {
+    if (selectedLayerId) {
+      const colorClip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'color')
+      if (colorClip) {
+        // Update duration from clip
+        setCustomColorDuration(colorClip.duration || 1000)
+        // Also sync other params if they exist
+        const params = colorClip.parameters || {}
+        if (params.colorFrom !== undefined) {
+          setCustomColorFrom('#' + params.colorFrom.toString(16).toUpperCase().padStart(6, '0'))
+        }
+        if (params.colorTo !== undefined) {
+          setCustomColorTo('#' + params.colorTo.toString(16).toUpperCase().padStart(6, '0'))
+        }
+        if (params.colorEasing) {
+          setCustomColorEasing(params.colorEasing === 'linear' ? 'none' : params.colorEasing as any)
+        }
+      }
+    }
+  }, [templateClips, selectedLayerId])
+
+
+  // Resize animation state - using string to allow empty input while typing
+  const [customResizeFromWidth, setCustomResizeFromWidth] = useState<string>('100')
+  const [customResizeFromHeight, setCustomResizeFromHeight] = useState<string>('100')
+  const [customResizeToWidth, setCustomResizeToWidth] = useState<string>('100')
+  const [customResizeToHeight, setCustomResizeToHeight] = useState<string>('100')
+  const [customResizeDuration, setCustomResizeDuration] = useState(800) // in ms
+
+  const [customResizeEasing, setCustomResizeEasing] = useState<'none' | 'ease-in' | 'ease-out' | 'ease-in-out'>('none')
+  const [customResizeAnchor, setCustomResizeAnchor] = useState<'middle' | 'top' | 'bottom' | 'left' | 'right'>('middle')
+
+  // Sync resize animation controls with timeline clip
+  useEffect(() => {
+    if (selectedLayerId) {
+      const resizeClip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
+      if (resizeClip) {
+        setCustomResizeDuration(resizeClip.duration || 800)
+        const params = resizeClip.parameters || {}
+        if (params.resizeFromWidth !== undefined) setCustomResizeFromWidth(String(params.resizeFromWidth))
+        if (params.resizeFromHeight !== undefined) setCustomResizeFromHeight(String(params.resizeFromHeight))
+        if (params.resizeToWidth !== undefined) setCustomResizeToWidth(String(params.resizeToWidth))
+        if (params.resizeToHeight !== undefined) setCustomResizeToHeight(String(params.resizeToHeight))
+        if (params.resizeEasing) {
+          setCustomResizeEasing(params.resizeEasing === 'linear' ? 'none' : params.resizeEasing as any)
+        }
+        if (params.resizeAnchor) {
+          setCustomResizeAnchor(params.resizeAnchor as any)
+        }
+      }
+    }
+  }, [templateClips, selectedLayerId])
+
+  // Rotation animation state
+  const [customRotateFromAngle, setCustomRotateFromAngle] = useState(0)
+  const [customRotateToAngle, setCustomRotateToAngle] = useState(45)
+  const [customRotateDuration, setCustomRotateDuration] = useState(800) // in ms
+  const [customRotateEasing, setCustomRotateEasing] = useState<'none' | 'ease-in' | 'ease-out' | 'ease-in-out'>('none')
+
+  // Sync rotation animation controls with timeline clip
+  useEffect(() => {
+    if (selectedLayerId) {
+      const rotateClip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'rotate')
+      if (rotateClip) {
+        setCustomRotateDuration(rotateClip.duration || 800)
+        const params = rotateClip.parameters || {}
+        if (params.rotateFromAngle !== undefined) setCustomRotateFromAngle(params.rotateFromAngle)
+        if (params.rotateToAngle !== undefined) setCustomRotateToAngle(params.rotateToAngle)
+        if (params.rotateEasing) {
+          setCustomRotateEasing(params.rotateEasing === 'linear' ? 'none' : params.rotateEasing as any)
+        }
+      } else {
+        // Read initial angle from layer's rotation property
+        const layer = layers?.find(l => l.id === selectedLayerId)
+        if (layer?.rotation !== undefined) {
+          // Convert radians to degrees
+          const angleDeg = Math.round((layer.rotation * 180) / Math.PI)
+          setCustomRotateFromAngle(angleDeg)
+        }
+      }
+    }
+  }, [templateClips, selectedLayerId, layers])
+
+  // Timeline-Panel Sync: Auto-expand panel when a custom animation clip is selected on the timeline
+  useEffect(() => {
+    if (selectedClipId) {
+      const selectedClip = templateClips.find(c => c.id === selectedClipId)
+      if (selectedClip && ['color', 'resize', 'rotate'].includes(selectedClip.template)) {
+        setExpandedSections(prev => new Set(prev).add(selectedClip.template))
+        bringClipToFront(selectedClipId)
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClipId]) // Only run when selectedClipId changes, not on every templateClips update
 
   const [showTextColorPicker, setShowTextColorPicker] = useState(false)
   
@@ -345,8 +905,15 @@ export default function DashboardLayout({
     }
 
     const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
-      // Reset to current prop value on blur to indicate no change if not committed
-      setLocalValue(String(value))
+      // Commit the value on blur (clicking away)
+      const rawVal = e.currentTarget.value.replace(/[^0-9]/g, '')
+      if (rawVal === '') {
+        // If empty, reset to original value
+        setLocalValue(String(value))
+        return
+      }
+      const val = Math.max(0, parseInt(rawVal))
+      onCommit(val)
     }
 
     return (
@@ -449,7 +1016,7 @@ export default function DashboardLayout({
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement
-      if (!target.closest('[data-canvas-container]')) {
+      if (!target.closest('[data-canvas-container]') && !target.closest('aside')) {
         setIsCanvasSelected(false)
       }
     }
@@ -788,9 +1355,19 @@ export default function DashboardLayout({
   }, [isResizingCanvas, isMovingCanvas, resizeHandle])
 
   const canvasBgStyle =
-    background.mode === 'gradient'
+    background.mode === 'transparent'
       ? {
-          backgroundImage: `linear-gradient(135deg, ${hexToRgba(background.from, background.opacity)}, ${hexToRgba(background.to, background.opacity)})`,
+          backgroundColor: 'transparent',
+        }
+      : background.mode === 'gradient'
+      ? {
+          backgroundImage: (() => {
+            const pos = Math.round((background.gradientPosition ?? 0.5) * 100);
+            if (background.gradientType === 'radial') {
+              return `radial-gradient(circle at center, ${hexToRgba(background.from, background.opacity)} ${pos}%, ${hexToRgba(background.to, background.opacity)})`;
+            }
+            return `linear-gradient(135deg, ${hexToRgba(background.from, background.opacity)} ${pos}%, ${hexToRgba(background.to, background.opacity)})`;
+          })(),
         }
       : {
           backgroundColor: hexToRgba(background.solid, background.opacity),
@@ -930,7 +1507,7 @@ export default function DashboardLayout({
         </div>
 
         {/* Center Navigation Tabs */}
-        <div className="hidden md:flex items-center justify-evenly w-[300px] lg:w-[400px] mx-auto bg-white/5 p-1 rounded-lg border border-white/5">
+        <div className="hidden md:flex items-center justify-evenly w-[400px] lg:w-[500px] mx-auto bg-white/5 p-1 rounded-lg border border-white/5">
             <button
               onClick={() => setActiveTab('templates')}
               className={cn(
@@ -986,6 +1563,17 @@ export default function DashboardLayout({
             >
               Transitions
             </button>
+            <button
+              onClick={() => setActiveTab('custom')}
+              className={cn(
+                "flex-1 border-b-2 py-3 text-[11px] font-medium transition-colors",
+                activeTab === 'custom'
+                  ? "border-violet-500 text-violet-400"
+                  : "border-transparent text-neutral-400 hover:text-neutral-200"
+              )}
+            >
+              Custom
+            </button>
         </div>
         
         <div className="flex items-center gap-3">
@@ -1034,6 +1622,15 @@ export default function DashboardLayout({
             >
                 <Upload className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">Import</span>
+            </Button>
+            <Button 
+                onClick={() => setShowExportModal(true)}
+                variant="ghost"
+                size="sm"
+                className="h-8 gap-2 text-neutral-400 hover:text-white hover:bg-white/5 text-xs"
+            >
+                <Download className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Export</span>
             </Button>
             <Button 
                 onClick={handleLogout}
@@ -1467,6 +2064,52 @@ export default function DashboardLayout({
                       </div>
                       <span className="text-[11px] font-medium text-neutral-300">Scramble</span>
                     </button>
+                    <button
+                      onClick={() => {
+                        if (!selectedLayerId) return
+                        onAddFadeInChar?.(selectedLayerId)
+                      }}
+                      disabled={!selectedLayerId || selectedLayer?.type !== 'text'}
+                      className={cn(
+                        "flex flex-col items-center justify-center gap-2 p-4 rounded-lg border transition-all",
+                        selectedLayerId && selectedLayer?.type === 'text'
+                          ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/50 cursor-pointer"
+                          : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
+                      )}
+                    >
+                      <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 text-purple-400">
+                          <path d="M4 7V4h16v3" />
+                          <path d="M12 4v16" />
+                          <path d="M8 20h8" />
+                          <circle cx="12" cy="12" r="2" opacity="0.5" />
+                        </svg>
+                      </div>
+                      <span className="text-[11px] font-medium text-neutral-300">Fade In</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (!selectedLayerId) return
+                        onAddFadeOutChar?.(selectedLayerId)
+                      }}
+                      disabled={!selectedLayerId || selectedLayer?.type !== 'text'}
+                      className={cn(
+                        "flex flex-col items-center justify-center gap-2 p-4 rounded-lg border transition-all",
+                        selectedLayerId && selectedLayer?.type === 'text'
+                          ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/50 cursor-pointer"
+                          : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
+                      )}
+                    >
+                      <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 text-purple-400">
+                          <path d="M4 7V4h16v3" />
+                          <path d="M12 4v16" />
+                          <path d="M8 20h8" />
+                          <circle cx="12" cy="12" r="2" opacity="0.3" strokeDasharray="2 1" />
+                        </svg>
+                      </div>
+                      <span className="text-[11px] font-medium text-neutral-300">Fade Out</span>
+                    </button>
 
                   </>
                 )}
@@ -1733,6 +2376,389 @@ export default function DashboardLayout({
             </div>
           )}
 
+          {/* Custom Tab Content */}
+          {activeTab === 'custom' && (
+            <div className="flex-1 min-h-0 overflow-y-auto pr-1 pb-96">
+              <h2 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-neutral-600 px-2">
+                Custom Animation
+              </h2>
+              
+              <div className="px-2 mb-4 space-y-4">
+                {/* Info message */}
+                {!selectedLayerId ? (
+                  <p className="text-[10px] text-amber-400/80 flex items-center gap-1.5">
+                    <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                      <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                    </svg>
+                    Select a layer to create custom animations
+                  </p>
+                ) : (
+                  <p className="text-[10px] text-neutral-400">
+                    Create custom keyframe animations for the selected layer
+                  </p>
+                )}
+                
+                {/* Custom animation options */}
+                <div className="space-y-3">
+                  <div className="flex flex-col gap-2">
+                    <span className="text-[11px] font-semibold text-neutral-200">Animation Properties</span>
+                    
+                    {/* Property toggles - each on its own line */}
+                    <div className="flex flex-col gap-2">
+
+                      
+                      <div className="flex items-center">
+                        <button
+                          className={cn(
+                            "flex-1 flex items-center gap-2 px-3 py-2 rounded-l-lg border-y border-l transition-all text-left",
+                            selectedLayerId
+                              ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/30"
+                              : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed",
+                            expandedSections.has('resize') && "border-violet-500/50 bg-violet-500/10",
+                            !templateClips.some(c => c.layerId === selectedLayerId && c.template === 'resize') && "rounded-r-lg border-r"
+                          )}
+                          disabled={!selectedLayerId}
+                          onClick={() => {
+                            if (selectedLayerId) {
+                              const existingClip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
+                              
+                              if (existingClip) {
+                                // Toggle panel expansion
+                                setExpandedSections(prev => {
+                                  const next = new Set(prev)
+                                  if (next.has('resize')) next.delete('resize')
+                                  else next.add('resize')
+                                  return next
+                                })
+                              } else {
+                                // Create new clip and expand panel
+                                const layer = layers.find(l => l.id === selectedLayerId)
+                                const layerWidth = layer?.width ?? 100
+                                const layerHeight = layer?.height ?? 100
+                                
+                                const newClipId = timeline.addTemplateClip(selectedLayerId, 'resize', 0, 800, {
+                                  resizeFromWidth: layerWidth,
+                                  resizeFromHeight: layerHeight,
+                                  resizeToWidth: layerWidth,
+                                  resizeToHeight: layerHeight,
+                                  resizeEasing: 'linear',
+                                  resizeAnchor: 'middle'
+                                })
+                                
+                                setCustomResizeFromWidth(String(layerWidth))
+                                setCustomResizeFromHeight(String(layerHeight))
+                                setCustomResizeToWidth(String(layerWidth))
+                                setCustomResizeToHeight(String(layerHeight))
+                                setCustomResizeDuration(800)
+                                setCustomResizeEasing('none')
+                                setCustomResizeAnchor('middle')
+                                
+                                // Expand the panel
+                                setExpandedSections(prev => new Set(prev).add('resize'))
+                                if (newClipId) bringClipToFront(newClipId)
+                              }
+                            }
+                          }}
+                        >
+                          <svg viewBox="0 0 24 24" className="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" strokeWidth="2">
+                            <rect x="4" y="4" width="16" height="16" rx="2" />
+                            <path d="M4 14h6v6" />
+                            <path d="M14 4v6h6" />
+                          </svg>
+                          <span className="text-[10px] text-neutral-300">Resize</span>
+                        </button>
+                        {/* + button to add additional resize clips */}
+                        {selectedLayerId && templateClips.some(c => c.layerId === selectedLayerId && c.template === 'resize') && (
+                          <button
+                            className="px-2 py-2 rounded-r-lg border border-l-0 border-white/10 bg-white/5 hover:bg-violet-500/20 hover:border-violet-500/50 transition-all"
+                            title="Add another resize animation"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (selectedLayerId) {
+                                const layer = layers.find(l => l.id === selectedLayerId)
+                                const layerWidth = layer?.width ?? 100
+                                const layerHeight = layer?.height ?? 100
+                                
+                                // Find the last resize clip to position after it
+                                const resizeClips = templateClips.filter(c => c.layerId === selectedLayerId && c.template === 'resize')
+                                const lastClip = resizeClips.reduce((latest, clip) => 
+                                  (clip.start ?? 0) + (clip.duration ?? 0) > (latest.start ?? 0) + (latest.duration ?? 0) ? clip : latest
+                                , resizeClips[0])
+                                const newStart = (lastClip.start ?? 0) + (lastClip.duration ?? 800)
+                                
+                                const newClipId = timeline.addTemplateClip(selectedLayerId, 'resize', newStart, 800, {
+                                  resizeFromWidth: layerWidth,
+                                  resizeFromHeight: layerHeight,
+                                  resizeToWidth: layerWidth,
+                                  resizeToHeight: layerHeight,
+                                  resizeEasing: 'linear',
+                                  resizeAnchor: 'middle'
+                                })
+                                
+                                // Expand the panel
+                                setExpandedSections(prev => new Set(prev).add('resize'))
+                                if (newClipId) bringClipToFront(newClipId)
+                              }
+                            }}
+                          >
+                            <svg viewBox="0 0 24 24" className="w-3 h-3 text-violet-400" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M12 5v14M5 12h14" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <button
+                          className={cn(
+                            "flex-1 flex items-center gap-2 px-3 py-2 rounded-l-lg border-y border-l transition-all text-left",
+                            selectedLayerId
+                              ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/30"
+                              : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed",
+                            expandedSections.has('rotate') && "border-violet-500/50 bg-violet-500/10",
+                            !templateClips.some(c => c.layerId === selectedLayerId && c.template === 'rotate') && "rounded-r-lg border-r"
+                          )}
+                          disabled={!selectedLayerId}
+                          onClick={() => {
+                            if (selectedLayerId) {
+                              const existingClip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'rotate')
+                              
+                              if (existingClip) {
+                                // Toggle panel expansion
+                                setExpandedSections(prev => {
+                                  const next = new Set(prev)
+                                  if (next.has('rotate')) next.delete('rotate')
+                                  else next.add('rotate')
+                                  return next
+                                })
+                              } else {
+                                // Create new clip and expand panel
+                                const layer = layers.find(l => l.id === selectedLayerId)
+                                const layerRotation = layer?.rotation ?? 0
+                                const fromAngle = Math.round((layerRotation * 180) / Math.PI)
+                                const toAngle = fromAngle + 45
+                                
+                                const newClipId = timeline.addTemplateClip(selectedLayerId, 'rotate', 0, 800, {
+                                  rotateFromAngle: fromAngle,
+                                  rotateToAngle: toAngle,
+                                  rotateEasing: 'linear'
+                                })
+                                
+                                setCustomRotateFromAngle(fromAngle)
+                                setCustomRotateToAngle(toAngle)
+                                setCustomRotateDuration(800)
+                                setCustomRotateEasing('none')
+                                
+                                // Expand the panel
+                                setExpandedSections(prev => new Set(prev).add('rotate'))
+                                if (newClipId) bringClipToFront(newClipId)
+                              }
+                            }
+                          }}
+                        >
+                          <svg viewBox="0 0 24 24" className="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M21 12a9 9 0 11-6.22-8.56" />
+                            <path d="M21 3v5h-5" />
+                          </svg>
+                          <span className="text-[10px] text-neutral-300">Rotate</span>
+                        </button>
+                        {/* + button to add additional rotate clips */}
+                        {selectedLayerId && templateClips.some(c => c.layerId === selectedLayerId && c.template === 'rotate') && (
+                          <button
+                            className="px-2 py-2 rounded-r-lg border border-l-0 border-white/10 bg-white/5 hover:bg-violet-500/20 hover:border-violet-500/50 transition-all"
+                            title="Add another rotation animation"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (selectedLayerId) {
+                                // Find the last rotate clip to position after it
+                                const rotateClips = templateClips.filter(c => c.layerId === selectedLayerId && c.template === 'rotate')
+                                const lastClip = rotateClips.reduce((latest, clip) => 
+                                  (clip.start ?? 0) + (clip.duration ?? 0) > (latest.start ?? 0) + (latest.duration ?? 0) ? clip : latest
+                                , rotateClips[0])
+                                const newStart = (lastClip.start ?? 0) + (lastClip.duration ?? 800)
+                                
+                                // Get end angle of last clip as start angle for new clip
+                                const fromAngle = lastClip.parameters?.rotateToAngle ?? 0
+                                const toAngle = fromAngle + 45
+                                
+                                const newClipId = timeline.addTemplateClip(selectedLayerId, 'rotate', newStart, 800, {
+                                  rotateFromAngle: fromAngle,
+                                  rotateToAngle: toAngle,
+                                  rotateEasing: 'linear'
+                                })
+                                
+                                // Expand the panel
+                                setExpandedSections(prev => new Set(prev).add('rotate'))
+                                if (newClipId) bringClipToFront(newClipId)
+                              }
+                            }}
+                          >
+                            <svg viewBox="0 0 24 24" className="w-3 h-3 text-violet-400" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M12 5v14M5 12h14" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <button
+                          className={cn(
+                            "flex-1 flex items-center gap-2 px-3 py-2 rounded-l-lg border-y border-l transition-all text-left",
+                            selectedLayerId
+                              ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/30"
+                              : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed",
+                            expandedSections.has('color') && "border-violet-500/50 bg-violet-500/10",
+                            !templateClips.some(c => c.layerId === selectedLayerId && c.template === 'color') && "rounded-r-lg border-r"
+                          )}
+                          disabled={!selectedLayerId}
+                          onClick={() => {
+                            if (selectedLayerId) {
+                              const existingClip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'color')
+                              
+                              if (existingClip) {
+                                // Toggle panel expansion
+                                setExpandedSections(prev => {
+                                  const next = new Set(prev)
+                                  if (next.has('color')) next.delete('color')
+                                  else next.add('color')
+                                  return next
+                                })
+                              } else {
+                                // Create new clip and expand panel
+                                const layer = layers.find(l => l.id === selectedLayerId)
+                                const layerColor = layer?.fillColor ?? 0xffffff
+                                const fromColor = '#' + layerColor.toString(16).toUpperCase().padStart(6, '0')
+                                
+                                const newClipId = timeline.addTemplateClip(selectedLayerId, 'color', 0, 1000, {
+                                  colorFrom: layerColor,
+                                  colorTo: 0xFFFFFF,
+                                  colorEasing: 'linear'
+                                })
+                                
+                                setCustomColorFrom(fromColor)
+                                setCustomColorTo('#FFFFFF')
+                                setCustomColorDuration(1000)
+                                setCustomColorEasing('none')
+                                
+                                // Expand the panel
+                                setExpandedSections(prev => new Set(prev).add('color'))
+                                if (newClipId) bringClipToFront(newClipId)
+                              }
+                            }
+                          }}
+                        >
+                          <svg viewBox="0 0 24 24" className="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" strokeWidth="2">
+                            <circle cx="12" cy="12" r="10" />
+                            <path d="M12 2a7 7 0 017 7" stroke="url(#colorGrad)" strokeWidth="3" />
+                            <defs>
+                              <linearGradient id="colorGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" stopColor="#f472b6" />
+                                <stop offset="50%" stopColor="#8b5cf6" />
+                                <stop offset="100%" stopColor="#06b6d4" />
+                              </linearGradient>
+                            </defs>
+                          </svg>
+                          <span className="text-[10px] text-neutral-300">Color</span>
+                        </button>
+                        {/* + button to add additional color clips */}
+                        {selectedLayerId && templateClips.some(c => c.layerId === selectedLayerId && c.template === 'color') && (
+                          <button
+                            className="px-2 py-2 rounded-r-lg border border-l-0 border-white/10 bg-white/5 hover:bg-violet-500/20 hover:border-violet-500/50 transition-all"
+                            title="Add another color animation"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (selectedLayerId) {
+                                const layer = layers.find(l => l.id === selectedLayerId)
+                                
+                                // Find the last color clip to position after it
+                                const colorClips = templateClips.filter(c => c.layerId === selectedLayerId && c.template === 'color')
+                                const lastClip = colorClips.reduce((latest, clip) => 
+                                  (clip.start ?? 0) + (clip.duration ?? 0) > (latest.start ?? 0) + (latest.duration ?? 0) ? clip : latest
+                                , colorClips[0])
+                                const newStart = (lastClip.start ?? 0) + (lastClip.duration ?? 1000)
+                                
+                                // Get end color of last clip as start color for new clip
+                                const fromColor = lastClip.parameters?.colorTo ?? (layer?.fillColor ?? 0xffffff)
+                                
+                                const newClipId = timeline.addTemplateClip(selectedLayerId, 'color', newStart, 1000, {
+                                  colorFrom: fromColor,
+                                  colorTo: 0xFFFFFF,
+                                  colorEasing: 'linear'
+                                })
+                                
+                                // Expand the panel
+                                setExpandedSections(prev => new Set(prev).add('color'))
+                                if (newClipId) bringClipToFront(newClipId)
+                              }
+                            }}
+                          >
+                            <svg viewBox="0 0 24 24" className="w-3 h-3 text-violet-400" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M12 5v14M5 12h14" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Panels container - uses flex and order for dynamic ordering */}
+                  <div className="flex flex-col">
+                  
+                  {/* Color Clips */}
+                  {selectedLayerId && templateClips.filter(c => c.layerId === selectedLayerId && c.template === 'color').map((clip, i) => (
+                    <div key={clip.id} style={{ order: clipOrder.indexOf(clip.id) >= 0 ? clipOrder.indexOf(clip.id) : 99 }}>
+                      <ColorClipItem
+                        clip={clip}
+                        index={i}
+                        timeline={timeline}
+                      />
+                    </div>
+                  ))}
+
+                  {/* Resize Clips */}
+                  {selectedLayerId && templateClips.filter(c => c.layerId === selectedLayerId && c.template === 'resize').map((clip, i) => (
+                    <div key={clip.id} style={{ order: clipOrder.indexOf(clip.id) >= 0 ? clipOrder.indexOf(clip.id) : 99 }}>
+                      <ResizeClipItem
+                        clip={clip}
+                        index={i}
+                        timeline={timeline}
+                      />
+                    </div>
+                  ))}
+
+                  {/* Rotation Clips */}
+                  {selectedLayerId && templateClips.filter(c => c.layerId === selectedLayerId && c.template === 'rotate').map((clip, i) => (
+                    <div key={clip.id} style={{ order: clipOrder.indexOf(clip.id) >= 0 ? clipOrder.indexOf(clip.id) : 99 }}>
+                      <RotateClipItem
+                        clip={clip}
+                        index={i}
+                        timeline={timeline}
+                      />
+                    </div>
+                  ))}
+                  
+                  </div>
+                  {/* End of flex container for dynamic panel ordering */}
+                  
+                  {/* Coming soon notice - show when no custom animations are applied */}
+                  {selectedLayerId && !templateClips.some(c => c.layerId === selectedLayerId && ['color', 'resize', 'rotate'].includes(c.template)) && (
+                  <div className="mt-6 p-4 rounded-xl border border-violet-500/20 bg-violet-500/5">
+                    <div className="flex items-center gap-2 mb-2">
+                      <svg viewBox="0 0 24 24" className="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 2v20m10-10H2" />
+                      </svg>
+                      <span className="text-[11px] font-semibold text-violet-300">Keyframe Editor</span>
+                    </div>
+                    <p className="text-[10px] text-neutral-400">
+                      Add keyframes on the timeline below to create custom animations. Click and drag layer properties to animate.
+                    </p>
+                  </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
         </aside>
 
         {/* Center Canvas Area */}
@@ -1929,10 +2955,18 @@ export default function DashboardLayout({
                     left: `calc(50% + ${canvasX}px)`,
                     top: `calc(50% + ${canvasY}px)`,
                     transform: 'translate(-50%, -50%)',
-                    ...(background.mode === 'gradient'
-                      ? { backgroundImage: `linear-gradient(135deg, ${background.from}, ${background.to})` }
+                    ...(background.mode === 'transparent'
+                      ? { backgroundColor: 'transparent' }
+                      : background.mode === 'gradient'
+                      ? { backgroundImage: (() => {
+                          const pos = Math.round((background.gradientPosition ?? 0.5) * 100);
+                          if (background.gradientType === 'radial') {
+                            return `radial-gradient(circle at center, ${background.from} ${pos}%, ${background.to})`;
+                          }
+                          return `linear-gradient(135deg, ${background.from} ${pos}%, ${background.to})`;
+                        })() }
                       : { backgroundColor: background.solid }),
-                    opacity: Math.max(0, Math.min(1, background.opacity ?? 1)),
+                    opacity: background.mode === 'transparent' ? 0 : Math.max(0, Math.min(1, background.opacity ?? 1)),
                     zIndex: 0,
                   }}
                 />
@@ -2082,7 +3116,7 @@ export default function DashboardLayout({
         <aside 
             ref={rightSidebarRef}
             style={{ width: rightSidebarWidth }}
-            className="relative border-l border-white/5 bg-[#0a0a0a] p-4 space-y-4 overflow-y-auto overscroll-contain shrink-0 min-h-0 max-h-screen pb-48 scroll-smooth"
+            className="relative border-l border-white/5 bg-[#0a0a0a] p-4 flex flex-col gap-4 overflow-y-auto overscroll-contain shrink-0 min-h-0 max-h-screen pb-[150vh] scroll-smooth"
         >
           {/* Resize Handle */}
           <div
@@ -2090,14 +3124,230 @@ export default function DashboardLayout({
             onMouseDown={startRightSidebarResize}
           />
 
+          {/* Background Settings */}
+          <div className="mb-6 space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-neutral-400">Background</span>
+              <button 
+                onClick={() => setIsBackgroundPanelCollapsed(!isBackgroundPanelCollapsed)}
+                className="text-neutral-500 hover:text-white transition-colors p-1"
+                aria-label={isBackgroundPanelCollapsed ? "Expand background panel" : "Collapse background panel"}
+              >
+                {isBackgroundPanelCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+              </button>
+            </div>
+            
+            {!isBackgroundPanelCollapsed && (
+              <>
+            {/* Mode buttons - Segmented Control Look */}
+            <div className="flex bg-neutral-900 rounded-lg p-1 border border-white/5">
+              <button
+                className={cn(
+                  "flex-1 py-1.5 px-2 text-[10px] font-medium rounded-md transition-all",
+                  background.mode === 'transparent' 
+                    ? "bg-white/10 text-white shadow-sm" 
+                    : "text-neutral-500 hover:text-neutral-300 hover:bg-white/5"
+                )}
+                onClick={() => updateBackground({ mode: 'transparent' })}
+              >
+                None
+              </button>
+              <button
+                className={cn(
+                  "flex-1 py-1.5 px-2 text-[10px] font-medium rounded-md transition-all",
+                  background.mode === 'solid' 
+                    ? "bg-white/10 text-white shadow-sm" 
+                    : "text-neutral-500 hover:text-neutral-300 hover:bg-white/5"
+                )}
+                onClick={() => updateBackground({ mode: 'solid' })}
+              >
+                Solid
+              </button>
+              <button
+                className={cn(
+                  "flex-1 py-1.5 px-2 text-[10px] font-medium rounded-md transition-all",
+                  background.mode === 'gradient' 
+                    ? "bg-white/10 text-white shadow-sm" 
+                    : "text-neutral-500 hover:text-neutral-300 hover:bg-white/5"
+                )}
+                onClick={() => updateBackground({ mode: 'gradient' })}
+              >
+                Gradient
+              </button>
+            </div>
+            
+            {/* Color inputs based on mode */}
+            {background.mode === 'solid' && (
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center gap-2 bg-neutral-900 p-1.5 rounded-lg border border-white/5">
+                  <div className="relative w-8 h-8 rounded shrink-0 overflow-hidden border border-white/10 group">
+                    <input
+                      type="color"
+                      value={background.solid}
+                      onChange={(e) => updateBackground({ solid: normalizeHex(e.target.value) })}
+                      className="absolute inset-0 w-[200%] h-[200%] -top-[50%] -left-[50%] p-0 m-0 cursor-pointer opacity-0"
+                    />
+                    <div 
+                      className="absolute inset-0 pointer-events-none"
+                      style={{ backgroundColor: background.solid }}
+                    />
+                  </div>
+                  <input
+                    type="text"
+                    value={background.solid}
+                    onChange={(e) => updateBackground({ solid: normalizeHex(e.target.value) })}
+                    className="flex-1 bg-transparent text-neutral-200 text-xs font-mono outline-none uppercase"
+                    spellCheck={false}
+                  />
+                </div>
+              </div>
+            )}
+            
+            {background.mode === 'gradient' && (
+              <div className="space-y-4 pt-1">
+                {/* Gradient Type Toggle */}
+                <div className="flex bg-neutral-900 rounded-lg p-1 border border-white/5">
+                  <button
+                    className={cn(
+                      "flex-1 py-1.5 px-2 text-[10px] font-medium rounded-md transition-all",
+                      (!background.gradientType || background.gradientType === 'linear')
+                        ? "bg-white/10 text-white shadow-sm" 
+                        : "text-neutral-500 hover:text-neutral-300 hover:bg-white/5"
+                    )}
+                    onClick={() => updateBackground({ gradientType: 'linear' })}
+                  >
+                    Linear
+                  </button>
+                  <button
+                    className={cn(
+                      "flex-1 py-1.5 px-2 text-[10px] font-medium rounded-md transition-all",
+                      background.gradientType === 'radial' 
+                        ? "bg-white/10 text-white shadow-sm" 
+                        : "text-neutral-500 hover:text-neutral-300 hover:bg-white/5"
+                    )}
+                    onClick={() => updateBackground({ gradientType: 'radial' })}
+                  >
+                    Radial
+                  </button>
+                </div>
 
+                {/* Intensity Slider */}
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center px-1">
+                    <span className="text-[10px] text-neutral-500 uppercase tracking-wider">Intensity</span>
+                    <span className="text-[10px] font-mono text-neutral-400">{Math.round((background.opacity ?? 1) * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={background.opacity ?? 1}
+                    onChange={(e) => updateBackground({ opacity: parseFloat(e.target.value) })}
+                    className="w-full h-1.5 bg-neutral-800 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white hover:[&::-webkit-slider-thumb]:scale-110 transition-all"
+                  />
+                </div>
+
+                {/* Balance Slider - Controls gradient position */}
+                <div className="space-y-2">
+                  <span className="text-[10px] text-neutral-500 uppercase tracking-wider px-1">Balance</span>
+                  <div className="flex items-center gap-2">
+                    {/* From color swatch */}
+                    <div 
+                      className="w-4 h-4 rounded shrink-0 border border-white/10"
+                      style={{ backgroundColor: background.from }}
+                    />
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                      value={background.gradientPosition ?? 0.5}
+                      onChange={(e) => updateBackground({ gradientPosition: parseFloat(e.target.value) })}
+                      className="flex-1 h-1.5 bg-neutral-800 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white hover:[&::-webkit-slider-thumb]:scale-110 transition-all"
+                    />
+                    {/* To color swatch */}
+                    <div 
+                      className="w-4 h-4 rounded shrink-0 border border-white/10"
+                      style={{ backgroundColor: background.to }}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between px-1">
+                    <span className="text-[10px] text-neutral-500">From</span>
+                  </div>
+                  <div className="flex items-center gap-2 bg-neutral-900 p-1.5 rounded-lg border border-white/5">
+                    <div className="relative w-8 h-8 rounded shrink-0 overflow-hidden border border-white/10">
+                      <input
+                        type="color"
+                        value={background.from}
+                        onChange={(e) => updateBackground({ from: normalizeHex(e.target.value) })}
+                        className="absolute inset-0 w-[200%] h-[200%] -top-[50%] -left-[50%] p-0 m-0 cursor-pointer opacity-0"
+                      />
+                      <div 
+                        className="absolute inset-0 pointer-events-none"
+                        style={{ backgroundColor: background.from }}
+                      />
+                    </div>
+                    <input
+                      type="text"
+                      value={background.from}
+                      onChange={(e) => updateBackground({ from: normalizeHex(e.target.value) })}
+                      className="flex-1 bg-transparent text-neutral-200 text-xs font-mono outline-none uppercase"
+                      spellCheck={false}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between px-1">
+                    <span className="text-[10px] text-neutral-500">To</span>
+                  </div>
+                  <div className="flex items-center gap-2 bg-neutral-900 p-1.5 rounded-lg border border-white/5">
+                    <div className="relative w-8 h-8 rounded shrink-0 overflow-hidden border border-white/10">
+                      <input
+                        type="color"
+                        value={background.to}
+                        onChange={(e) => updateBackground({ to: normalizeHex(e.target.value) })}
+                        className="absolute inset-0 w-[200%] h-[200%] -top-[50%] -left-[50%] p-0 m-0 cursor-pointer opacity-0"
+                      />
+                      <div 
+                        className="absolute inset-0 pointer-events-none"
+                        style={{ backgroundColor: background.to }}
+                      />
+                    </div>
+                    <input
+                      type="text"
+                      value={background.to}
+                      onChange={(e) => updateBackground({ to: normalizeHex(e.target.value) })}
+                      className="flex-1 bg-transparent text-neutral-200 text-xs font-mono outline-none uppercase"
+                      spellCheck={false}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+              </>
+            )}
+          </div>
 
           {selectedLayerId && (
             <div className="mb-6 space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-neutral-400">Transform</span>
+                <button 
+                  onClick={() => setIsTransformPanelCollapsed(!isTransformPanelCollapsed)}
+                  className="text-neutral-500 hover:text-white transition-colors p-1"
+                  aria-label={isTransformPanelCollapsed ? "Expand transform panel" : "Collapse transform panel"}
+                >
+                  {isTransformPanelCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                </button>
               </div>
               
+              {!isTransformPanelCollapsed && (
+                <>
               {/* Size */}
               <div className="space-y-2">
                 <span className="text-[10px] uppercase text-neutral-500">Size</span>
@@ -2131,9 +3381,19 @@ export default function DashboardLayout({
                     type="text"
                     inputMode="numeric"
                     pattern="-?[0-9]*"
-                    value={String(layers.find(l => l.id === selectedLayerId)?.rotation ?? 0)}
+                    defaultValue={String(layers.find(l => l.id === selectedLayerId)?.rotation ?? 0)}
+                    key={`angle-${selectedLayerId}`}
                     className="w-full rounded bg-neutral-800 pl-8 pr-2 py-1.5 text-left text-xs text-white placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
-                    onChange={(e) => {
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        if (!selectedLayerId) return
+                        const rawVal = e.currentTarget.value.replace(/[^0-9-]/g, '')
+                        const val = rawVal === '' || rawVal === '-' ? 0 : parseInt(rawVal)
+                        onUpdateLayerRotation?.(selectedLayerId, val)
+                        e.currentTarget.blur()
+                      }
+                    }}
+                    onBlur={(e) => {
                       if (!selectedLayerId) return
                       const rawVal = e.currentTarget.value.replace(/[^0-9-]/g, '')
                       const val = rawVal === '' || rawVal === '-' ? 0 : parseInt(rawVal)
@@ -2154,113 +3414,6 @@ export default function DashboardLayout({
                       const c = layers.find(l => l.id === selectedLayerId)?.fillColor ?? 0xffffff
                       return c.toString(16).toUpperCase().padStart(6, '0')
                     })()}
-                    key={`fill-hex-${selectedLayerId}`}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && selectedLayerId) {
-                        const hex = e.currentTarget.value.replace('#', '')
-                        const numColor = parseInt(hex, 16)
-                        if (!isNaN(numColor)) {
-                          onUpdateLayerColor?.(selectedLayerId, numColor)
-                        }
-                      }
-                    }}
-                    onBlur={(e) => {
-                      if (!selectedLayerId) return
-                      const hex = e.currentTarget.value.replace('#', '')
-                      const numColor = parseInt(hex, 16)
-                      if (!isNaN(numColor)) {
-                        onUpdateLayerColor?.(selectedLayerId, numColor)
-                      }
-                    }}
-                    placeholder="FFFFFF"
-                    maxLength={6}
-                    className="flex-1 min-w-0 rounded bg-neutral-800 px-3 py-2.5 text-sm text-white font-mono focus:outline-none focus:ring-1 focus:ring-purple-500"
-                  />
-                  <input
-                    type="color"
-                    value={`#${(layers.find(l => l.id === selectedLayerId)?.fillColor ?? 0xffffff).toString(16).padStart(6, '0')}`}
-                    onChange={(e) => {
-                      if (!selectedLayerId) return
-                      const numColor = parseInt(e.target.value.replace('#', ''), 16)
-                      onUpdateLayerColor?.(selectedLayerId, numColor)
-                    }}
-                    className="w-10 h-10 rounded border-2 border-neutral-600 hover:border-purple-500 cursor-pointer transition-colors flex-shrink-0 p-0 bg-transparent"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Text Controls - Only show for regular text layers (NOT counters) */}
-          {selectedLayerId && layers.find(l => l.id === selectedLayerId)?.type === 'text' && !layers.find(l => l.id === selectedLayerId)?.isCounter && (
-            <div className="mb-6 space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-neutral-400">Text</span>
-              </div>
-              
-              {/* Text Content */}
-              <div className="space-y-2">
-                <span className="text-[10px] uppercase text-neutral-500">Content</span>
-                <div className="flex gap-2">
-                  <textarea
-                    id="text-content-input"
-                    defaultValue={layers.find(l => l.id === selectedLayerId)?.text || ''}
-                    key={selectedLayerId} // Reset when layer changes
-                    placeholder="Enter text..."
-                    className="flex-1 rounded bg-neutral-800 px-3 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-purple-500 resize-none"
-                    rows={2}
-                  />
-                  <button
-                    onClick={() => {
-                      if (!selectedLayerId) return
-                      const textarea = document.getElementById('text-content-input') as HTMLTextAreaElement
-                      if (textarea) {
-                        onUpdateLayerText?.(selectedLayerId, textarea.value)
-                      }
-                    }}
-                    className="px-3 py-1 rounded bg-purple-600 hover:bg-purple-500 text-white text-xs font-medium transition-colors"
-                  >
-                    Apply
-                  </button>
-                </div>
-              </div>
-
-              {/* Font Family */}
-              <div className="space-y-2">
-                <span className="text-[10px] uppercase text-neutral-500">Font</span>
-                <FontPicker
-                  value={layers.find(l => l.id === selectedLayerId)?.fontFamily || 'Inter'}
-                  onChange={(fontFamily) => {
-                    if (!selectedLayerId) return
-                    onUpdateLayerFontFamily?.(selectedLayerId, fontFamily)
-                  }}
-                />
-              </div>
-
-              {/* Font Size */}
-              <div className="space-y-2">
-                <span className="text-[10px] uppercase text-neutral-500">Font Size</span>
-                <BufferedInput
-                  value={layers.find(l => l.id === selectedLayerId)?.fontSize || 48}
-                  onCommit={(val) => {
-                    if (!selectedLayerId) return
-                    onUpdateLayerFontSize?.(selectedLayerId, val)
-                  }}
-                  label="px"
-                />
-              </div>
-
-              {/* Font Color */}
-              <div className="space-y-2">
-                <span className="text-[10px] uppercase text-neutral-500">Color</span>
-                {/* Hex Input + Color Picker Swatch side by side */}
-                <div className="flex items-center gap-2 w-full">
-                  <input
-                    type="text"
-                    defaultValue={(() => {
-                      const c = layers.find(l => l.id === selectedLayerId)?.fillColor ?? 0xffffff
-                      return c.toString(16).toUpperCase().padStart(6, '0')
-                    })()}
                     key={`color-${selectedLayerId}`}
                     onChange={(e) => {
                       if (!selectedLayerId) return
@@ -2273,7 +3426,6 @@ export default function DashboardLayout({
                     maxLength={6}
                     className="flex-1 min-w-0 rounded bg-neutral-800 px-3 py-2.5 text-sm text-white font-mono focus:outline-none focus:ring-1 focus:ring-purple-500"
                   />
-                  {/* Native Color Picker styled as swatch */}
                   <input
                     type="color"
                     value={`#${(layers.find(l => l.id === selectedLayerId)?.fillColor ?? 0xffffff).toString(16).padStart(6, '0')}`}
@@ -2286,8 +3438,69 @@ export default function DashboardLayout({
                   />
                 </div>
               </div>
+
+              {/* Text-specific controls - only for text layers (not counters) */}
+              {layers.find(l => l.id === selectedLayerId)?.type === 'text' && !layers.find(l => l.id === selectedLayerId)?.isCounter && (
+                <>
+                  {/* Text Content */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] uppercase text-neutral-500">Content</span>
+                    <div className="flex gap-2">
+                      <textarea
+                        id="text-content-input"
+                        defaultValue={layers.find(l => l.id === selectedLayerId)?.text || ''}
+                        key={selectedLayerId}
+                        placeholder="Enter text..."
+                        className="flex-1 rounded bg-neutral-800 px-3 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-purple-500 resize-none"
+                        rows={2}
+                      />
+                      <button
+                        onClick={() => {
+                          if (!selectedLayerId) return
+                          const textarea = document.getElementById('text-content-input') as HTMLTextAreaElement
+                          if (textarea) {
+                            onUpdateLayerText?.(selectedLayerId, textarea.value)
+                          }
+                        }}
+                        className="px-3 py-1 rounded bg-purple-600 hover:bg-purple-500 text-white text-xs font-medium transition-colors"
+                      >
+                        Apply
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Font Family */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] uppercase text-neutral-500">Font</span>
+                    <FontPicker
+                      value={layers.find(l => l.id === selectedLayerId)?.fontFamily || 'Inter'}
+                      onChange={(fontFamily) => {
+                        if (!selectedLayerId) return
+                        onUpdateLayerFontFamily?.(selectedLayerId, fontFamily)
+                      }}
+                    />
+                  </div>
+
+                  {/* Font Size */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] uppercase text-neutral-500">Font Size</span>
+                    <BufferedInput
+                      value={layers.find(l => l.id === selectedLayerId)?.fontSize || 48}
+                      onCommit={(val) => {
+                        if (!selectedLayerId) return
+                        onUpdateLayerFontSize?.(selectedLayerId, val)
+                      }}
+                      label="px"
+                    />
+                  </div>
+                </>
+              )}
+                </>
+              )}
             </div>
           )}
+
+
 
           {/* Counter Controls - Only show for counter layers */}
           {selectedLayerId && layers.find(l => l.id === selectedLayerId)?.isCounter && (
@@ -2304,7 +3517,7 @@ export default function DashboardLayout({
                   value={layers.find(l => l.id === selectedLayerId)?.counterStart ?? 0}
                   onChange={(e) => {
                     if (!selectedLayerId) return
-                    onUpdateCounterStart?.(selectedLayerId, Number(e.target.value))
+                    onUpdateCounterStart?.(selectedLayerId, parseNum(e.target.value))
                   }}
                   className="w-full rounded bg-neutral-800 px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-purple-500"
                 />
@@ -2318,7 +3531,7 @@ export default function DashboardLayout({
                   value={layers.find(l => l.id === selectedLayerId)?.counterEnd ?? 100}
                   onChange={(e) => {
                     if (!selectedLayerId) return
-                    onUpdateCounterEnd?.(selectedLayerId, Number(e.target.value))
+                    onUpdateCounterEnd?.(selectedLayerId, parseNum(e.target.value))
                   }}
                   className="w-full rounded bg-neutral-800 px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-purple-500"
                 />
@@ -2355,7 +3568,7 @@ export default function DashboardLayout({
                   value={layers.find(l => l.id === selectedLayerId)?.fontSize ?? 72}
                   onChange={(e) => {
                     if (!selectedLayerId) return
-                    onUpdateLayerFontSize?.(selectedLayerId, Number(e.target.value))
+                    onUpdateLayerFontSize?.(selectedLayerId, parseNum(e.target.value))
                   }}
                   className="w-full rounded bg-neutral-800 px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-purple-500"
                 />
@@ -2374,12 +3587,19 @@ export default function DashboardLayout({
               Controls
             </div>
             
-            {/* Duration Control - Always show if a clip is selected */}
-            {selectedClipDuration !== undefined && (
+            {/* Duration Control - Show if a clip is selected, but NOT for templates that have their own duration slider */}
+            {selectedClipDuration !== undefined && !['pulse', 'shake', 'spin', 'counter', 'pan_zoom', 'mask_center', 'mask_top', 'mask_center_out', 'mask_top_out'].includes(selectedTemplate) && (
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] font-semibold text-neutral-200">Duration</span>
-                  <span className="text-[10px] text-neutral-400">{(selectedClipDuration / 1000).toFixed(2)}s</span>
+                  <span className="text-[11px] font-semibold text-neutral-200">
+                    {selectedTemplate === 'jump' ? 'Jump Height' : 'Duration'}
+                  </span>
+                  <span className="text-[10px] text-neutral-400">
+                    {selectedTemplate === 'jump' 
+                      ? jumpHeight.toFixed(2)
+                      : `${(selectedClipDuration / 1000).toFixed(2)}s`
+                    }
+                  </span>
                 </div>
                 <input
                   type="range"
@@ -2387,7 +3607,7 @@ export default function DashboardLayout({
                   max={5000}
                   step={100}
                   value={selectedClipDuration}
-                  onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
+                  onChange={(e) => onClipDurationChange?.(parseNum(e.target.value))}
                   className="w-full accent-violet-500"
                 />
               </div>
@@ -2405,7 +3625,7 @@ export default function DashboardLayout({
                     max={3}
                     step={0.05}
                     value={templateSpeed}
-                    onChange={(e) => onTemplateSpeedChange?.(Number(e.target.value))}
+                    onChange={(e) => onTemplateSpeedChange?.(parseNum(e.target.value))}
                     className="w-full accent-violet-500"
                   />
                 </div>
@@ -2420,45 +3640,26 @@ export default function DashboardLayout({
                     max={1}
                     step={0.01}
                     value={rollDistance}
-                    onChange={(e) => onRollDistanceChange?.(Number(e.target.value))}
+                    onChange={(e) => onRollDistanceChange?.(parseNum(e.target.value))}
+                    className="w-full accent-violet-500"
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-2 mt-1">
+                    <span className="text-[11px] font-semibold text-neutral-200">Rotation</span>
+                    <span className="text-[10px] text-neutral-400">{rollRotation?.toFixed(1) ?? '2.0'} rotations</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={10}
+                    step={0.5}
+                    value={rollRotation ?? 2}
+                    onChange={(e) => onRollRotationChange?.(parseNum(e.target.value))}
                     className="w-full accent-violet-500"
                   />
                 </div>
               </>
-            )}
-            {selectedTemplate === 'jump' && (
-              <div className="space-y-3">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-semibold text-neutral-200">Jump Height</span>
-                    <span className="text-[10px] text-neutral-400">{jumpHeight.toFixed(2)}</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0.05}
-                    max={0.8}
-                    step={0.01}
-                    value={jumpHeight}
-                    onChange={(e) => onJumpHeightChange?.(Number(e.target.value))}
-                    className="w-full accent-violet-500"
-                  />
-                </div>
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-semibold text-neutral-200">Initial Velocity</span>
-                    <span className="text-[10px] text-neutral-400">{jumpVelocity.toFixed(2)} u/s</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0.2}
-                    max={6}
-                    step={0.05}
-                    value={jumpVelocity}
-                    onChange={(e) => onJumpVelocityChange?.(Number(e.target.value))}
-                    className="w-full accent-violet-500"
-                  />
-                </div>
-              </div>
             )}
             {selectedTemplate === 'pop' && (
               <>
@@ -2473,7 +3674,7 @@ export default function DashboardLayout({
                     max={3}
                     step={0.05}
                     value={popScale}
-                    onChange={(e) => onPopScaleChange?.(Number(e.target.value))}
+                    onChange={(e) => onPopScaleChange?.(parseNum(e.target.value))}
                     className="w-full accent-violet-500"
                   />
                 </div>
@@ -2488,7 +3689,7 @@ export default function DashboardLayout({
                     max={3}
                     step={0.05}
                     value={popSpeed}
-                    onChange={(e) => onPopSpeedChange?.(Number(e.target.value))}
+                    onChange={(e) => onPopSpeedChange?.(parseNum(e.target.value))}
                     className="w-full accent-violet-500"
                   />
                 </div>
@@ -2500,19 +3701,6 @@ export default function DashboardLayout({
                       className="peer sr-only"
                       checked={popCollapse}
                       onChange={(e) => onPopCollapseChange?.(e.target.checked)}
-                    />
-                    <div className="peer h-4 w-7 rounded-full bg-neutral-700 peer-checked:bg-violet-500 transition-colors" />
-                    <div className="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-white transition-transform peer-checked:translate-x-3" />
-                  </label>
-                </div>
-                <div className="flex items-center justify-between pt-2">
-                  <span className="text-[11px] font-semibold text-neutral-200">Reappear</span>
-                  <label className="relative inline-flex cursor-pointer items-center">
-                    <input
-                      type="checkbox"
-                      className="peer sr-only"
-                      checked={popReappear}
-                      onChange={(e) => onPopReappearChange?.(e.target.checked)}
                     />
                     <div className="peer h-4 w-7 rounded-full bg-neutral-700 peer-checked:bg-violet-500 transition-colors" />
                     <div className="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-white transition-transform peer-checked:translate-x-3" />
@@ -2533,7 +3721,7 @@ export default function DashboardLayout({
                     max={100}
                     step={1}
                     value={shakeDistance}
-                    onChange={(e) => onShakeDistanceChange?.(Number(e.target.value))}
+                    onChange={(e) => onShakeDistanceChange?.(parseNum(e.target.value))}
                     className="w-full accent-violet-500"
                   />
                 </div>
@@ -2548,7 +3736,7 @@ export default function DashboardLayout({
                     max={3000}
                     step={50}
                     value={selectedClipDuration ?? 500}
-                    onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
+                    onChange={(e) => onClipDurationChange?.(parseNum(e.target.value))}
                     className="w-full accent-violet-500"
                   />
                 </div>
@@ -2563,7 +3751,7 @@ export default function DashboardLayout({
                     max={4}
                     step={0.1}
                     value={templateSpeed}
-                    onChange={(e) => onTemplateSpeedChange?.(Number(e.target.value))}
+                    onChange={(e) => onTemplateSpeedChange?.(parseNum(e.target.value))}
                     className="w-full accent-violet-500"
                   />
                 </div>
@@ -2582,7 +3770,7 @@ export default function DashboardLayout({
                     max={1}
                     step={0.01}
                     value={pulseScale}
-                    onChange={(e) => onPulseScaleChange?.(Number(e.target.value))}
+                    onChange={(e) => onPulseScaleChange?.(parseNum(e.target.value))}
                     className="w-full accent-violet-500"
                   />
                 </div>
@@ -2597,7 +3785,7 @@ export default function DashboardLayout({
                     max={5}
                     step={0.1}
                     value={pulseSpeed}
-                    onChange={(e) => onPulseSpeedChange?.(Number(e.target.value))}
+                    onChange={(e) => onPulseSpeedChange?.(parseNum(e.target.value))}
                     className="w-full accent-violet-500"
                   />
                 </div>
@@ -2612,7 +3800,7 @@ export default function DashboardLayout({
                     max={4000}
                     step={50}
                     value={selectedClipDuration ?? 800}
-                    onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
+                    onChange={(e) => onClipDurationChange?.(parseNum(e.target.value))}
                     className="w-full accent-violet-500"
                   />
                 </div>
@@ -2631,7 +3819,7 @@ export default function DashboardLayout({
                     max={10}
                     step={0.1}
                     value={spinSpeed}
-                    onChange={(e) => onSpinSpeedChange?.(Number(e.target.value))}
+                    onChange={(e) => onSpinSpeedChange?.(parseNum(e.target.value))}
                     className="w-full accent-violet-500"
                   />
                 </div>
@@ -2670,7 +3858,7 @@ export default function DashboardLayout({
                     max={4000}
                     step={50}
                     value={selectedClipDuration ?? 1200}
-                    onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
+                    onChange={(e) => onClipDurationChange?.(parseNum(e.target.value))}
                     className="w-full accent-violet-500"
                   />
                 </div>
@@ -2690,7 +3878,7 @@ export default function DashboardLayout({
                       const clip = templateClips.find(c => c.id === selectedClipId)
                       if (clip && selectedLayerId) {
                         timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
-                          parameters: { ...clip.parameters, counterStart: Number(e.target.value) }
+                          parameters: { ...clip.parameters, counterStart: parseNum(e.target.value) }
                         })
                       }
                     }}
@@ -2708,7 +3896,7 @@ export default function DashboardLayout({
                       const clip = templateClips.find(c => c.id === selectedClipId)
                       if (clip && selectedLayerId) {
                         timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
-                          parameters: { ...clip.parameters, counterEnd: Number(e.target.value) }
+                          parameters: { ...clip.parameters, counterEnd: parseNum(e.target.value) }
                         })
                       }
                     }}
@@ -2763,7 +3951,7 @@ export default function DashboardLayout({
                     max={10000}
                     step={100}
                     value={selectedClipDuration ?? 2000}
-                    onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
+                    onChange={(e) => onClipDurationChange?.(parseNum(e.target.value))}
                     className="w-full accent-violet-500"
                   />
                 </div>
@@ -2795,7 +3983,7 @@ export default function DashboardLayout({
                       onChange={(e) => {
                         if (selectedLayerId) {
                           timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
-                            parameters: { ...panZoomClip.parameters, panZoomIntensity: Number(e.target.value) }
+                            parameters: { ...panZoomClip.parameters, panZoomIntensity: parseNum(e.target.value) }
                           })
                         }
                       }}
@@ -2822,7 +4010,7 @@ export default function DashboardLayout({
                       onChange={(e) => {
                         if (selectedLayerId) {
                           timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
-                            parameters: { ...panZoomClip.parameters, panZoomHoldDuration: Number(e.target.value) }
+                            parameters: { ...panZoomClip.parameters, panZoomHoldDuration: parseNum(e.target.value) }
                           })
                         }
                       }}
@@ -2864,7 +4052,7 @@ export default function DashboardLayout({
                       max={6000}
                       step={100}
                       value={selectedClipDuration ?? 2000}
-                      onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
+                      onChange={(e) => onClipDurationChange?.(parseNum(e.target.value))}
                       className="w-full accent-violet-500"
                     />
                   </div>
@@ -2924,7 +4112,7 @@ export default function DashboardLayout({
                         onChange={(e) => {
                           if (selectedLayerId) {
                             timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
-                              parameters: { ...maskClip.parameters, maskAngle: Number(e.target.value) % 360 }
+                              parameters: { ...maskClip.parameters, maskAngle: parseNum(e.target.value) % 360 }
                             })
                           }
                         }}
@@ -2945,7 +4133,7 @@ export default function DashboardLayout({
                       max={5000}
                       step={100}
                       value={selectedClipDuration ?? 1000}
-                      onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
+                      onChange={(e) => onClipDurationChange?.(parseNum(e.target.value))}
                       className="w-full accent-violet-500"
                     />
                   </div>
@@ -2953,6 +4141,52 @@ export default function DashboardLayout({
               )
             })()}
             
+            {/* Slide Transition Controls */}
+            {selectedTemplate === 'transition_slide' && selectedClipId && (() => {
+              const slideClip = templateClips.find(c => c.id === selectedClipId && c.template === 'transition_slide')
+              if (!slideClip) return null
+              const direction = slideClip.parameters?.slideDirection ?? 'top'
+              
+              const directions = [
+                { id: 'top', label: 'Top' },
+                { id: 'bottom', label: 'Bottom' },
+                { id: 'left', label: 'Left' },
+                { id: 'right', label: 'Right' },
+              ]
+              
+              return (
+                <>
+                  <div className="mb-4">
+                    <div className="flex items-center justify-between mb-2">
+                       <span className="text-[11px] font-semibold text-neutral-200">Direction</span>
+                       <span className="text-[10px] text-neutral-400 capitalize">{direction}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                       {directions.map((d) => (
+                         <button
+                           key={d.id}
+                           onClick={() => {
+                             if (selectedLayerId) {
+                               timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
+                                 parameters: { ...slideClip.parameters, slideDirection: d.id as any }
+                               })
+                             }
+                           }}
+                           className={`rounded-md border px-3 py-2 text-[11px] font-semibold transition-all ${
+                             direction === d.id 
+                               ? 'border-violet-500 text-violet-400 bg-violet-500/10' 
+                               : 'border-white/10 text-neutral-300 hover:bg-white/5'
+                           }`}
+                         >
+                           {d.label}
+                         </button>
+                       ))}
+                    </div>
+                  </div>
+                </>
+              )
+            })()}
+
             {/* Mask Top Controls */}
             {selectedTemplate === 'mask_top' && selectedClipId && (() => {
               const maskClip = templateClips.find(c => c.id === selectedClipId && c.template === 'mask_top')
@@ -3005,7 +4239,7 @@ export default function DashboardLayout({
                         onChange={(e) => {
                           if (selectedLayerId) {
                             timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
-                              parameters: { ...maskClip.parameters, maskAngle: Number(e.target.value) % 360 }
+                              parameters: { ...maskClip.parameters, maskAngle: parseNum(e.target.value) % 360 }
                             })
                           }
                         }}
@@ -3026,7 +4260,7 @@ export default function DashboardLayout({
                       max={5000}
                       step={100}
                       value={selectedClipDuration ?? 1000}
-                      onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
+                      onChange={(e) => onClipDurationChange?.(parseNum(e.target.value))}
                       className="w-full accent-violet-500"
                     />
                   </div>
@@ -3039,6 +4273,7 @@ export default function DashboardLayout({
               const maskClip = templateClips.find(c => c.id === selectedClipId && c.template === 'mask_center_out')
               if (!maskClip) return null
               const maskAngle = maskClip.parameters?.maskAngle ?? 0
+              const maskEasing = maskClip.parameters?.maskEasing ?? 'linear'
               
               const presetAngles = [
                 { angle: 0, icon: '—', label: 'Horizontal' },
@@ -3085,7 +4320,7 @@ export default function DashboardLayout({
                         onChange={(e) => {
                           if (selectedLayerId) {
                             timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
-                              parameters: { ...maskClip.parameters, maskAngle: Number(e.target.value) % 360 }
+                              parameters: { ...maskClip.parameters, maskAngle: parseNum(e.target.value) % 360 }
                             })
                           }
                         }}
@@ -3093,6 +4328,30 @@ export default function DashboardLayout({
                       />
                     </div>
                   </div>
+                  
+                  {/* Easing */}
+                  <div className="mb-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-semibold text-neutral-200">Easing</span>
+                    </div>
+                    <select
+                      value={maskEasing}
+                      onChange={(e) => {
+                        if (selectedLayerId) {
+                          timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
+                            parameters: { ...maskClip.parameters, maskEasing: e.target.value as 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out' }
+                          })
+                        }
+                      }}
+                      className="w-full bg-neutral-800 border border-white/10 rounded-md px-2 py-1.5 text-[11px] text-white"
+                    >
+                      <option value="linear">Linear</option>
+                      <option value="ease-in">Ease In</option>
+                      <option value="ease-out">Ease Out</option>
+                      <option value="ease-in-out">Ease In Out</option>
+                    </select>
+                  </div>
+                  
                   <div className="mb-4">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-[11px] font-semibold text-neutral-200">Duration</span>
@@ -3104,7 +4363,7 @@ export default function DashboardLayout({
                       max={5000}
                       step={100}
                       value={selectedClipDuration ?? 1000}
-                      onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
+                      onChange={(e) => onClipDurationChange?.(parseNum(e.target.value))}
                       className="w-full accent-violet-500"
                     />
                   </div>
@@ -3117,6 +4376,7 @@ export default function DashboardLayout({
               const maskClip = templateClips.find(c => c.id === selectedClipId && c.template === 'mask_top_out')
               if (!maskClip) return null
               const maskAngle = maskClip.parameters?.maskAngle ?? 0
+              const maskEasing = maskClip.parameters?.maskEasing ?? 'linear'
               
               const presetAngles = [
                 { angle: 0, icon: '—', label: 'Horizontal' },
@@ -3163,7 +4423,7 @@ export default function DashboardLayout({
                         onChange={(e) => {
                           if (selectedLayerId) {
                             timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
-                              parameters: { ...maskClip.parameters, maskAngle: Number(e.target.value) % 360 }
+                              parameters: { ...maskClip.parameters, maskAngle: parseNum(e.target.value) % 360 }
                             })
                           }
                         }}
@@ -3171,6 +4431,30 @@ export default function DashboardLayout({
                       />
                     </div>
                   </div>
+                  
+                  {/* Easing */}
+                  <div className="mb-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-semibold text-neutral-200">Easing</span>
+                    </div>
+                    <select
+                      value={maskEasing}
+                      onChange={(e) => {
+                        if (selectedLayerId) {
+                          timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
+                            parameters: { ...maskClip.parameters, maskEasing: e.target.value as 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out' }
+                          })
+                        }
+                      }}
+                      className="w-full bg-neutral-800 border border-white/10 rounded-md px-2 py-1.5 text-[11px] text-white"
+                    >
+                      <option value="linear">Linear</option>
+                      <option value="ease-in">Ease In</option>
+                      <option value="ease-out">Ease Out</option>
+                      <option value="ease-in-out">Ease In Out</option>
+                    </select>
+                  </div>
+                  
                   <div className="mb-4">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-[11px] font-semibold text-neutral-200">Duration</span>
@@ -3182,7 +4466,7 @@ export default function DashboardLayout({
                       max={5000}
                       step={100}
                       value={selectedClipDuration ?? 1000}
-                      onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
+                      onChange={(e) => onClipDurationChange?.(parseNum(e.target.value))}
                       className="w-full accent-violet-500"
                     />
                   </div>
@@ -3225,7 +4509,7 @@ export default function DashboardLayout({
                         max={5}
                         step={0.1}
                         value={layerEffects.find(e => e.type === 'glow')?.params.intensity ?? 0}
-                        onChange={(e) => onUpdateEffect?.('glow', { intensity: Number(e.target.value) })}
+                        onChange={(e) => onUpdateEffect?.('glow', { intensity: parseNum(e.target.value) })}
                         className="w-full accent-violet-500"
                       />
                     </div>
@@ -3242,7 +4526,7 @@ export default function DashboardLayout({
                         max={50}
                         step={1}
                         value={layerEffects.find(e => e.type === 'glow')?.params.blur ?? 0}
-                        onChange={(e) => onUpdateEffect?.('glow', { blur: Number(e.target.value) })}
+                        onChange={(e) => onUpdateEffect?.('glow', { blur: parseNum(e.target.value) })}
                         className="w-full accent-violet-500"
                       />
                     </div>
@@ -3265,7 +4549,7 @@ export default function DashboardLayout({
                         max={50}
                         step={1}
                         value={layerEffects.find(e => e.type === 'dropShadow')?.params.distance ?? 5}
-                        onChange={(e) => onUpdateEffect?.('dropShadow', { distance: Number(e.target.value) })}
+                        onChange={(e) => onUpdateEffect?.('dropShadow', { distance: parseNum(e.target.value) })}
                         className="w-full accent-violet-500"
                       />
                     </div>
@@ -3282,7 +4566,7 @@ export default function DashboardLayout({
                         max={20}
                         step={1}
                         value={layerEffects.find(e => e.type === 'dropShadow')?.params.blur ?? 2}
-                        onChange={(e) => onUpdateEffect?.('dropShadow', { blur: Number(e.target.value) })}
+                        onChange={(e) => onUpdateEffect?.('dropShadow', { blur: parseNum(e.target.value) })}
                         className="w-full accent-violet-500"
                       />
                     </div>
@@ -3299,7 +4583,7 @@ export default function DashboardLayout({
                         max={360}
                         step={15}
                         value={layerEffects.find(e => e.type === 'dropShadow')?.params.rotation ?? 45}
-                        onChange={(e) => onUpdateEffect?.('dropShadow', { rotation: Number(e.target.value) })}
+                        onChange={(e) => onUpdateEffect?.('dropShadow', { rotation: parseNum(e.target.value) })}
                         className="w-full accent-violet-500"
                       />
                     </div>
@@ -3321,7 +4605,7 @@ export default function DashboardLayout({
                       max={20}
                       step={0.5}
                       value={layerEffects.find(e => e.type === 'blur')?.params.strength ?? 0}
-                      onChange={(e) => onUpdateEffect?.('blur', { strength: Number(e.target.value) })}
+                      onChange={(e) => onUpdateEffect?.('blur', { strength: parseNum(e.target.value) })}
                       className="w-full accent-violet-500"
                     />
                   </div>
@@ -3342,7 +4626,7 @@ export default function DashboardLayout({
                       max={20}
                       step={1}
                       value={layerEffects.find(e => e.type === 'glitch')?.params.slices ?? 0}
-                      onChange={(e) => onUpdateEffect?.('glitch', { slices: Number(e.target.value) })}
+                      onChange={(e) => onUpdateEffect?.('glitch', { slices: parseNum(e.target.value) })}
                       className="w-full accent-violet-500"
                     />
                   </div>
@@ -3363,7 +4647,7 @@ export default function DashboardLayout({
                       max={50}
                       step={2}
                       value={layerEffects.find(e => e.type === 'pixelate')?.params.size ?? 10}
-                      onChange={(e) => onUpdateEffect?.('pixelate', { size: Number(e.target.value) })}
+                      onChange={(e) => onUpdateEffect?.('pixelate', { size: parseNum(e.target.value) })}
                       className="w-full accent-violet-500"
                     />
                   </div>
@@ -3385,7 +4669,7 @@ export default function DashboardLayout({
                         max={1}
                         step={0.05}
                         value={layerEffects.find(e => e.type === activeEffectId)?.params.density ?? 0.5}
-                        onChange={(e) => onUpdateEffect?.(activeEffectId, { density: Number(e.target.value) })}
+                        onChange={(e) => onUpdateEffect?.(activeEffectId, { density: parseNum(e.target.value) })}
                         className="w-full accent-violet-500"
                       />
                     </div>
@@ -3402,7 +4686,7 @@ export default function DashboardLayout({
                         max={3}
                         step={0.1}
                         value={layerEffects.find(e => e.type === activeEffectId)?.params.speed ?? 1}
-                        onChange={(e) => onUpdateEffect?.(activeEffectId, { speed: Number(e.target.value) })}
+                        onChange={(e) => onUpdateEffect?.(activeEffectId, { speed: parseNum(e.target.value) })}
                         className="w-full accent-violet-500"
                       />
                     </div>
@@ -3411,20 +4695,47 @@ export default function DashboardLayout({
               </div>
             )}
             {selectedTemplate === 'path' && (
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] font-semibold text-neutral-200">Path Speed</span>
-                  <span className="text-[10px] text-neutral-400">{templateSpeed.toFixed(2)}x</span>
+              <div className="space-y-4">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-semibold text-neutral-200">Path Speed</span>
+                    <span className="text-[10px] text-neutral-400">{templateSpeed.toFixed(2)}x</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.25}
+                    max={3}
+                    step={0.05}
+                    value={templateSpeed}
+                    onChange={(e) => onTemplateSpeedChange?.(parseNum(e.target.value))}
+                    className="w-full accent-violet-500"
+                  />
                 </div>
-                <input
-                  type="range"
-                  min={0.25}
-                  max={3}
-                  step={0.05}
-                  value={templateSpeed}
-                  onChange={(e) => onTemplateSpeedChange?.(Number(e.target.value))}
-                  className="w-full accent-violet-500"
-                />
+                
+                {/* Easing dropdown */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-semibold text-neutral-200">Easing</span>
+                    <select
+                      value={(() => {
+                        const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'path')
+                        return clip?.parameters?.pathEasing || 'linear'
+                      })()}
+                      onChange={(e) => {
+                        const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'path')
+                        if (clip && selectedLayerId) {
+                          timeline.updateTemplateClip(selectedLayerId, clip.id, { parameters: { pathEasing: e.target.value as any } })
+                        }
+                      }}
+                      className="px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200"
+                    >
+                      <option value="linear">Linear</option>
+                      <option value="easeInOutQuad">Smooth</option>
+                      <option value="easeInQuad">Accelerate</option>
+                      <option value="easeOutQuad">Decelerate</option>
+                    </select>
+                  </div>
+                </div>
               </div>
             )}
             {!selectedTemplate && <p className="text-[11px] text-neutral-500">Select a template to adjust its controls.</p>}
@@ -3545,6 +4856,26 @@ export default function DashboardLayout({
           </div>
         )}
       </AnimatePresence>
+      
+      {/* Export Modal */}
+      <ExportModal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        canvasRef={exportCanvasRef?.current ?? null}
+        duration={contentDuration}
+        canvasWidth={canvasWidth}
+        canvasHeight={canvasHeight}
+        background={background}
+        onSeek={(time) => timeline.setCurrentTime(time)}
+        onRender={() => exportRenderRef?.current?.()}
+        onSetPlaying={(playing) => timeline.setPlaying(playing)}
+        onHideHandles={() => exportHideHandlesRef?.current?.()}
+        onShowHandles={() => exportShowHandlesRef?.current?.()}
+        onResetStagePosition={() => exportResetStagePositionRef?.current?.()}
+        onRestoreStagePosition={() => exportRestoreStagePositionRef?.current?.()}
+        onResizeForExport={(width, height) => exportResizeForExportRef?.current?.(width, height)}
+        onRestoreFromExport={() => exportRestoreFromExportRef?.current?.()}
+      />
     </div>
   )
 }

@@ -2,11 +2,13 @@ import type { Vec2 } from './timeline'
 
 // Background settings type (from dashboard)
 export interface BackgroundSettings {
-  mode: 'solid' | 'gradient'
+  mode: 'transparent' | 'solid' | 'gradient'
   solid: string
   from: string
   to: string
   opacity: number
+  gradientType?: 'linear' | 'radial'
+  gradientPosition?: number  // 0-1, default 0.5 (center)
 }
 
 export type ShapeKind =
@@ -75,8 +77,11 @@ export type TemplateId =
   | 'mask_top'
   | 'mask_center_out'
   | 'mask_top_out'
-  | 'typewriter' | 'bounce_in' | 'bounce_out' | 'scramble' // Text animations
+  | 'typewriter' | 'bounce_in' | 'bounce_out' | 'scramble' | 'fade_in_char' | 'fade_out_char' // Text animations
   | 'transition_fade' | 'transition_slide' | 'transition_zoom' | 'transition_blur' // Unified transitions
+  | 'color' // Custom color animation
+  | 'resize' // Custom resize animation
+  | 'rotate' // Custom rotation animation
 
 export interface TemplateClip {
   id: string
@@ -100,6 +105,7 @@ export interface TemplateClip {
     spinSpeed?: number
     spinDirection?: 1 | -1
     pathPoints?: Vec2[]
+    pathEasing?: 'linear' | 'easeInQuad' | 'easeOutQuad' | 'easeInOutQuad'
     pathLength?: number
     layerBase?: {
       position?: Vec2
@@ -116,9 +122,25 @@ export interface TemplateClip {
     panZoomBlurIntensity?: number // Blur intensity (0 = no blur, 10 = max blur)
     // Mask Center parameters
     maskAngle?: number // Angle in degrees (0 = horizontal, 90 = vertical)
+    maskEasing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'
     // Text animation parameters
-    textAnimation?: 'typewriter' | 'bounce_in' | 'bounce_out' | 'scramble'
+    textAnimation?: 'typewriter' | 'bounce_in' | 'bounce_out' | 'scramble' | 'fade_in_char' | 'fade_out_char'
     showCursor?: boolean
+    // Color parameters
+    colorFrom?: number
+    colorTo?: number
+    colorEasing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'
+    // Resize parameters
+    resizeFromWidth?: number
+    resizeFromHeight?: number
+    resizeToWidth?: number
+    resizeToHeight?: number
+    resizeEasing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'
+    resizeAnchor?: 'middle' | 'top' | 'bottom' | 'left' | 'right'
+    // Rotation parameters
+    rotateFromAngle?: number
+    rotateToAngle?: number
+    rotateEasing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'
   }
 }
 

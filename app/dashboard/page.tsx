@@ -95,8 +95,18 @@ function DashboardContent() {
   const [showSmoothPathButton, setShowSmoothPathButton] = useState(false)
   const smoothPathTimerRef = useRef<NodeJS.Timeout | null>(null)
   
+  // Export canvas refs
+  const exportCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const exportRenderRef = useRef<(() => void) | null>(null)
+  const exportHideHandlesRef = useRef<(() => void) | null>(null)
+  const exportShowHandlesRef = useRef<(() => void) | null>(null)
+  const exportResetStagePositionRef = useRef<(() => void) | null>(null)
+  const exportRestoreStagePositionRef = useRef<(() => void) | null>(null)
+  const exportResizeForExportRef = useRef<((width: number, height: number) => void) | null>(null)
+  const exportRestoreFromExportRef = useRef<(() => void) | null>(null)
+  
   const [background, setBackground] = useState<BackgroundSettings>({
-    mode: 'solid',
+    mode: 'transparent',
     solid: '#0f0f0f',
     from: '#0f172a',
     to: '#0b1223',
@@ -106,6 +116,7 @@ function DashboardContent() {
   const playhead = useTimeline((s) => s.currentTime)
   const templateSpeed = useTimeline((s) => s.templateSpeed)
   const rollDistance = useTimeline((s) => s.rollDistance)
+  const rollRotation = useTimeline((s) => s.rollRotation)
   const jumpHeight = useTimeline((s) => s.jumpHeight)
   const jumpVelocity = useTimeline((s) => s.jumpVelocity)
   const popScale = useTimeline((s) => s.popScale)
@@ -597,6 +608,50 @@ function DashboardContent() {
     }
   }
 
+  const handleShakeDistanceChange = (value: number) => {
+    timeline.setShakeDistance(value)
+    if (selectedClipId && selectedLayerId) {
+      const clip = templateClips.find(c => c.id === selectedClipId)
+      if (clip && clip.template === 'shake') {
+        timeline.updateTemplateClip(selectedLayerId, selectedClipId, {
+          parameters: { shakeDistance: value }
+        })
+        pushSnapshot()
+      }
+    }
+  }
+
+  // Pop speed change - sync with duration (inverse relationship: speed = 1000 / duration)
+  const handlePopSpeedChange = (value: number) => {
+    timeline.setPopSpeed(value)
+    // Calculate new duration from speed (inverse relationship)
+    const newDuration = Math.round(1000 / Math.max(0.1, value))
+    
+    if (selectedClipId && selectedLayerId) {
+      const clip = templateClips.find(c => c.id === selectedClipId)
+      if (clip && clip.template === 'pop') {
+        timeline.updateTemplateClip(selectedLayerId, selectedClipId, {
+          duration: newDuration,
+          parameters: { popSpeed: value }
+        })
+        pushSnapshot()
+      }
+    }
+  }
+
+  // Pop scale change - update clip
+  const handlePopScaleChange = (value: number) => {
+    timeline.setPopScale(value)
+    if (selectedClipId && selectedLayerId) {
+      const clip = templateClips.find(c => c.id === selectedClipId)
+      if (clip && clip.template === 'pop') {
+        timeline.updateTemplateClip(selectedLayerId, selectedClipId, {
+          parameters: { popScale: value }
+        })
+        pushSnapshot()
+      }
+    }
+  }
 
 
   const handleSelectEffect = (effectId: string) => {
@@ -1116,13 +1171,10 @@ function DashboardContent() {
     setSelectedLayerId(id)
     setSelectedClipId('')
     setSelectedTemplate('')  // Clear template to prevent accidentally applying it to the layer
+    setActivePathPoints([])  // Clear active path points to prevent old path animation from triggering
     setShowSelectShapeHint(false)
-    
-    // Move playhead to layer's startTime so the shape is visible
-    const track = tracks.find(t => t.layerId === id)
-    if (track?.startTime !== undefined) {
-      timeline.setCurrentTime(track.startTime)
-    }
+    // Playhead stays at current position - user can edit at current time
+    // Timeline clip clicks (handleClipClick) still jump to clip start
   }
 
   const handleDeselectShape = () => {
@@ -1444,6 +1496,28 @@ function DashboardContent() {
     debouncedPushSnapshot()
   }
 
+  const handleRollRotationChange = (value: number) => {
+    timeline.setRollRotation(value)
+
+    if (selectedClipId && selectedLayerId) {
+      const clip = templateClips.find(c => c.id === selectedClipId)
+      if (clip && clip.template === 'roll') {
+        timeline.updateTemplateClip(
+          selectedLayerId,
+          selectedClipId,
+          {
+            parameters: {
+              rollRotation: value,
+              layerBase: lastLayerBaseRef.current[selectedLayerId]
+            }
+          },
+          layers.find(l => l.id === selectedLayerId)?.scale ?? 1
+        )
+      }
+    }
+    debouncedPushSnapshot()
+  }
+
   const handleJumpHeightChange = (value: number) => {
     timeline.setJumpHeight(value)
 
@@ -1694,10 +1768,12 @@ function DashboardContent() {
         spinDirection={spinDirection}
         onTemplateSpeedChange={handleTemplateSpeedChange}
         onRollDistanceChange={handleRollDistanceChange}
+        rollRotation={rollRotation}
+        onRollRotationChange={handleRollRotationChange}
         onJumpHeightChange={handleJumpHeightChange}
         onJumpVelocityChange={handleJumpVelocityChange}
-        onPopScaleChange={timeline.setPopScale}
-        onPopSpeedChange={timeline.setPopSpeed}
+        onPopScaleChange={handlePopScaleChange}
+        onPopSpeedChange={handlePopSpeedChange}
         onPopCollapseChange={timeline.setPopCollapse}
         onPopReappearChange={timeline.setPopReappear}
         onPulseScaleChange={handlePulseScaleChange}
@@ -1705,7 +1781,7 @@ function DashboardContent() {
         onSpinSpeedChange={handleSpinSpeedChange}
         onSpinDirectionChange={handleSpinDirectionChange}
         shakeDistance={shakeDistance}
-        onShakeDistanceChange={timeline.setShakeDistance}
+        onShakeDistanceChange={handleShakeDistanceChange}
         selectedLayerScale={layers.find(l => l.id === selectedLayerId)?.scale ?? 1}
         onSelectedLayerScaleChange={handleScaleChange}
         onUpdateLayerPosition={handleUpdateLayerPosition}
@@ -2015,6 +2091,70 @@ function DashboardContent() {
           timeline.setCurrentTime(lastEnd)
           pushSnapshot()
         }}
+        onAddFadeInChar={(layerId) => {
+          const layer = layers.find(l => l.id === layerId)
+          if (!layer || layer.type !== 'text') return
+          
+          const now = timeline.getState().currentTime
+          const textLength = layer.text?.length ?? 10
+          // Duration based on text length: ~80ms per character + base
+          const duration = Math.max(1000, 400 + textLength * 80)
+          
+          const layerClips = templateClips.filter(c => c.layerId === layerId)
+          const lastEnd = layerClips.length
+            ? Math.max(...layerClips.map(c => (c.start ?? 0) + (c.duration ?? 0)))
+            : now
+            
+          const clipId = timeline.addTemplateClip(
+            layerId,
+            'fade_in_char',
+            lastEnd,
+            duration,
+            {
+              textAnimation: 'fade_in_char',
+            },
+            layer.scale ?? 1,
+            { position: { x: layer.x, y: layer.y }, scale: layer.scale ?? 1 }
+          )
+          
+          setSelectedTemplate('fade_in_char')
+          setSelectedClipId(clipId)
+          timeline.setPlaying(false)
+          timeline.setCurrentTime(lastEnd)
+          pushSnapshot()
+        }}
+        onAddFadeOutChar={(layerId) => {
+          const layer = layers.find(l => l.id === layerId)
+          if (!layer || layer.type !== 'text') return
+          
+          const now = timeline.getState().currentTime
+          const textLength = layer.text?.length ?? 10
+          // Duration based on text length: ~80ms per character + base
+          const duration = Math.max(1000, 400 + textLength * 80)
+          
+          const layerClips = templateClips.filter(c => c.layerId === layerId)
+          const lastEnd = layerClips.length
+            ? Math.max(...layerClips.map(c => (c.start ?? 0) + (c.duration ?? 0)))
+            : now
+            
+          const clipId = timeline.addTemplateClip(
+            layerId,
+            'fade_out_char',
+            lastEnd,
+            duration,
+            {
+              textAnimation: 'fade_out_char',
+            },
+            layer.scale ?? 1,
+            { position: { x: layer.x, y: layer.y }, scale: layer.scale ?? 1 }
+          )
+          
+          setSelectedTemplate('fade_out_char')
+          setSelectedClipId(clipId)
+          timeline.setPlaying(false)
+          timeline.setCurrentTime(lastEnd)
+          pushSnapshot()
+        }}
         onAddTransition={(fromLayerId, toLayerId, transitionType) => {
           const fromLayer = layers.find(l => l.id === fromLayerId)
           if (!fromLayer) return
@@ -2100,6 +2240,14 @@ function DashboardContent() {
           pushSnapshot()
         }}
         onSelectLayer={handleSelectLayer}
+        exportCanvasRef={exportCanvasRef}
+        exportRenderRef={exportRenderRef}
+        exportHideHandlesRef={exportHideHandlesRef}
+        exportShowHandlesRef={exportShowHandlesRef}
+        exportResetStagePositionRef={exportResetStagePositionRef}
+        exportRestoreStagePositionRef={exportRestoreStagePositionRef}
+        exportResizeForExportRef={exportResizeForExportRef}
+        exportRestoreFromExportRef={exportRestoreFromExportRef}
       >
         <MotionCanvas 
           template={selectedTemplate} 
@@ -2129,6 +2277,16 @@ function DashboardContent() {
           onCanvasBackgroundClick={handleDeselectShape}
           selectedClipId={selectedClipId}
           onUpdatePanZoomRegions={handleUpdatePanZoomRegions}
+          onCanvasReady={(canvas, render, hideHandles, showHandles, resetStagePosition, restoreStagePosition, resizeForExport, restoreFromExport) => {
+            exportCanvasRef.current = canvas
+            exportRenderRef.current = render
+            exportHideHandlesRef.current = hideHandles
+            exportShowHandlesRef.current = showHandles
+            exportResetStagePositionRef.current = resetStagePosition
+            exportRestoreStagePositionRef.current = restoreStagePosition
+            exportResizeForExportRef.current = resizeForExport
+            exportRestoreFromExportRef.current = restoreFromExport
+          }}
         />
       </DashboardLayout>
 

@@ -1,0 +1,427 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { X, Download, Monitor } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { exportToWebM, downloadBlob, estimateFileSize, ExportQuality, ExportFPS, ExportBackground, convertToMP4 } from '@/lib/video-exporter'
+
+interface ExportModalProps {
+  isOpen: boolean
+  onClose: () => void
+  canvasRef: HTMLCanvasElement | null
+  duration: number // ms
+  canvasWidth: number
+  canvasHeight: number
+  background?: ExportBackground
+  onSeek: (time: number) => void
+  onRender: () => void
+  onSetPlaying: (playing: boolean) => void
+  onHideHandles?: () => void
+  onShowHandles?: () => void
+  onResetStagePosition?: () => void
+  onRestoreStagePosition?: () => void
+  onResizeForExport?: (width: number, height: number) => void
+  onRestoreFromExport?: () => void
+}
+
+export function ExportModal({
+  isOpen,
+  onClose,
+  canvasRef,
+  duration,
+  canvasWidth,
+  canvasHeight,
+  background,
+  onSeek,
+  onRender,
+  onSetPlaying,
+  onHideHandles,
+  onShowHandles,
+  onResetStagePosition,
+  onRestoreStagePosition,
+  onResizeForExport,
+  onRestoreFromExport,
+}: ExportModalProps) {
+  const [quality, setQuality] = useState<ExportQuality>('standard')
+  const [fps, setFps] = useState<ExportFPS>(30)
+  const [isExporting, setIsExporting] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [currentFrame, setCurrentFrame] = useState(0)
+  const [totalFrames, setTotalFrames] = useState(0)
+  const [exportPhase, setExportPhase] = useState<'capturing' | 'encoding' | 'converting'>('capturing')
+  const [filename, setFilename] = useState('motionshapes')
+  const [format, setFormat] = useState<'webm' | 'mp4'>('webm')
+
+  // Reset state when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setProgress(0)
+      setCurrentFrame(0)
+      setIsExporting(false)
+      setFilename('motionshapes')
+      setFormat('webm')
+    }
+  }, [isOpen])
+
+  if (!isOpen) return null
+
+  const aspectRatio = canvasWidth / canvasHeight
+  const aspectRatioLabel = 
+    Math.abs(aspectRatio - 16/9) < 0.1 ? '16:9' :
+    Math.abs(aspectRatio - 9/16) < 0.1 ? '9:16' :
+    Math.abs(aspectRatio - 1) < 0.1 ? '1:1' :
+    `${aspectRatio.toFixed(2)}:1`
+
+  const platformHints = 
+    Math.abs(aspectRatio - 16/9) < 0.1 ? 'YouTube, Website' :
+    Math.abs(aspectRatio - 9/16) < 0.1 ? 'Instagram Reels, TikTok' :
+    Math.abs(aspectRatio - 1) < 0.1 ? 'Instagram Post, Twitter' :
+    'Custom size'
+
+  const durationSeconds = (duration / 1000).toFixed(1)
+  const estimatedSize = estimateFileSize(duration, fps, quality)
+
+  const handleExport = async () => {
+    if (!canvasRef) return
+
+    setIsExporting(true)
+    setProgress(0)
+    setTotalFrames(Math.ceil(duration / (1000 / fps)))
+    
+    // Set playing state to hide UI overlays (selection handles, path lines, etc.)
+    onSetPlaying(true)
+    
+    // Directly hide PIXI handles (more reliable than waiting for React re-render)
+    onHideHandles?.()
+    
+    // Resize PIXI canvas to exact viewport dimensions for clean export
+    // This eliminates black bars by making the canvas exactly match the export size
+    onResizeForExport?.(canvasWidth, canvasHeight)
+    
+    // Seek to start and force render to ensure UI is updated before capture
+    onSeek(0)
+    onRender()
+    
+    // Wait for PIXI to render at new size
+    await new Promise(resolve => requestAnimationFrame(resolve))
+    await new Promise(resolve => requestAnimationFrame(resolve))
+    await new Promise(resolve => setTimeout(resolve, 100))
+
+    try {
+      // For MP4 with transparent background, force black background
+      // (H.264 + yuv420p doesn't support alpha channel)
+      let exportBackground = background
+      if (format === 'mp4' && (!background || background.mode === 'transparent')) {
+        exportBackground = {
+          mode: 'solid',
+          solid: '#000000',
+          from: '#000000',
+          to: '#000000',
+        }
+      }
+
+      const blob = await exportToWebM({
+        canvas: canvasRef,
+        duration,
+        fps,
+        quality,
+        background: exportBackground,
+        onProgress: (prog, frame, total, phase) => {
+          setProgress(prog)
+          setCurrentFrame(frame)
+          setTotalFrames(total)
+          setExportPhase(phase)
+        },
+        onSeek,
+        onRender,
+      })
+
+      // If MP4 selected, convert WebM to MP4
+      let finalBlob = blob
+      if (format === 'mp4') {
+        setExportPhase('converting')
+        setProgress(0)
+        finalBlob = await convertToMP4(blob, (prog) => {
+          setProgress(prog)
+        })
+      }
+
+      downloadBlob(finalBlob, `${filename.trim() || 'motionshapes'}.${format}`)
+      
+      // Reset timeline to start
+      onSeek(0)
+      onRender()
+      
+      onClose()
+    } catch (error) {
+      console.error('Export failed:', error)
+      alert('Export failed. Please try again.')
+    } finally {
+      // Restore canvas size and stage position
+      onRestoreFromExport?.()
+      // Force position recalculation with container dimensions
+      onSeek(0)
+      onRender()
+      // Reset playing state and restore handles
+      onShowHandles?.()
+      onSetPlaying(false)
+      setIsExporting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* Backdrop */}
+      <div 
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={!isExporting ? onClose : undefined}
+      />
+      
+      {/* Modal */}
+      <div className="relative bg-neutral-900 rounded-2xl border border-white/10 shadow-2xl w-[400px] overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/5">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
+              <Download className="w-4 h-4 text-purple-400" />
+            </div>
+            <h2 className="text-lg font-semibold text-white">Export Animation</h2>
+          </div>
+          <button
+            onClick={() => {
+              if (isExporting) {
+                // Allow cancel during export - confirm first
+                if (confirm('Export is in progress. Cancel and return to dashboard?')) {
+                  // Restore state and close
+                  onRestoreStagePosition?.()
+                  onShowHandles?.()
+                  onSetPlaying(false)
+                  setIsExporting(false)
+                  onClose()
+                }
+              } else {
+                onClose()
+              }
+            }}
+            className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors"
+            title={isExporting ? "Cancel export" : "Close"}
+          >
+            <X className="w-4 h-4 text-neutral-400" />
+          </button>
+        </div>
+        
+        {/* Format Tabs */}
+        <div className="flex border-b border-white/5">
+          <button
+            onClick={() => setFormat('webm')}
+            disabled={isExporting}
+            className={cn(
+              "flex-1 py-3 px-4 text-sm font-medium transition-all border-b-2",
+              format === 'webm'
+                ? "text-purple-400 border-purple-500 bg-purple-500/5"
+                : "text-neutral-400 border-transparent hover:text-neutral-200 hover:bg-white/5",
+              isExporting && "cursor-not-allowed opacity-50"
+            )}
+          >
+            WebM
+            <span className="block text-[10px] font-normal opacity-60">Faster export</span>
+          </button>
+          <button
+            onClick={() => setFormat('mp4')}
+            disabled={isExporting}
+            className={cn(
+              "flex-1 py-3 px-4 text-sm font-medium transition-all border-b-2",
+              format === 'mp4'
+                ? "text-purple-400 border-purple-500 bg-purple-500/5"
+                : "text-neutral-400 border-transparent hover:text-neutral-200 hover:bg-white/5",
+              isExporting && "cursor-not-allowed opacity-50"
+            )}
+          >
+            MP4
+            <span className="block text-[10px] font-normal opacity-60">Universal</span>
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="px-6 py-5 space-y-5">
+          {/* Resolution Info */}
+          <div className="bg-neutral-800/50 rounded-xl p-4 border border-white/5">
+            <div className="flex items-center gap-3">
+              <Monitor className="w-5 h-5 text-neutral-400" />
+              <div>
+                <div className="text-white font-medium">
+                  {canvasWidth} × {canvasHeight} ({aspectRatioLabel})
+                </div>
+                <div className="text-sm text-neutral-400">
+                  ✓ {platformHints}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {!isExporting ? (
+            <>
+              {/* Filename Input */}
+              <div className="space-y-2">
+                <label className="text-xs uppercase tracking-wider text-neutral-500 font-medium">
+                  File Name
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={filename}
+                    onChange={(e) => setFilename(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ''))}
+                    placeholder="motionshapes"
+                    className="flex-1 px-3 py-2 rounded-xl bg-neutral-800 text-white border border-white/10 focus:border-purple-500/50 focus:outline-none text-sm"
+                  />
+                  <span className="text-neutral-500 text-sm">.{format}</span>
+                </div>
+              </div>
+
+              {/* Quality Selection */}
+              <div className="space-y-2">
+                <label className="text-xs uppercase tracking-wider text-neutral-500 font-medium">
+                  Quality
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setQuality('standard')}
+                    className={cn(
+                      "flex-1 py-3 px-4 rounded-xl text-sm font-medium transition-all",
+                      quality === 'standard'
+                        ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                        : "bg-neutral-800 text-neutral-400 border border-white/5 hover:bg-neutral-700"
+                    )}
+                  >
+                    <div>Standard</div>
+                    <div className="text-xs opacity-60 mt-0.5">Smaller file</div>
+                  </button>
+                  <button
+                    onClick={() => setQuality('high')}
+                    className={cn(
+                      "flex-1 py-3 px-4 rounded-xl text-sm font-medium transition-all",
+                      quality === 'high'
+                        ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                        : "bg-neutral-800 text-neutral-400 border border-white/5 hover:bg-neutral-700"
+                    )}
+                  >
+                    <div>High</div>
+                    <div className="text-xs opacity-60 mt-0.5">Best quality</div>
+                  </button>
+                </div>
+              </div>
+
+              {/* FPS Selection */}
+              <div className="space-y-2">
+                <label className="text-xs uppercase tracking-wider text-neutral-500 font-medium">
+                  Frame Rate
+                </label>
+                <div className="flex gap-2">
+                  {([24, 30, 60] as ExportFPS[]).map((fpsOption) => (
+                    <button
+                      key={fpsOption}
+                      onClick={() => setFps(fpsOption)}
+                      className={cn(
+                        "flex-1 py-3 px-4 rounded-xl text-sm font-medium transition-all",
+                        fps === fpsOption
+                          ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                          : "bg-neutral-800 text-neutral-400 border border-white/5 hover:bg-neutral-700"
+                      )}
+                    >
+                      <div>{fpsOption} fps</div>
+                      <div className="text-xs opacity-60 mt-0.5">
+                        {fpsOption === 24 ? 'Cinematic' : fpsOption === 30 ? 'Standard' : 'Smooth'}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Info */}
+              <div className="flex justify-between text-sm text-neutral-400 px-1">
+                <span>Duration: {durationSeconds}s</span>
+                <span>Est. Size: {estimatedSize}</span>
+              </div>
+            </>
+          ) : (
+            /* Progress UI */
+            <div className="py-8 flex flex-col items-center gap-4">
+              {/* Circular Progress */}
+              <div className="relative w-24 h-24">
+                <svg className="w-24 h-24 transform -rotate-90">
+                  {/* Background circle */}
+                  <circle
+                    cx="48"
+                    cy="48"
+                    r="40"
+                    fill="none"
+                    stroke="rgba(168, 85, 247, 0.2)"
+                    strokeWidth="6"
+                  />
+                  {/* Progress circle */}
+                  <circle
+                    cx="48"
+                    cy="48"
+                    r="40"
+                    fill="none"
+                    stroke="url(#progressGradient)"
+                    strokeWidth="6"
+                    strokeLinecap="round"
+                    strokeDasharray={`${progress * 251.2} 251.2`}
+                    className="transition-all duration-150"
+                  />
+                  <defs>
+                    <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stopColor="#A855F7" />
+                      <stop offset="100%" stopColor="#EC4899" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+                {/* Percentage in center */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-2xl font-bold text-white">
+                    {Math.round(progress * 100)}%
+                  </span>
+                </div>
+              </div>
+              
+              {/* Frame counter */}
+              <div className="text-sm text-neutral-400">
+                {exportPhase === 'capturing' 
+                  ? `Capturing frame ${currentFrame} of ${totalFrames}`
+                  : exportPhase === 'encoding'
+                  ? `Encoding frame ${currentFrame} of ${totalFrames}`
+                  : 'Converting to MP4...'
+                }
+              </div>
+              
+              {/* Phase indicator */}
+              <div className="text-xs text-neutral-500 animate-pulse">
+                {exportPhase === 'capturing' 
+                  ? 'Capturing frames...' 
+                  : exportPhase === 'encoding'
+                  ? 'Creating video...'
+                  : 'Converting WebM → MP4...'
+                }
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        {!isExporting && (
+          <div className="px-6 py-4 border-t border-white/5">
+            <button
+              onClick={handleExport}
+              disabled={!canvasRef}
+              className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white font-medium hover:from-purple-600 hover:to-pink-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              Export {format.toUpperCase()}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}

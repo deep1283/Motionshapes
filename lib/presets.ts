@@ -5,8 +5,11 @@ export type TemplateId =
   | 'fade_in' | 'slide_in' | 'grow_in' | 'shrink_in' | 'spin_in' | 'twist_in' | 'move_scale_in'
   | 'fade_out' | 'slide_out' | 'grow_out' | 'shrink_out' | 'spin_out' | 'twist_out' | 'move_scale_out'
   | 'mask_center' | 'mask_top' | 'mask_center_out' | 'mask_top_out'
-  | 'typewriter' | 'bounce_in' | 'bounce_out' | 'scramble' // Text animations
+  | 'typewriter' | 'bounce_in' | 'bounce_out' | 'scramble' | 'fade_in_char' | 'fade_out_char' // Text animations
   | 'transition_fade' | 'transition_slide' | 'transition_zoom' | 'transition_blur' // Unified transitions
+  | 'color' // Custom color animation
+  | 'resize' // Custom resize animation
+  | 'rotate' // Custom rotation animation
 
 export interface PresetResult {
   position?: TimelineKeyframe<Vec2>[]
@@ -14,9 +17,13 @@ export interface PresetResult {
   rotation?: TimelineKeyframe<number>[]
   opacity?: TimelineKeyframe<number>[]
   maskScale?: TimelineKeyframe<number>[]
+  color?: TimelineKeyframe<number>[]
+  width?: TimelineKeyframe<number>[]
+  height?: TimelineKeyframe<number>[]
   duration: number
   meta?: {
     rollDistance?: number // normalized/pixel offset for roll
+    rollRotation?: number // number of full rotations during roll
     jumpHeight?: number
     popScale?: number
     wobble?: boolean
@@ -30,6 +37,15 @@ export interface PresetResult {
     panZoomEndRegion?: { x: number; y: number; width: number; height: number }
     panZoomEasing?: 'linear' | 'ease-in-out' | 'smooth'
     panZoomIntensity?: number
+    colorFrom?: number
+    colorTo?: number
+    colorEasing?: string
+    // Resize params
+    resizeFromWidth?: number
+    resizeFromHeight?: number
+    resizeToWidth?: number
+    resizeToHeight?: number
+    resizeEasing?: string
   }
 }
 
@@ -48,11 +64,13 @@ export const rollDurationForDistance = (distance: number = ROLL_BASE_DISTANCE, s
 export const rollDistanceForDuration = (duration: number = ROLL_BASE_DURATION, speed: number = ROLL_BASE_SPEED) =>
   Math.max(0.05, ((Math.max(300, duration) / ROLL_BASE_DURATION) * Math.max(0.1, speed)) * ROLL_BASE_DISTANCE)
 
-const rollPreset = (distance: number = BASE_ROLL_DISTANCE, speed: number = ROLL_BASE_SPEED): PresetResult => {
+const rollPreset = (distance: number = BASE_ROLL_DISTANCE, speed: number = ROLL_BASE_SPEED, rotations: number = 1): PresetResult => {
   const clampedDistance = Math.max(0.05, distance)
   const clampedSpeed = Math.max(0.1, speed)
   // duration = distance / speed (scaled by base values)
   const duration = rollDurationForDistance(clampedDistance, clampedSpeed)
+  // rotations controls how many full spins during roll (default 2)
+  const endRotation = rotations * Math.PI * 2
   return {
     duration,
     position: [
@@ -63,9 +81,9 @@ const rollPreset = (distance: number = BASE_ROLL_DISTANCE, speed: number = ROLL_
     rotation: [
       { time: 0, value: 0, easing: 'linear' },
       // rotation is additive offset
-      { time: duration, value: Math.PI * 4, easing: 'linear' },
+      { time: duration, value: endRotation, easing: 'linear' },
     ],
-    meta: { rollDistance: distance },
+    meta: { rollDistance: distance, rollRotation: rotations },
   }
 }
 
@@ -232,8 +250,11 @@ export const SPIN_BASE_DURATION = 1200 // ms
 
 const spinPreset = (speed: number = SPIN_BASE_SPEED, direction: 1 | -1 = 1, targetDuration?: number): PresetResult => {
   const duration = targetDuration ?? SPIN_BASE_DURATION
-  const rotations = Math.max(0.1, speed)
-  const endRotation = direction * rotations * Math.PI * 2
+  // Speed is rotations per second, duration is in ms
+  // Total rotations = speed * (duration / 1000)
+  // Round to whole number so spin ends at same angle it started
+  const totalRotations = Math.max(1, Math.round(speed * (duration / 1000)))
+  const endRotation = direction * totalRotations * Math.PI * 2
   return {
     duration,
     rotation: [
@@ -480,7 +501,7 @@ const panZoomPreset = (
   const getEasing = (easingType: string) => {
     switch (easingType) {
       case 'linear': return 'linear' as any
-      case 'smooth': return 'easeInOutCubic' as any
+      case 'smooth': return 'easeInOutQuint' as any // Aggressive S-curve like Jitter
       case 'ease-in-out': 
       default: return 'easeInOutQuad' as any
     }
@@ -619,6 +640,92 @@ const scramblePreset = (duration: number = 2000): PresetResult => ({
   } as any,
 })
 
+export const FADE_IN_CHAR_DURATION = 1500
+
+const fadeInCharPreset = (duration: number = FADE_IN_CHAR_DURATION): PresetResult => ({
+  duration,
+  // Scale/Opacity are handled by MotionCanvas per-letter (no scale change, just fade)
+  scale: [],
+  opacity: [],
+  meta: {
+    textAnimation: 'fade_in_char',
+  } as any,
+})
+
+const fadeOutCharPreset = (duration: number = FADE_IN_CHAR_DURATION): PresetResult => ({
+  duration,
+  // Scale/Opacity are handled by MotionCanvas per-letter (no scale change, just fade out)
+  scale: [],
+  opacity: [],
+  meta: {
+    textAnimation: 'fade_out_char',
+  } as any,
+})
+
+const colorPreset = (duration: number = 1000, fromColor: number = 0xffffff, toColor: number = 0xff0000, easing: string = 'linear'): PresetResult => ({
+  duration,
+  color: [
+    { time: 0, value: fromColor },
+    { time: duration, value: toColor, easing: easing as any },
+  ],
+  meta: {
+    colorFrom: fromColor,
+    colorTo: toColor,
+    colorEasing: easing,
+  } as any,
+})
+
+const resizePreset = (
+  duration: number = 800,
+  fromWidth: number = 100,
+  fromHeight: number = 100,
+  toWidth: number = 200,
+  toHeight: number = 200,
+  easing: string = 'linear'
+): PresetResult => ({
+  duration,
+  width: [
+    { time: 0, value: fromWidth },
+    { time: duration, value: toWidth, easing: easing as any },
+  ],
+  height: [
+    { time: 0, value: fromHeight },
+    { time: duration, value: toHeight, easing: easing as any },
+  ],
+  meta: {
+    resizeFromWidth: fromWidth,
+    resizeFromHeight: fromHeight,
+    resizeToWidth: toWidth,
+    resizeToHeight: toHeight,
+    resizeEasing: easing,
+  } as any,
+})
+
+// Rotate preset: animates rotation from one angle to another
+// Angles are in degrees, converted to radians internally
+const rotatePreset = (
+  duration: number = 800,
+  fromAngle: number = 0,
+  toAngle: number = 360,
+  easing: string = 'linear'
+): PresetResult => {
+  // Convert degrees to radians
+  const fromRad = (fromAngle * Math.PI) / 180
+  const toRad = (toAngle * Math.PI) / 180
+  return {
+    duration,
+    rotation: [
+      { time: 0, value: fromRad },
+      { time: duration, value: toRad, easing: easing as any },
+    ],
+    meta: {
+      rotateFromAngle: fromAngle,
+      rotateToAngle: toAngle,
+      rotateEasing: easing,
+    } as any,
+  }
+}
+
 export const PRESET_BUILDERS = {
   roll: rollPreset,
   jump: jumpPreset,
@@ -652,6 +759,11 @@ export const PRESET_BUILDERS = {
   bounce_in: bounceInPreset,
   bounce_out: bounceOutPreset,
   scramble: scramblePreset,
+  fade_in_char: fadeInCharPreset,
+  fade_out_char: fadeOutCharPreset,
+  color: colorPreset,
+  resize: resizePreset,
+  rotate: rotatePreset,
 } as const
 
 export type PresetBuilderMap = typeof PRESET_BUILDERS

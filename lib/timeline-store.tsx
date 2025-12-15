@@ -25,6 +25,7 @@ type TimelineState = {
   lastTick?: number
   templateSpeed: number
   rollDistance: number
+  rollRotation: number
   jumpHeight: number
   jumpVelocity: number
   popScale: number
@@ -46,6 +47,7 @@ type TimelineState = {
     parameters?: {
       templateSpeed?: number
       rollDistance?: number
+      rollRotation?: number
       jumpHeight?: number
       jumpVelocity?: number
       popScale?: number
@@ -65,6 +67,7 @@ type TimelineState = {
       counterSuffix?: string
       counterDecimals?: number
       pathPoints?: Vec2[]
+      pathEasing?: 'linear' | 'easeInQuad' | 'easeOutQuad' | 'easeInOutQuad'
       pathLength?: number
       layerBase?: {
         position?: Vec2
@@ -81,12 +84,29 @@ type TimelineState = {
       panZoomBlurIntensity?: number // Blur intensity (0 = no blur, 10 = max blur)
       // Mask Center parameters
       maskAngle?: number // Angle in degrees (0 = horizontal, 90 = vertical)
+      maskEasing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'
       // Text animation parameters
-      textAnimation?: 'typewriter' | 'bounce_in' | 'bounce_out' | 'scramble'
+      textAnimation?: 'typewriter' | 'bounce_in' | 'bounce_out' | 'scramble' | 'fade_in_char' | 'fade_out_char'
       showCursor?: boolean
       // Transition parameters
       transitionToLayerId?: string
       transitionType?: 'fade' | 'slide' | 'zoom' | 'blur'
+      slideDirection?: 'top' | 'bottom' | 'left' | 'right'
+      // Color parameters
+      colorFrom?: number
+      colorTo?: number
+      colorEasing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'
+      // Resize parameters
+      resizeFromWidth?: number
+      resizeFromHeight?: number
+      resizeToWidth?: number
+      resizeToHeight?: number
+      resizeEasing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'
+      resizeAnchor?: 'middle' | 'top' | 'bottom' | 'left' | 'right'
+      // Rotation parameters
+      rotateFromAngle?: number
+      rotateToAngle?: number
+      rotateEasing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'
     }
   }>
   // Click markers for click animation effect
@@ -133,6 +153,7 @@ const defaultState: TimelineState = {
   playbackRate: 1,
   templateSpeed: 1,
   rollDistance: 0.2,
+  rollRotation: 1,  // Default 1 full rotation during roll
   jumpHeight: 0.25,
   jumpVelocity: 1.5,
   popScale: 1.6,
@@ -175,6 +196,37 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
 
   const listeners = new Set<() => void>()
   let rafId: number | null = null
+  
+  // Internal time tracking for high-performance playback
+  // This allows PixiJS to read the current time at 60fps without React re-renders
+  let internalCurrentTime = state.currentTime
+  let lastUiUpdateTime = 0
+  const UI_UPDATE_INTERVAL = 33 // ~30fps for UI updates (React state)
+  
+  // CACHED content duration - avoids expensive per-frame calculations
+  let cachedContentDuration = 5000
+  
+  // Helper to recalculate content duration (called only when tracks/clips change)
+  const recalculateContentDuration = () => {
+    const tracksEnd = state.tracks.reduce((max, t) => {
+      const times: number[] = []
+      if (t.position?.length) times.push(t.position[t.position.length - 1].time)
+      if (t.scale?.length) times.push(t.scale[t.scale.length - 1].time)
+      if (t.rotation?.length) times.push(t.rotation[t.rotation.length - 1].time)
+      if (t.opacity?.length) times.push(t.opacity[t.opacity.length - 1].time)
+      return Math.max(max, times.length ? Math.max(...times) : 0)
+    }, 0)
+    const clipsEnd = state.templateClips.reduce((max, c) => Math.max(max, (c.start ?? 0) + (c.duration ?? 0)), 0)
+    const pathsEnd = getMaxPathEnd(state.tracks)
+    const layersEnd = state.tracks.reduce((max, t) => Math.max(max, (t.startTime ?? 0) + (t.duration ?? 0)), 0)
+    const clickMarkersEnd = state.clickMarkers.reduce((max, m) => Math.max(max, m.time), 0)
+    
+    const hasLayers = state.tracks.length > 0
+    const hasClips = state.templateClips.length > 0 || tracksEnd > 0 || pathsEnd > 0 || hasLayers
+    cachedContentDuration = hasClips 
+      ? Math.max(100, tracksEnd, clipsEnd, pathsEnd, layersEnd, clickMarkersEnd)
+      : Math.max(5000, clickMarkersEnd + 500)
+  }
 
   const notify = () => {
     listeners.forEach((cb) => cb())
@@ -182,6 +234,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
 
   const setState = (updater: (prev: TimelineState) => TimelineState) => {
     state = updater(state)
+    recalculateContentDuration() // Keep cache in sync
     notify()
   }
 
@@ -724,7 +777,9 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         const track = currentTracks.find(t => t.layerId === layerId)
         if (!track) return currentTracks
 
-        // Reset track to empty/default state
+        // Reset track to empty/default state, but initialize clipKeyframes for unified sampling
+        const newClipKeyframes: Record<string, { position?: any[]; scale?: any[]; rotation?: any[]; opacity?: any[]; maskScale?: any[]; color?: any[]; width?: any[]; height?: any[] }> = {}
+        
         let newTrack: LayerTracks = {
           ...track,
           position: [],
@@ -732,7 +787,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           rotation: [],
           opacity: [],
           maskScale: [],
-          paths: []
+          paths: [],
+          clipKeyframes: newClipKeyframes  // Will be populated by the loop below
         }
 
         // Apply clips sequentially
@@ -815,7 +871,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
 
        let preset
            if (clip.template === 'roll') {
-             preset = PRESET_BUILDERS.roll(clip.parameters?.rollDistance ?? prev.rollDistance, clip.parameters?.templateSpeed ?? prev.templateSpeed)
+             preset = PRESET_BUILDERS.roll(clip.parameters?.rollDistance ?? prev.rollDistance, clip.parameters?.templateSpeed ?? prev.templateSpeed, clip.parameters?.rollRotation ?? prev.rollRotation ?? 2)
              // Add explicit scale/opacity/position to prevent multiply mode issues and ensure final state
              const rollDistance = clip.parameters?.rollDistance ?? prev.rollDistance
              preset = {
@@ -864,6 +920,29 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             ].includes(clip.template)) {
               // @ts-ignore
               preset = PRESET_BUILDERS[clip.template](clip.duration)
+            } else if (clip.template === 'color') {
+              preset = PRESET_BUILDERS.color(
+                clip.duration,
+                clip.parameters?.colorFrom,
+                clip.parameters?.colorTo,
+                clip.parameters?.colorEasing
+              )
+            } else if (clip.template === 'resize') {
+              preset = PRESET_BUILDERS.resize(
+                clip.duration,
+                clip.parameters?.resizeFromWidth,
+                clip.parameters?.resizeFromHeight,
+                clip.parameters?.resizeToWidth,
+                clip.parameters?.resizeToHeight,
+                clip.parameters?.resizeEasing
+              )
+            } else if (clip.template === 'rotate') {
+              preset = PRESET_BUILDERS.rotate(
+                clip.duration,
+                clip.parameters?.rotateFromAngle,
+                clip.parameters?.rotateToAngle,
+                clip.parameters?.rotateEasing
+              )
             } else if (clip.template === 'path' && clip.parameters?.pathPoints) {
               newTrack.paths = [
                 ...(newTrack.paths ?? []),
@@ -872,7 +951,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
                   startTime: start,
                   duration: duration,
                   points: clip.parameters.pathPoints,
-                  easing: 'linear'
+                  easing: (clip.parameters?.pathEasing as any) || 'linear'
                 }
               ]
               
@@ -1091,6 +1170,18 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             maskScale: mergeKeyframes(newTrack.maskScale ?? [], preset.maskScale, undefined, 'replace'),
           }
           
+          // CRITICAL: Populate clipKeyframes for unified sampling (with local 0-based times)
+          newClipKeyframes[clip.id] = {
+            position: preset.position?.map((f: any) => ({ ...f })),  // Already 0-based in preset
+            scale: preset.scale?.map((f: any) => ({ ...f })),
+            rotation: preset.rotation?.map((f: any) => ({ ...f })),
+            opacity: preset.opacity?.map((f: any) => ({ ...f })),
+            maskScale: preset.maskScale?.map((f: any) => ({ ...f })),
+            color: preset.color?.map((f: any) => ({ ...f })),
+            width: preset.width?.map((f: any) => ({ ...f })),
+            height: preset.height?.map((f: any) => ({ ...f })),
+          }
+          
            // Update prevClipEnd for next iteration
            prevClipEnd = end
          })
@@ -1221,6 +1312,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       targetDuration?: number;
       parameters?: {
         rollDistance?: number;
+        rollRotation?: number;
         jumpHeight?: number;
         jumpVelocity?: number;
         popScale?: number;
@@ -1246,7 +1338,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
   ) => {
     const preset =
       template === 'roll'
-        ? PRESET_BUILDERS.roll(options?.parameters?.rollDistance ?? state.rollDistance, state.templateSpeed)
+        ? PRESET_BUILDERS.roll(options?.parameters?.rollDistance ?? state.rollDistance, state.templateSpeed, options?.parameters?.rollRotation ?? state.rollRotation ?? 2)
         : template === 'jump'
           ? PRESET_BUILDERS.jump(
               options?.parameters?.jumpHeight ?? state.jumpHeight, 
@@ -1275,7 +1367,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
               ].includes(template)
               // @ts-ignore
               ? PRESET_BUILDERS[template](options?.targetDuration)
-              : PRESET_BUILDERS.roll(options?.parameters?.rollDistance ?? state.rollDistance, state.templateSpeed)
+              : PRESET_BUILDERS.roll(options?.parameters?.rollDistance ?? state.rollDistance, state.templateSpeed, options?.parameters?.rollRotation ?? state.rollRotation ?? 2)
     if (!preset) return
     ensureTrack(layerId)
 
@@ -1289,24 +1381,6 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       if (track.rotation && track.rotation.length) times.push(track.rotation[track.rotation.length - 1].time)
       if (track.opacity && track.opacity.length) times.push(track.opacity[track.opacity.length - 1].time)
       return times.length ? Math.max(...times) : 0
-    }
-
-    const normalizePositionFrame = (frame: TimelineKeyframe<Vec2>, overrideBase?: Vec2): TimelineKeyframe<Vec2> => {
-      const basePos = overrideBase ?? base?.position
-      if (!basePos) return frame
-      const isNormalized = basePos.x <= 1 && basePos.y <= 1
-      const offset = frame.value
-      const next: Vec2 = {
-        x: basePos.x + offset.x * (isNormalized ? 1 : 1),
-        y: basePos.y + offset.y * (isNormalized ? 1 : 1),
-      }
-      return { ...frame, value: next }
-    }
-
-    const normalizeNumberFrame = (frame: TimelineKeyframe<number>, baseValue?: number, additive = false): TimelineKeyframe<number> => {
-      if (baseValue === undefined) return frame
-      const nextValue = additive ? baseValue + frame.value : baseValue + (frame.value - 1)
-      return { ...frame, value: nextValue }
     }
 
     setState((prev) => {
@@ -1395,7 +1469,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         const clearedTrack: LayerTracks = {
           ...track,
           position: trimFrames(track.position),
-          scale: trimFrames(track.scale),
+          // IMPORTANT: Scale must always start at base value (1), not from old animation keyframes
+          scale: [{ time: 0, value: layerBaseScale ?? 1 }],
           rotation: trimFrames(track.rotation),
           opacity: trimFrames(track.opacity),
         }
@@ -1446,7 +1521,9 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           clearedTrack.scale = [
             {
               time: 0,
-              value: baseScale,
+              // For scale-based animations (grow_in, shrink_in), base scale should be 1
+              // The animation's scale values (0→1) are multipliers applied to this base
+              value: layerBaseScale ?? 1,
             },
           ]
           clearedTrack.rotation = [
@@ -1477,9 +1554,9 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
 
         const mappedPosition =
           preset.position?.map((frame: TimelineKeyframe<Vec2>) => ({
-            ...normalizePositionFrame(frame, baseState.position),
+            ...frame,  // Store raw offset values (no normalization)
             time: startOffset + scaleTime(frame.time),
-            clipId: newClipId, // Tag with clip ID for deletion
+            clipId: newClipId,
           })) ?? []
 
         const mappedScale =
@@ -1491,9 +1568,9 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
 
         const mappedRotation =
           preset.rotation?.map((f: TimelineKeyframe<number>) => ({
-            ...normalizeNumberFrame(f, baseState.rotation, true),
+            ...f,  // Store raw offset values (no normalization)
             time: startOffset + scaleTime(f.time),
-            clipId: newClipId, // Tag with clip ID for deletion
+            clipId: newClipId,
           })) ?? []
 
         const isInOutAnimation = [
@@ -1501,17 +1578,12 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out'
         ].includes(template)
 
-        const mappedOpacity = isInOutAnimation
-          ? preset.opacity?.map((f: TimelineKeyframe<number>) => ({
-              ...f,
-              time: startOffset + scaleTime(f.time),
-              clipId: newClipId, // Tag with clip ID for deletion
-            })) ?? []
-          : preset.opacity?.map((f: TimelineKeyframe<number>) => ({
-              ...normalizeNumberFrame(f, baseState.opacity, false),
-              time: startOffset + scaleTime(f.time),
-              clipId: newClipId, // Tag with clip ID for deletion
-            })) ?? []
+        const mappedOpacity =
+          preset.opacity?.map((f: TimelineKeyframe<number>) => ({
+            ...f,  // Store raw values (no normalization)
+            time: startOffset + scaleTime(f.time),
+            clipId: newClipId,
+          })) ?? []
 
         const finalOpacity = mergeFrames(clearedTrack.opacity, mappedOpacity).sort((a, b) => a.time - b.time)
         
@@ -1533,33 +1605,32 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             clipId: newClipId,
           })) ?? []
 
-        // NEW: Store raw offset keyframes for additive blending
-        // Times are relative to clip start (0-based), values are pure offsets
-        const rawPositionKeyframes = preset.position?.map((f: TimelineKeyframe<Vec2>) => ({
+        // Create per-clip keyframes with LOCAL times (0-based, relative to clip start)
+        const clipPositionKeyframes = preset.position?.map((f: TimelineKeyframe<Vec2>) => ({
           ...f,
-          time: scaleTime(f.time), // Time relative to clip start, not absolute
+          time: scaleTime(f.time),  // Local time, not absolute
           clipId: newClipId,
         })) ?? []
 
-        const rawScaleKeyframes = preset.scale?.map((f: TimelineKeyframe<number>) => ({
-          ...f,
-          time: scaleTime(f.time),
-          clipId: newClipId,
-        })) ?? []
-
-        const rawRotationKeyframes = preset.rotation?.map((f: TimelineKeyframe<number>) => ({
+        const clipScaleKeyframes = preset.scale?.map((f: TimelineKeyframe<number>) => ({
           ...f,
           time: scaleTime(f.time),
           clipId: newClipId,
         })) ?? []
 
-        const rawOpacityKeyframes = preset.opacity?.map((f: TimelineKeyframe<number>) => ({
+        const clipRotationKeyframes = preset.rotation?.map((f: TimelineKeyframe<number>) => ({
           ...f,
           time: scaleTime(f.time),
           clipId: newClipId,
         })) ?? []
 
-        const rawMaskScaleKeyframes = preset.maskScale?.map((f: TimelineKeyframe<number>) => ({
+        const clipOpacityKeyframes = preset.opacity?.map((f: TimelineKeyframe<number>) => ({
+          ...f,
+          time: scaleTime(f.time),
+          clipId: newClipId,
+        })) ?? []
+
+        const clipMaskScaleKeyframes = preset.maskScale?.map((f: TimelineKeyframe<number>) => ({
           ...f,
           time: maskScaleTime(f.time),
           clipId: newClipId,
@@ -1570,23 +1641,23 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         const newClipKeyframes = {
           ...existingClipKeyframes,
           [newClipId]: {
-            position: rawPositionKeyframes.length > 0 ? rawPositionKeyframes : undefined,
-            scale: rawScaleKeyframes.length > 0 ? rawScaleKeyframes : undefined,
-            rotation: rawRotationKeyframes.length > 0 ? rawRotationKeyframes : undefined,
-            opacity: rawOpacityKeyframes.length > 0 ? rawOpacityKeyframes : undefined,
-            maskScale: rawMaskScaleKeyframes.length > 0 ? rawMaskScaleKeyframes : undefined,
+            position: clipPositionKeyframes.length > 0 ? clipPositionKeyframes : undefined,
+            scale: clipScaleKeyframes.length > 0 ? clipScaleKeyframes : undefined,
+            rotation: clipRotationKeyframes.length > 0 ? clipRotationKeyframes : undefined,
+            opacity: clipOpacityKeyframes.length > 0 ? clipOpacityKeyframes : undefined,
+            maskScale: clipMaskScaleKeyframes.length > 0 ? clipMaskScaleKeyframes : undefined,
           },
         }
 
         return {
           ...track,
-          // NEW: Per-clip keyframes for additive blending
-          clipKeyframes: newClipKeyframes,
-          // LEGACY: Merged arrays for backward compatibility
-          position: finalPosition,
-          scale: mergeFrames(clearedTrack.scale, mappedScale).sort((a, b) => a.time - b.time),
-          rotation: mergeFrames(clearedTrack.rotation, mappedRotation).sort((a, b) => a.time - b.time),
-          opacity: finalOpacity,
+          clipKeyframes: newClipKeyframes,  // Per-clip keyframes for unified sampling
+          // IMPORTANT: Legacy arrays now store BASE VALUES ONLY for sampling to read
+          // All animation data is in clipKeyframes
+          position: clearedTrack.position,  // Keep base position only
+          scale: clearedTrack.scale,        // Keep base scale only
+          rotation: clearedTrack.rotation,  // Keep base rotation only
+          opacity: clearedTrack.opacity,    // Keep base opacity only
           maskScale: mergeFrames(clearedTrack.maskScale, mappedMaskScale).sort((a, b) => a.time - b.time),
         }
       })
@@ -1646,7 +1717,6 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     layerScale?: number,
     layerBase?: { position?: Vec2; scale?: number; rotation?: number; opacity?: number }
   ) => {
-    console.log('[STEP 1] addTemplateClip called with template:', template, 'layerId:', layerId)
     const clipId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID()
       : `clip-${Date.now()}-${Math.random()}`
@@ -1722,6 +1792,9 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         const track = currentTracks.find(t => t.layerId === layerId)
         if (!track) return currentTracks
 
+        // Reset track and initialize clipKeyframes for unified sampling
+        const newClipKeyframes: Record<string, { position?: any[]; scale?: any[]; rotation?: any[]; opacity?: any[]; maskScale?: any[]; color?: any[]; width?: any[]; height?: any[] }> = {}
+        
         let newTrack: LayerTracks = {
           ...track,
           position: [],
@@ -1729,7 +1802,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           rotation: [],
           opacity: [],
           maskScale: [],
-          paths: []
+          paths: [],
+          clipKeyframes: newClipKeyframes
         }
 
         let prevClipEnd = 0
@@ -1819,7 +1893,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
 
            let preset
            if (clip.template === 'roll') {
-             preset = PRESET_BUILDERS.roll(clip.parameters?.rollDistance ?? prev.rollDistance, clip.parameters?.templateSpeed ?? prev.templateSpeed)
+             preset = PRESET_BUILDERS.roll(clip.parameters?.rollDistance ?? prev.rollDistance, clip.parameters?.templateSpeed ?? prev.templateSpeed, clip.parameters?.rollRotation ?? prev.rollRotation ?? 2)
            } else if (clip.template === 'jump') {
              preset = PRESET_BUILDERS.jump(clip.parameters?.jumpHeight ?? prev.jumpHeight, clip.parameters?.jumpVelocity ?? prev.jumpVelocity)
            } else if (clip.template === 'pop') {
@@ -1880,6 +1954,29 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
                 clip.parameters?.panZoomHoldDuration ?? 500,
                 clip.parameters?.panZoomEasing,
                 clip.parameters?.panZoomIntensity ?? 1.5
+              )
+            } else if (clip.template === 'color') {
+              preset = PRESET_BUILDERS.color(
+                clip.duration,
+                clip.parameters?.colorFrom,
+                clip.parameters?.colorTo,
+                clip.parameters?.colorEasing
+              )
+            } else if (clip.template === 'resize') {
+              preset = PRESET_BUILDERS.resize(
+                clip.duration,
+                clip.parameters?.resizeFromWidth,
+                clip.parameters?.resizeFromHeight,
+                clip.parameters?.resizeToWidth,
+                clip.parameters?.resizeToHeight,
+                clip.parameters?.resizeEasing
+              )
+            } else if (clip.template === 'rotate') {
+              preset = PRESET_BUILDERS.rotate(
+                clip.duration,
+                clip.parameters?.rotateFromAngle,
+                clip.parameters?.rotateToAngle,
+                clip.parameters?.rotateEasing
               )
             } else if (clip.template === 'mask_center') {
               preset = PRESET_BUILDERS.mask_center(clip.duration)
@@ -2006,7 +2103,6 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
                 })
               : preset.position
 
-            const mergedScale = preset.scale // keep multipliers; layer.scale applied at render
 
             const mergedRotation = isInOutAnimation && preset.rotation
               ? preset.rotation.map((f: any, idx: number) => {
@@ -2043,10 +2139,24 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             newTrack = {
               ...newTrack,
               position: mergeKeyframes(newTrack.position ?? [], mergedPosition, isInOutAnimation ? undefined : clipBaseState.position, isInOutAnimation ? 'replace' : 'add'),
-              scale: mergeKeyframes(newTrack.scale ?? [], mergedScale, undefined, 'replace'),
+              // IMPORTANT: Don't merge animation scale into legacy array - keep base scale only
+              // Animation scale goes in clipKeyframes (stored in inner addTemplateClip)
+              scale: newTrack.scale?.length ? newTrack.scale : [{ time: 0, value: 1 }],
               rotation: mergeKeyframes(newTrack.rotation ?? [], mergedRotation, isInOutAnimation ? undefined : clipBaseState.rotation, isInOutAnimation ? 'replace' : 'add'),
               opacity: mergeKeyframes(newTrack.opacity ?? [], preset.opacity, isInOutAnimation ? undefined : clipBaseState.opacity, isInOutAnimation ? 'replace' : 'multiply'),
               maskScale: mergeKeyframes(newTrack.maskScale ?? [], preset.maskScale, undefined, 'replace'),
+            }
+            
+            // CRITICAL: Populate clipKeyframes for unified sampling (with local 0-based times)
+            newClipKeyframes[clip.id] = {
+              position: preset.position?.map((f: any) => ({ ...f })),
+              scale: preset.scale?.map((f: any) => ({ ...f })),
+              rotation: preset.rotation?.map((f: any) => ({ ...f })),
+              opacity: preset.opacity?.map((f: any) => ({ ...f })),
+              maskScale: preset.maskScale?.map((f: any) => ({ ...f })),
+              color: preset.color?.map((f: any) => ({ ...f })),
+              width: preset.width?.map((f: any) => ({ ...f })),
+              height: preset.height?.map((f: any) => ({ ...f })),
             }
             
            prevClipEnd = end
@@ -2098,13 +2208,6 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         parameters?.layerBase
       )
       
-      // Debug: trace rebuilt track keyframes
-      const targetTrack = rebuiltTracks.find(t => t.layerId === layerId)
-      console.log('[TRACK_REBUILD] layer:', layerId, 
-        'position keyframes:', targetTrack?.position?.length,
-        'scale keyframes:', targetTrack?.scale?.length,
-        'clips:', nextClips.filter(c => c.layerId === layerId).map(c => c.template)
-      )
       
       // Merge layer visibility properties (startTime, duration) from updatedTracks into rebuiltTracks
       const newTracks = rebuiltTracks.map(track => {
@@ -2194,7 +2297,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           })
         }
         
-        // Also remove from clipKeyframes
+        // Remove from clipKeyframes
         const { [clipId]: removed, ...remainingClipKeyframes } = track.clipKeyframes ?? {}
         
         return {
@@ -2241,9 +2344,12 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
   }
 
   const setCurrentTime = (time: number) => {
+    const clampedTime = clampTime(time, state.duration)
+    // Sync internal time for PixiJS
+    internalCurrentTime = clampedTime
     setState((prev) => ({
       ...prev,
-      currentTime: clampTime(time, prev.duration),
+      currentTime: clampedTime,
       isPlaying: false,
       lastTick: undefined,
     }))
@@ -2276,6 +2382,14 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     setState((prev) => ({
       ...prev,
       rollDistance: clamped,
+    }))
+  }
+
+  const setRollRotation = (rotations: number) => {
+    const clamped = Math.max(0, Math.min(10, rotations))
+    setState((prev) => ({
+      ...prev,
+      rollRotation: clamped,
     }))
   }
 
@@ -2366,58 +2480,49 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
   }
 
   const tick = (timestamp: number) => {
-    setState((prev) => {
-      if (!prev.isPlaying) return prev
-      const lastTick = prev.lastTick ?? timestamp
-      const deltaMs = (timestamp - lastTick) * prev.playbackRate
-      let nextTime = prev.currentTime + deltaMs
-      let playing: boolean = prev.isPlaying
+    // Read current state without triggering React
+    const prev = state
+    if (!prev.isPlaying) {
+      stopTicker()
+      return
+    }
+    
+    const lastTick = prev.lastTick ?? timestamp
+    const deltaMs = (timestamp - lastTick) * prev.playbackRate
+    let nextTime = internalCurrentTime + deltaMs
+    let shouldStop = false
 
-      // Calculate actual content duration to loop/stop correctly
-      // We want to loop at the end of the clips, not the full timeline view duration (which is min 4000ms)
-      const tracksEnd = prev.tracks.reduce((max, t) => {
-        const times: number[] = []
-        if (t.position?.length) times.push(t.position[t.position.length - 1].time)
-        if (t.scale?.length) times.push(t.scale[t.scale.length - 1].time)
-        if (t.rotation?.length) times.push(t.rotation[t.rotation.length - 1].time)
-        if (t.opacity?.length) times.push(t.opacity[t.opacity.length - 1].time)
-        return Math.max(max, times.length ? Math.max(...times) : 0)
-      }, 0)
-      const clipsEnd = prev.templateClips.reduce((max, c) => Math.max(max, (c.start ?? 0) + (c.duration ?? 0)), 0)
-      const pathsEnd = getMaxPathEnd(prev.tracks)
-      
-      // Include layer visibility bars (shape bars) - the purple parent bars
-      const layersEnd = prev.tracks.reduce((max, t) => Math.max(max, (t.startTime ?? 0) + (t.duration ?? 0)), 0)
-      
-      // Include click markers in content duration
-      const clickMarkersEnd = prev.clickMarkers.reduce((max, m) => Math.max(max, m.time), 0)
-      
-      // If there are shape bars, stop at the end of the last bar
-      // If there are no bars, allow 5 seconds of free movement
-      const hasLayers = prev.tracks.length > 0
-      const hasClips = prev.templateClips.length > 0 || tracksEnd > 0 || pathsEnd > 0 || hasLayers
-      const contentDuration = hasClips 
-        ? Math.max(100, tracksEnd, clipsEnd, pathsEnd, layersEnd, clickMarkersEnd)  // Stop at content end (including bars)
-        : Math.max(5000, clickMarkersEnd + 500)  // 5s free movement or until click markers
+    // Use CACHED content duration (calculated only when tracks/clips change)
+    const contentDuration = cachedContentDuration
 
-      if (nextTime >= contentDuration) {
-        if (prev.loop && contentDuration > 0) {
-          nextTime = nextTime % contentDuration
-        } else {
-          nextTime = contentDuration
-          playing = false
-        }
+    if (nextTime >= contentDuration) {
+      if (prev.loop && contentDuration > 0) {
+        nextTime = nextTime % contentDuration
+      } else {
+        nextTime = contentDuration
+        shouldStop = true
       }
+    }
 
-      return {
-        ...prev,
+    // Always update internal time (60fps for PixiJS)
+    internalCurrentTime = nextTime
+
+    // Throttle React state updates to ~30fps for UI (timeline panel, playhead)
+    const timeSinceLastUiUpdate = timestamp - lastUiUpdateTime
+    if (timeSinceLastUiUpdate >= UI_UPDATE_INTERVAL || shouldStop) {
+      lastUiUpdateTime = timestamp
+      setState((current) => ({
+        ...current,
         currentTime: nextTime,
-        isPlaying: playing,
+        isPlaying: !shouldStop,
         lastTick: timestamp,
-      }
-    })
+      }))
+    } else {
+      // Just update lastTick without triggering full React update
+      state = { ...state, lastTick: timestamp }
+    }
 
-    if (state.isPlaying && typeof requestAnimationFrame !== 'undefined') {
+    if (!shouldStop && typeof requestAnimationFrame !== 'undefined') {
       rafId = requestAnimationFrame(tick)
     } else {
       stopTicker()
@@ -2601,7 +2706,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         
         switch (clip.template) {
           case 'roll':
-            built = PRESET_BUILDERS.roll(params?.rollDistance, params?.templateSpeed)
+            built = PRESET_BUILDERS.roll(params?.rollDistance, params?.templateSpeed, params?.rollRotation ?? 2)
             break
           case 'jump':
             built = PRESET_BUILDERS.jump(params?.jumpHeight, params?.jumpVelocity)
@@ -2741,6 +2846,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
   return {
     subscribe,
     getState: () => state,
+    // Get the real-time playhead position (60fps during playback, for PixiJS)
+    getPlayheadTime: () => state.isPlaying ? internalCurrentTime : state.currentTime,
     ensureTrack,
     updateTemplateClip,
     selectClip,
@@ -2751,6 +2858,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     setLoop,
     setPlaybackRate,
     setRollDistance,
+    setRollRotation,
     setJumpHeight,
     setJumpVelocity,
     setPopScale,
