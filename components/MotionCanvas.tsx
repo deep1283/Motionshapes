@@ -1138,6 +1138,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       let finalOpacity = state.opacity
       let transitionScale = 1
       let slideOffsetY: number | null = null // null = no slide, -1 to 1 = normalized Y offset
+      let slideOffsetX: number | null = null // null = no slide, -1 to 1 = normalized X offset
       
       if (!isVisibleInTime) {
         finalOpacity = 0
@@ -1170,8 +1171,18 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
               transitionScale *= (1 - progress * 0.5) // Scale down to 0.5
               finalOpacity *= (1 - progress)
             } else if (clip.template === 'transition_slide') {
-              // Slide out - push up off screen (0 -> -1 screen height)
-              slideOffsetY = -progress // -1 means moved up by full layer height
+              // Slide out
+              const direction = clip.parameters?.slideDirection || 'top'
+              
+              if (direction === 'top') {
+                slideOffsetY = -progress // Move UP (0 -> -1)
+              } else if (direction === 'bottom') {
+                slideOffsetY = progress // Move DOWN (0 -> 1)
+              } else if (direction === 'left') {
+                slideOffsetX = -progress // Move LEFT (0 -> -1)
+              } else if (direction === 'right') {
+                slideOffsetX = progress // Move RIGHT (0 -> 1)
+              }
             } else if (clip.template === 'transition_blur') {
               // Blur out - apply blur filter that increases, opacity fades
               const blurStrength = progress * 15 // 0 to 15 blur
@@ -1193,8 +1204,44 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
               transitionScale *= (0.5 + progress * 0.5) // Scale from 0.5 to 1
               finalOpacity *= progress
             } else if (clip.template === 'transition_slide') {
-              // Slide in - push up from below (1 -> 0, starts at bottom)
-              slideOffsetY = 1 - progress // 1 means below, 0 means in place
+              // Slide in
+              const direction = clip.parameters?.slideDirection || 'top'
+              
+              if (direction === 'top') {
+                slideOffsetY = 1 - progress // From BOTTOM to center (1 -> 0) - waits, "top" here means "enter FROM bottom moving to top"? No, usually matches "Slide Out Top" logic.
+                // Standard convention: "Slide In Top" means "Enters FROM Top". 
+                // But the default "Slide" implementation was:
+                // Out: Moves UP (0 -> -1)
+                // In: Moves UP from bottom (1 -> 0)
+                // This implies the global flow is "Upwards".
+                
+                // Let's stick to the Direction meaning "The direction of movement".
+                // Top: Moves Up.
+                // Out Top: Moves Up (leaves top).
+                // In Top: Moves Up (enters from bottom). wait, "In Top" usually means "Comes from Top".
+                // Let's check the previous code: "Slide in - push up from below (1 -> 0, starts at bottom)"
+                // This corresponds to "Move Up".
+                
+                // So if Direction = Top (Up):
+                // Out: 0 -> -1 (Goes up)
+                // In: 1 -> 0 (Comes from bottom, goes up)
+                slideOffsetY = 1 - progress 
+              } else if (direction === 'bottom') {
+                // Direction = Bottom (Down):
+                // Out: 0 -> 1 (Goes down)
+                // In: -1 -> 0 (Comes from top, goes down)
+                slideOffsetY = -(1 - progress) 
+              } else if (direction === 'left') {
+                // Direction = Left:
+                // Out: 0 -> -1 (Goes left)
+                // In: 1 -> 0 (Comes from right, goes left)
+                slideOffsetX = 1 - progress
+              } else if (direction === 'right') {
+                // Direction = Right:
+                // Out: 0 -> 1 (Goes right)
+                // In: -1 -> 0 (Comes from left, goes right)
+                slideOffsetX = -(1 - progress)
+              }
             } else if (clip.template === 'transition_blur') {
               // Blur in - start blurred and become clear
               const blurStrength = (1 - progress) * 15 // 15 to 0 blur
@@ -1451,12 +1498,20 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       }
       
       // Handle Slide Transition (position-based push effect)
-      if (slideOffsetY !== null && g) {
-        // Apply vertical position offset based on slideOffsetY
-        // slideOffsetY: -1 = moved up by layer height, 0 = in place, 1 = below by layer height
+      if ((slideOffsetY !== null || slideOffsetX !== null) && g) {
+        // Apply position offset based on slideOffset X/Y
         const layerHeight = layerData?.height || 100
-        const positionOffset = slideOffsetY * layerHeight * state.scale
-        g.position.y += positionOffset
+        const layerWidth = layerData?.width || 100
+        
+        if (slideOffsetY !== null) {
+          const positionOffsetY = slideOffsetY * layerHeight * state.scale
+          g.position.y += positionOffsetY
+        }
+        
+        if (slideOffsetX !== null) {
+          const positionOffsetX = slideOffsetX * layerWidth * state.scale
+          g.position.x += positionOffsetX
+        }
       }
       
       // Step 4: Sync handle positions for selected layer (handles are in overlay, don't inherit transforms)

@@ -4061,6 +4061,52 @@ export default function DashboardLayout({
               )
             })()}
             
+            {/* Slide Transition Controls */}
+            {selectedTemplate === 'transition_slide' && selectedClipId && (() => {
+              const slideClip = templateClips.find(c => c.id === selectedClipId && c.template === 'transition_slide')
+              if (!slideClip) return null
+              const direction = slideClip.parameters?.slideDirection ?? 'top'
+              
+              const directions = [
+                { id: 'top', label: 'Top' },
+                { id: 'bottom', label: 'Bottom' },
+                { id: 'left', label: 'Left' },
+                { id: 'right', label: 'Right' },
+              ]
+              
+              return (
+                <>
+                  <div className="mb-4">
+                    <div className="flex items-center justify-between mb-2">
+                       <span className="text-[11px] font-semibold text-neutral-200">Direction</span>
+                       <span className="text-[10px] text-neutral-400 capitalize">{direction}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                       {directions.map((d) => (
+                         <button
+                           key={d.id}
+                           onClick={() => {
+                             if (selectedLayerId) {
+                               timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
+                                 parameters: { ...slideClip.parameters, slideDirection: d.id as any }
+                               })
+                             }
+                           }}
+                           className={`rounded-md border px-3 py-2 text-[11px] font-semibold transition-all ${
+                             direction === d.id 
+                               ? 'border-violet-500 text-violet-400 bg-violet-500/10' 
+                               : 'border-white/10 text-neutral-300 hover:bg-white/5'
+                           }`}
+                         >
+                           {d.label}
+                         </button>
+                       ))}
+                    </div>
+                  </div>
+                </>
+              )
+            })()}
+
             {/* Mask Top Controls */}
             {selectedTemplate === 'mask_top' && selectedClipId && (() => {
               const maskClip = templateClips.find(c => c.id === selectedClipId && c.template === 'mask_top')

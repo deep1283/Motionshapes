@@ -91,6 +91,7 @@ type TimelineState = {
       // Transition parameters
       transitionToLayerId?: string
       transitionType?: 'fade' | 'slide' | 'zoom' | 'blur'
+      slideDirection?: 'top' | 'bottom' | 'left' | 'right'
       // Color parameters
       colorFrom?: number
       colorTo?: number
