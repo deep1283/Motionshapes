@@ -1019,11 +1019,14 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       const finalScale = scaleMultiplier * layerScale
       
       // For position: if animated, use timeline value. If not, use layer static position.
-      // pan_zoom stores offsets relative to the base position, so add base back in that case.
+      // pan_zoom stores offsets in NORMALIZED coords (0-1 range), so multiply by screen size before adding to base.
       const hasPanZoom = templateClips.some(c => c.layerId === id && c.template === 'pan_zoom')
       const rawPos = hasPositionAnim
         ? hasPanZoom
-          ? { x: baseLayerPos.x + state.position.x, y: baseLayerPos.y + state.position.y }
+          ? { 
+              x: baseLayerPos.x + state.position.x * screenWidth, 
+              y: baseLayerPos.y + state.position.y * screenHeight 
+            }
           : state.position
         : baseLayerPos
       
