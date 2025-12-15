@@ -3332,9 +3332,19 @@ export default function DashboardLayout({
                     type="text"
                     inputMode="numeric"
                     pattern="-?[0-9]*"
-                    value={String(layers.find(l => l.id === selectedLayerId)?.rotation ?? 0)}
+                    defaultValue={String(layers.find(l => l.id === selectedLayerId)?.rotation ?? 0)}
+                    key={`angle-${selectedLayerId}`}
                     className="w-full rounded bg-neutral-800 pl-8 pr-2 py-1.5 text-left text-xs text-white placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
-                    onChange={(e) => {
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        if (!selectedLayerId) return
+                        const rawVal = e.currentTarget.value.replace(/[^0-9-]/g, '')
+                        const val = rawVal === '' || rawVal === '-' ? 0 : parseInt(rawVal)
+                        onUpdateLayerRotation?.(selectedLayerId, val)
+                        e.currentTarget.blur()
+                      }
+                    }}
+                    onBlur={(e) => {
                       if (!selectedLayerId) return
                       const rawVal = e.currentTarget.value.replace(/[^0-9-]/g, '')
                       const val = rawVal === '' || rawVal === '-' ? 0 : parseInt(rawVal)
