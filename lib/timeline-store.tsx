@@ -1792,7 +1792,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         if (!track) return currentTracks
 
         // Reset track and initialize clipKeyframes for unified sampling
-        const newClipKeyframes: Record<string, { position?: any[]; scale?: any[]; rotation?: any[]; opacity?: any[]; maskScale?: any[] }> = {}
+        const newClipKeyframes: Record<string, { position?: any[]; scale?: any[]; rotation?: any[]; opacity?: any[]; maskScale?: any[]; color?: any[]; width?: any[]; height?: any[] }> = {}
         
         let newTrack: LayerTracks = {
           ...track,
@@ -1953,6 +1953,29 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
                 clip.parameters?.panZoomHoldDuration ?? 500,
                 clip.parameters?.panZoomEasing,
                 clip.parameters?.panZoomIntensity ?? 1.5
+              )
+            } else if (clip.template === 'color') {
+              preset = PRESET_BUILDERS.color(
+                clip.duration,
+                clip.parameters?.colorFrom,
+                clip.parameters?.colorTo,
+                clip.parameters?.colorEasing
+              )
+            } else if (clip.template === 'resize') {
+              preset = PRESET_BUILDERS.resize(
+                clip.duration,
+                clip.parameters?.resizeFromWidth,
+                clip.parameters?.resizeFromHeight,
+                clip.parameters?.resizeToWidth,
+                clip.parameters?.resizeToHeight,
+                clip.parameters?.resizeEasing
+              )
+            } else if (clip.template === 'rotate') {
+              preset = PRESET_BUILDERS.rotate(
+                clip.duration,
+                clip.parameters?.rotateFromAngle,
+                clip.parameters?.rotateToAngle,
+                clip.parameters?.rotateEasing
               )
             } else if (clip.template === 'mask_center') {
               preset = PRESET_BUILDERS.mask_center(clip.duration)
@@ -2130,6 +2153,9 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
               rotation: preset.rotation?.map((f: any) => ({ ...f })),
               opacity: preset.opacity?.map((f: any) => ({ ...f })),
               maskScale: preset.maskScale?.map((f: any) => ({ ...f })),
+              color: preset.color?.map((f: any) => ({ ...f })),
+              width: preset.width?.map((f: any) => ({ ...f })),
+              height: preset.height?.map((f: any) => ({ ...f })),
             }
             
            prevClipEnd = end

@@ -374,7 +374,8 @@ export const sampleLayerTracksUnified = (
     const isAdditive = isAdditiveTemplate(clip.template)
 
     // Position: always additive (offset)
-    if (kf.position) {
+    // SKIP path clips - their position is handled separately via layer.paths
+    if (kf.position && clip.template !== 'path') {
       const offset = sampleVec2Track(kf.position, localTime, { x: 0, y: 0 })
       pos.x += offset.x
       pos.y += offset.y
@@ -449,8 +450,19 @@ export const sampleLayerTracksUnified = (
     }
   }
 
+  // Calculate position offsets from animations (pos - basePosition)
+  const positionOffset = { 
+    x: pos.x - layerBasePosition.x, 
+    y: pos.y - layerBasePosition.y 
+  }
+  
+  // Combine path result with position offsets from other animations (roll, shake, etc.)
+  const finalPosition = pathResult
+    ? { x: pathResult.x + positionOffset.x, y: pathResult.y + positionOffset.y }
+    : pos
+
   return {
-    position: pathResult ?? pos,
+    position: finalPosition,
     scale,
     rotation,
     opacity,

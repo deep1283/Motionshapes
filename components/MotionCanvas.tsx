@@ -281,6 +281,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   const resizeHandlesRef = useRef<Record<string, PIXI.Graphics[]>>({})
   const allHandlesRef = useRef<PIXI.Graphics[]>([]) // Strict tracking of ALL created handles for cleanup
   const selectedLayerIdRef = useRef<string | undefined>(undefined) // Track selected layer for per-frame sync
+  const isPlayingRef = useRef<boolean>(false) // Track playing state for ticker callback
   const playheadRef = useRef<number>(0) // Track playhead for timeline-based handle visibility
   const timelineTracksRef = useRef<any[]>([]) // Track timeline tracks for visibility check
   const handlesOverlayRef = useRef<PIXI.Container | null>(null) // Overlay container for handles (doesn't inherit shape transforms)
@@ -367,6 +368,11 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   )
   const timelineActions = useTimelineActions()
   const isPlaying = useTimeline((s) => s.isPlaying)
+  
+  // Keep isPlayingRef in sync for ticker to check without triggering re-renders
+  useEffect(() => {
+    isPlayingRef.current = isPlaying
+  }, [isPlaying])
   
   // Pan/Zoom region editing state
   const [panZoomActiveRegion, setPanZoomActiveRegion] = useState<'start' | 'end' | null>(null)
@@ -658,6 +664,9 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         // keep rendering even if no template animation is running
         // ALSO sync handle positions every frame for the selected layer (like Jitter/Figma)
         app.ticker.add(() => {
+          // Skip handle sync during playback - handles are hidden
+          if (isPlayingRef.current) return
+          
           // Sync handles every frame if there's a selected layer
           if (selectedLayerIdRef.current && graphicsByIdRef.current[selectedLayerIdRef.current]) {
             const layerId = selectedLayerIdRef.current
@@ -865,6 +874,9 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   // This is called every frame for the selected layer to keep handles positioned correctly
   // Also ensures handles are visible when called
   const syncHandlePositions = (layerId: string) => {
+    // Don't show/sync handles during animation playback
+    if (isPlaying) return
+    
     const g = graphicsByIdRef.current[layerId]
     const layer = layersRef.current.find(l => l.id === layerId)
     
@@ -989,7 +1001,9 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         positionFrames.length > 1 ||
         (track?.paths?.length ?? 0) > 0
       
-      const hasRotationAnim = (track?.rotation?.length ?? 0) > 1
+      const hasRotationAnim = (track?.rotation?.length ?? 0) > 1 ||
+        // Also check clipKeyframes for unified sampling (rotation templates like roll/spin store keyframes there)
+        Object.values(track?.clipKeyframes ?? {}).some(kf => (kf.rotation?.length ?? 0) > 0)
       const scaleFrames = track?.scale ?? []
       const hasScaleAnim =
         scaleFrames.length > 1 ||
@@ -1064,15 +1078,39 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         const animatedWidth = state.width ?? baseWidth
         const animatedHeight = state.height ?? baseHeight
         
-        // Calculate scale factors - these can exceed 1.0 for growth
-        // Use minimum of 0.01 to ensure shape is never completely invisible
-        const scaleX = Math.max(0.01, animatedWidth / safeBaseWidth)
-        const scaleY = Math.max(0.01, animatedHeight / safeBaseHeight)
-        
-        // Apply non-uniform scaling with overall layer scale
-        const actualScaleX = finalScale * scaleX
-        const actualScaleY = finalScale * scaleY
-        g.scale.set(actualScaleX, actualScaleY)
+        // For PILL shapes: redraw with new dimensions to maintain proper corner radius
+        // Instead of scaling (which distorts the rounded corners), we redraw the shape
+        const shapeKind = layerData?.shapeKind
+        if (shapeKind === 'pill' && g instanceof PIXI.Graphics) {
+          // Only redraw if dimensions actually changed (avoid unnecessary redraws)
+          const lastDims = (g as any).__lastPillDims as { w: number, h: number } | undefined
+          const needsRedraw = !lastDims || 
+            Math.abs(lastDims.w - animatedWidth) > 0.1 || 
+            Math.abs(lastDims.h - animatedHeight) > 0.1
+          
+          if (needsRedraw) {
+            // Clear and redraw with correct corner radius
+            g.clear()
+            const pillRadius = Math.min(animatedWidth, animatedHeight) / 2
+            g.roundRect(-animatedWidth / 2, -animatedHeight / 2, animatedWidth, animatedHeight, pillRadius)
+            g.fill(layerData?.fillColor ?? 0xffffff)
+            // Store dimensions to avoid unnecessary redraws
+            ;(g as any).__lastPillDims = { w: animatedWidth, h: animatedHeight }
+            // Store shape size for hit area
+            ;(g as any).__shapeSize = { width: animatedWidth, height: animatedHeight }
+          }
+          // Apply uniform scale (just the layer scale, not resize scale since we redrew)
+          g.scale.set(finalScale * layerScale)
+        } else {
+          // For other shapes: use non-uniform scale as before
+          const scaleX = Math.max(0.01, animatedWidth / safeBaseWidth)
+          const scaleY = Math.max(0.01, animatedHeight / safeBaseHeight)
+          
+          // Apply non-uniform scaling with overall layer scale
+          const actualScaleX = finalScale * scaleX
+          const actualScaleY = finalScale * scaleY
+          g.scale.set(actualScaleX, actualScaleY)
+        }
         
         // Always use center pivot (0,0) - this ensures no snapping when animation ends
         // and works correctly with path animation
@@ -1086,6 +1124,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           (g as any).__resizeProgress = null
           g.pivot.set(0, 0)
           g.scale.set(finalScale)
+          // Clear last pill dims cache when not animating
+          ;(g as any).__lastPillDims = null
         }
       }
       
@@ -1628,47 +1668,128 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     const app = appRef.current
     if (!app || !isReady) return
     
-    // Only add the ticker during playback
-    if (!isPlaying) return
-    
-    const playbackTick = () => {
-      // Read state directly from store (bypasses React)
-      const storeState = timelineActions.getState()
+    if (isPlaying) {
+      // Hide all selection outlines and resize handles during playback
+      Object.values(outlinesByIdRef.current).forEach(outline => {
+        if (outline) outline.visible = false
+      })
+      Object.values(resizeHandlesRef.current).forEach(handles => {
+        if (handles) handles.forEach(h => h.visible = false)
+      })
       
-      // Get precise playhead time (60fps internal time, not throttled React state)
-      const currentPlayhead = timelineActions.getPlayheadTime()
-      
-      // Calculate frame index for cache lookup
-      const cache = animationCacheRef.current
-      const frameIndex = Math.floor(currentPlayhead / cache.frameInterval)
-      
-      // Check cache first for instant replay
-      let sampled = cache.frames.get(frameIndex)
-      
-      if (!sampled) {
-        // Cache miss - compute sample and store
-        sampled = sampleTimelineUnified(
-          storeState.tracks,
-          clipInfos,
-          currentPlayhead,
-          undefined,
-          layerBaseStates
-        )
-        // Store in cache for next replay
-        cache.frames.set(frameIndex, sampled)
+      const playbackTick = () => {
+        // Read state directly from store (bypasses React)
+        const storeState = timelineActions.getState()
+        
+        // Get precise playhead time (60fps internal time, not throttled React state)
+        const currentPlayhead = timelineActions.getPlayheadTime()
+        
+        // Calculate frame index for cache lookup
+        const cache = animationCacheRef.current
+        const frameIndex = Math.floor(currentPlayhead / cache.frameInterval)
+        
+        // Check cache first for instant replay
+        let sampled = cache.frames.get(frameIndex)
+        
+        if (!sampled) {
+          // Cache miss - compute sample and store
+          sampled = sampleTimelineUnified(
+            storeState.tracks,
+            clipInfos,
+            currentPlayhead,
+            undefined,
+            layerBaseStates
+          )
+          // Store in cache for next replay
+          cache.frames.set(frameIndex, sampled)
+        }
+        
+        // Update graphics directly (bypasses React state)
+        updateGraphicsFromTimeline(sampled, currentPlayhead)
       }
       
-      // Update graphics directly (bypasses React state)
-      updateGraphicsFromTimeline(sampled, currentPlayhead)
+      // Add to PixiJS ticker for 60fps updates
+      app.ticker.add(playbackTick)
+      
+      return () => {
+        app.ticker?.remove(playbackTick)
+        
+        // Show handles and sync to animated size when playback stops
+        if (selectedLayerId) {
+          const g = graphicsByIdRef.current[selectedLayerId]
+          const layer = layersRef.current.find(l => l.id === selectedLayerId)
+          
+          if (g && layer) {
+            // Get animated dimensions from shape (stored during resize animation) or use base
+            const shapeSize = (g as any).__shapeSize as { width?: number; height?: number } | undefined
+            const animatedWidth = shapeSize?.width ?? layer.width
+            const animatedHeight = shapeSize?.height ?? layer.height
+            
+            // Update outline
+            const outline = outlinesByIdRef.current[selectedLayerId]
+            if (outline) {
+              outline.visible = true
+              outline.x = g.x
+              outline.y = g.y
+              outline.clear()
+              const halfW = animatedWidth / 2
+              const halfH = animatedHeight / 2
+              outline.rect(-halfW, -halfH, animatedWidth, animatedHeight)
+              outline.stroke({ color: layer.type === 'text' ? 0xA855F7 : 0x9333ea, width: 2, alpha: 1 })
+            }
+            
+            // Update resize handles
+            const handles = resizeHandlesRef.current[selectedLayerId]
+            if (handles && handles.length === 8) {
+              const halfW = animatedWidth / 2
+              const halfH = animatedHeight / 2
+              const cornerOffsets = [
+                { x: -halfW, y: -halfH }, // tl
+                { x: halfW, y: -halfH },  // tr
+                { x: halfW, y: halfH },   // br
+                { x: -halfW, y: halfH },  // bl
+              ]
+              const edgeOffsets = [
+                { x: 0, y: -halfH }, // t
+                { x: 0, y: halfH },  // b
+                { x: -halfW, y: 0 }, // l
+                { x: halfW, y: 0 },  // r
+              ]
+              
+              const cornerSize = 8
+              for (let i = 0; i < 4; i++) {
+                const h = handles[i]
+                h.visible = true
+                h.alpha = 1
+                h.x = g.x + cornerOffsets[i].x
+                h.y = g.y + cornerOffsets[i].y
+                h.clear()
+                h.rect(-cornerSize / 2, -cornerSize / 2, cornerSize, cornerSize)
+                h.fill(layer.type === 'text' ? 0xA855F7 : 0x9333ea)
+              }
+              
+              const edgeThickness = 1
+              for (let i = 4; i < 8; i++) {
+                const h = handles[i]
+                h.visible = true
+                h.x = g.x + edgeOffsets[i - 4].x
+                h.y = g.y + edgeOffsets[i - 4].y
+                h.clear()
+                if (i === 4 || i === 5) { // t, b - horizontal edges
+                  h.rect(-animatedWidth / 2, -edgeThickness / 2, animatedWidth, edgeThickness)
+                } else { // l, r - vertical edges
+                  h.rect(-edgeThickness / 2, -animatedHeight / 2, edgeThickness, animatedHeight)
+                }
+                h.fill(layer.type === 'text' ? 0xA855F7 : 0x9333ea)
+              }
+            }
+          }
+        }
+        
+        app.render()
+      }
     }
-    
-    // Add to PixiJS ticker for 60fps updates
-    app.ticker.add(playbackTick)
-    
-    return () => {
-      app.ticker?.remove(playbackTick)
-    }
-  }, [isPlaying, isReady, clipInfos, layerBaseStates, timelineActions])
+  }, [isPlaying, isReady, clipInfos, layerBaseStates, timelineActions, selectedLayerId])
 
   // Note: Typewriter animation is now handled in the playhead useEffect (around line 2520)
   // which updates text.text directly based on playhead position, similar to counter animations

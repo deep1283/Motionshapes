@@ -333,6 +333,13 @@ export default function DashboardLayout({
   const timelineDuration = useTimeline((s) => s.duration)
   const timeline = useTimelineActions()
   
+  // Helper to safely parse number input - defaults to 0 if empty or NaN
+  const parseNum = (value: string, fallback: number = 0): number => {
+    if (value === '' || value === null || value === undefined) return fallback
+    const num = parseFloat(value)
+    return isNaN(num) ? fallback : num
+  }
+  
   // Calculate actual content duration for export (not fixed 5s)
   const contentDuration = useMemo(() => {
     const clipsEnd = templateClips.reduce((max, c) => Math.max(max, (c.start ?? 0) + (c.duration ?? 0)), 0)
@@ -352,8 +359,19 @@ export default function DashboardLayout({
   // Export modal state
   const [showExportModal, setShowExportModal] = useState(false)
   
-  // Custom animation state
-  const [expandedCustomProp, setExpandedCustomProp] = useState<'position' | 'scale' | 'rotation' | 'resize' | 'rotate' | 'color' | null>(null)
+  // Custom animation state - Set allows multiple panels to be expanded simultaneously
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set())
+  // Panel order - most recently added/clicked appears first
+  const [panelOrder, setPanelOrder] = useState<string[]>([])
+  
+  // Helper to bring a panel to the front of the order
+  const bringPanelToFront = (panelType: string) => {
+    setPanelOrder(prev => {
+      const filtered = prev.filter(p => p !== panelType)
+      return [panelType, ...filtered]
+    })
+  }
+  
   const [customColorFrom, setCustomColorFrom] = useState('#FFFFFF')
   const [customColorTo, setCustomColorTo] = useState('#FF9042')
   const [customColorDuration, setCustomColorDuration] = useState(800) // in ms
@@ -361,7 +379,7 @@ export default function DashboardLayout({
 
   // Sync color animation controls with timeline clip (for real-time updates when bar is dragged)
   useEffect(() => {
-    if (expandedCustomProp === 'color' && selectedLayerId) {
+    if (selectedLayerId) {
       const colorClip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'color')
       if (colorClip) {
         // Update duration from clip
@@ -379,34 +397,34 @@ export default function DashboardLayout({
         }
       }
     }
-  }, [templateClips, selectedLayerId, expandedCustomProp])
+  }, [templateClips, selectedLayerId])
 
-  // Resize animation state
-  const [customResizeFromWidth, setCustomResizeFromWidth] = useState(100)
-  const [customResizeFromHeight, setCustomResizeFromHeight] = useState(100)
-  const [customResizeToWidth, setCustomResizeToWidth] = useState(100)
-  const [customResizeToHeight, setCustomResizeToHeight] = useState(100)
+
+  // Resize animation state - using string to allow empty input while typing
+  const [customResizeFromWidth, setCustomResizeFromWidth] = useState<string>('100')
+  const [customResizeFromHeight, setCustomResizeFromHeight] = useState<string>('100')
+  const [customResizeToWidth, setCustomResizeToWidth] = useState<string>('100')
+  const [customResizeToHeight, setCustomResizeToHeight] = useState<string>('100')
   const [customResizeDuration, setCustomResizeDuration] = useState(800) // in ms
   const [customResizeEasing, setCustomResizeEasing] = useState<'none' | 'ease-in' | 'ease-out' | 'ease-in-out'>('none')
 
   // Sync resize animation controls with timeline clip
   useEffect(() => {
-    if (expandedCustomProp === 'resize' && selectedLayerId) {
+    if (selectedLayerId) {
       const resizeClip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
       if (resizeClip) {
         setCustomResizeDuration(resizeClip.duration || 800)
         const params = resizeClip.parameters || {}
-        if (params.resizeFromWidth !== undefined) setCustomResizeFromWidth(params.resizeFromWidth)
-        if (params.resizeFromHeight !== undefined) setCustomResizeFromHeight(params.resizeFromHeight)
-        if (params.resizeToWidth !== undefined) setCustomResizeToWidth(params.resizeToWidth)
-        if (params.resizeToHeight !== undefined) setCustomResizeToHeight(params.resizeToHeight)
+        if (params.resizeFromWidth !== undefined) setCustomResizeFromWidth(String(params.resizeFromWidth))
+        if (params.resizeFromHeight !== undefined) setCustomResizeFromHeight(String(params.resizeFromHeight))
+        if (params.resizeToWidth !== undefined) setCustomResizeToWidth(String(params.resizeToWidth))
+        if (params.resizeToHeight !== undefined) setCustomResizeToHeight(String(params.resizeToHeight))
         if (params.resizeEasing) {
           setCustomResizeEasing(params.resizeEasing === 'linear' ? 'none' : params.resizeEasing as any)
         }
-
       }
     }
-  }, [templateClips, selectedLayerId, expandedCustomProp])
+  }, [templateClips, selectedLayerId])
 
   // Rotation animation state
   const [customRotateFromAngle, setCustomRotateFromAngle] = useState(0)
@@ -416,7 +434,7 @@ export default function DashboardLayout({
 
   // Sync rotation animation controls with timeline clip
   useEffect(() => {
-    if (expandedCustomProp === 'rotate' && selectedLayerId) {
+    if (selectedLayerId) {
       const rotateClip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'rotate')
       if (rotateClip) {
         setCustomRotateDuration(rotateClip.duration || 800)
@@ -436,7 +454,18 @@ export default function DashboardLayout({
         }
       }
     }
-  }, [templateClips, selectedLayerId, expandedCustomProp, layers])
+  }, [templateClips, selectedLayerId, layers])
+
+  // Timeline-Panel Sync: Auto-expand panel when a custom animation clip is selected on the timeline
+  useEffect(() => {
+    if (selectedClipId) {
+      const selectedClip = templateClips.find(c => c.id === selectedClipId)
+      if (selectedClip && ['color', 'resize', 'rotate'].includes(selectedClip.template)) {
+        setExpandedSections(prev => new Set(prev).add(selectedClip.template))
+        bringPanelToFront(selectedClip.template)
+      }
+    }
+  }, [selectedClipId, templateClips])
 
   const [showTextColorPicker, setShowTextColorPicker] = useState(false)
   
@@ -1945,56 +1974,46 @@ export default function DashboardLayout({
                           selectedLayerId
                             ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/30"
                             : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed",
-                          expandedCustomProp === 'resize' && "border-violet-500/50 bg-violet-500/10"
+                          expandedSections.has('resize') && "border-violet-500/50 bg-violet-500/10"
                         )}
                         disabled={!selectedLayerId}
                         onClick={() => {
                           if (selectedLayerId) {
-                            const newExpanded = expandedCustomProp === 'resize' ? null : 'resize'
-                            setExpandedCustomProp(newExpanded)
+                            const existingClip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
                             
-                            if (newExpanded === 'resize') {
-                              const existingClip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
-                              
-                              // Get layer's current size (for new clips default)
+                            if (existingClip) {
+                              // Toggle panel expansion
+                              setExpandedSections(prev => {
+                                const next = new Set(prev)
+                                if (next.has('resize')) next.delete('resize')
+                                else next.add('resize')
+                                return next
+                              })
+                            } else {
+                              // Create new clip and expand panel
                               const layer = layers.find(l => l.id === selectedLayerId)
                               const layerWidth = layer?.width ?? 100
                               const layerHeight = layer?.height ?? 100
                               
-                              let fromWidth = layerWidth
-                              let fromHeight = layerHeight
-                              let toWidth = layerWidth
-                              let toHeight = layerHeight
-                              let duration = 800
-                              let easing = 'linear'
-
-                              if (existingClip) {
-                                // Sync UI with existing clip
-                                const params = existingClip.parameters || {}
-                                if (params.resizeFromWidth !== undefined) fromWidth = params.resizeFromWidth
-                                if (params.resizeFromHeight !== undefined) fromHeight = params.resizeFromHeight
-                                if (params.resizeToWidth !== undefined) toWidth = params.resizeToWidth
-                                if (params.resizeToHeight !== undefined) toHeight = params.resizeToHeight
-                                duration = existingClip.duration || 800
-                                easing = params.resizeEasing || 'linear'
-                              } else {
-                                // Create new clip - use layer's current size as From
-                                timeline.addTemplateClip(selectedLayerId, 'resize', 0, duration, {
-                                  resizeFromWidth: fromWidth,
-                                  resizeFromHeight: fromHeight,
-                                  resizeToWidth: toWidth,
-                                  resizeToHeight: toHeight,
-                                  resizeEasing: easing as any,
-                                  resizeAnchor: 'middle'
-                                })
-                              }
+                              timeline.addTemplateClip(selectedLayerId, 'resize', 0, 800, {
+                                resizeFromWidth: layerWidth,
+                                resizeFromHeight: layerHeight,
+                                resizeToWidth: layerWidth,
+                                resizeToHeight: layerHeight,
+                                resizeEasing: 'linear',
+                                resizeAnchor: 'middle'
+                              })
                               
-                              setCustomResizeFromWidth(fromWidth)
-                              setCustomResizeFromHeight(fromHeight)
-                              setCustomResizeToWidth(toWidth)
-                              setCustomResizeToHeight(toHeight)
-                              setCustomResizeDuration(duration)
-                              setCustomResizeEasing(easing === 'linear' ? 'none' : easing as any)
+                              setCustomResizeFromWidth(String(layerWidth))
+                              setCustomResizeFromHeight(String(layerHeight))
+                              setCustomResizeToWidth(String(layerWidth))
+                              setCustomResizeToHeight(String(layerHeight))
+                              setCustomResizeDuration(800)
+                              setCustomResizeEasing('none')
+                              
+                              // Expand the panel
+                              setExpandedSections(prev => new Set(prev).add('resize'))
+                              bringPanelToFront('resize')
                             }
                           }
                         }}
@@ -2013,47 +2032,42 @@ export default function DashboardLayout({
                           selectedLayerId
                             ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/30"
                             : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed",
-                          expandedCustomProp === 'rotate' && "border-violet-500/50 bg-violet-500/10"
+                          expandedSections.has('rotate') && "border-violet-500/50 bg-violet-500/10"
                         )}
                         disabled={!selectedLayerId}
                         onClick={() => {
                           if (selectedLayerId) {
-                            const newExpanded = expandedCustomProp === 'rotate' ? null : 'rotate'
-                            setExpandedCustomProp(newExpanded)
+                            const existingClip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'rotate')
                             
-                            if (newExpanded === 'rotate') {
-                              // Get layer's current rotation as From angle
+                            if (existingClip) {
+                              // Toggle panel expansion
+                              setExpandedSections(prev => {
+                                const next = new Set(prev)
+                                if (next.has('rotate')) next.delete('rotate')
+                                else next.add('rotate')
+                                return next
+                              })
+                            } else {
+                              // Create new clip and expand panel
                               const layer = layers.find(l => l.id === selectedLayerId)
                               const layerRotation = layer?.rotation ?? 0
                               const fromAngle = Math.round((layerRotation * 180) / Math.PI)
+                              const toAngle = fromAngle + 45
                               
-                              // Init state from existing clip or create new
-                              const existingClip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'rotate')
+                              timeline.addTemplateClip(selectedLayerId, 'rotate', 0, 800, {
+                                rotateFromAngle: fromAngle,
+                                rotateToAngle: toAngle,
+                                rotateEasing: 'linear'
+                              })
                               
-                              let toAngle = fromAngle + 45
-                              let duration = 800
-                              let easing = 'linear'
-                              
-                              if (existingClip) {
-                                const params = existingClip.parameters || {}
-                                if (params.rotateFromAngle !== undefined) setCustomRotateFromAngle(params.rotateFromAngle)
-                                else setCustomRotateFromAngle(fromAngle)
-                                if (params.rotateToAngle !== undefined) toAngle = params.rotateToAngle
-                                duration = existingClip.duration || 800
-                                easing = params.rotateEasing || 'linear'
-                              } else {
-                                // Create new clip
-                                timeline.addTemplateClip(selectedLayerId, 'rotate', 0, duration, {
-                                  rotateFromAngle: fromAngle,
-                                  rotateToAngle: toAngle,
-                                  rotateEasing: easing as any
-                                })
-                                setCustomRotateFromAngle(fromAngle)
-                              }
-                              
+                              setCustomRotateFromAngle(fromAngle)
                               setCustomRotateToAngle(toAngle)
-                              setCustomRotateDuration(duration)
-                              setCustomRotateEasing(easing === 'linear' ? 'none' : easing as any)
+                              setCustomRotateDuration(800)
+                              setCustomRotateEasing('none')
+                              
+                              // Expand the panel
+                              setExpandedSections(prev => new Set(prev).add('rotate'))
+                              bringPanelToFront('rotate')
                             }
                           }
                         }}
@@ -2071,48 +2085,41 @@ export default function DashboardLayout({
                           selectedLayerId
                             ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/30"
                             : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed",
-                          expandedCustomProp === 'color' && "border-violet-500/50 bg-violet-500/10"
+                          expandedSections.has('color') && "border-violet-500/50 bg-violet-500/10"
                         )}
                         disabled={!selectedLayerId}
                         onClick={() => {
                           if (selectedLayerId) {
-                            const newExpanded = expandedCustomProp === 'color' ? null : 'color'
-                            setExpandedCustomProp(newExpanded)
+                            const existingClip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'color')
                             
-                            if (newExpanded === 'color') {
-                              // Init state from existing clip or create new
-                              const existingClip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'color')
-                              
-                              // Get layer's current color (for new clips default)
+                            if (existingClip) {
+                              // Toggle panel expansion
+                              setExpandedSections(prev => {
+                                const next = new Set(prev)
+                                if (next.has('color')) next.delete('color')
+                                else next.add('color')
+                                return next
+                              })
+                            } else {
+                              // Create new clip and expand panel
                               const layer = layers.find(l => l.id === selectedLayerId)
                               const layerColor = layer?.fillColor ?? 0xffffff
+                              const fromColor = '#' + layerColor.toString(16).toUpperCase().padStart(6, '0')
                               
-                              let fromColor = '#' + layerColor.toString(16).toUpperCase().padStart(6, '0')
-                              let toColor = '#FFFFFF' // Default white
-                              let duration = 1000
-                              let easing = 'linear'
-
-                              if (existingClip) {
-                                // Sync UI with existing clip's stored values (preserve user customizations)
-                                const params = existingClip.parameters || {}
-                                if (params.colorFrom !== undefined) fromColor = '#' + params.colorFrom.toString(16).toUpperCase().padStart(6, '0')
-                                if (params.colorTo !== undefined) toColor = '#' + params.colorTo.toString(16).toUpperCase().padStart(6, '0')
-                                duration = existingClip.duration || 1000
-                                easing = params.colorEasing || 'linear'
-                              } else {
-                                // Create new clip - use layer's current color as From
-                                timeline.addTemplateClip(selectedLayerId, 'color', 0, duration, {
-                                  colorFrom: layerColor,
-                                  colorTo: parseInt(toColor.replace('#', ''), 16),
-                                  colorEasing: easing as any
-                                })
-                              }
+                              timeline.addTemplateClip(selectedLayerId, 'color', 0, 1000, {
+                                colorFrom: layerColor,
+                                colorTo: 0xFFFFFF,
+                                colorEasing: 'linear'
+                              })
                               
                               setCustomColorFrom(fromColor)
-                              setCustomColorTo(toColor)
-                              setCustomColorDuration(duration)
-                              // Map 'linear' to 'none' for UI display
-                              setCustomColorEasing(easing === 'linear' ? 'none' : easing as any)
+                              setCustomColorTo('#FFFFFF')
+                              setCustomColorDuration(1000)
+                              setCustomColorEasing('none')
+                              
+                              // Expand the panel
+                              setExpandedSections(prev => new Set(prev).add('color'))
+                              bringPanelToFront('color')
                             }
                           }
                         }}
@@ -2133,20 +2140,54 @@ export default function DashboardLayout({
                     </div>
                   </div>
                   
-                  {/* Color Animation Controls */}
-                  {expandedCustomProp === 'color' && selectedLayerId && (
-                    <div className="mt-4 p-4 rounded-xl border border-violet-500/20 bg-violet-500/5 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-semibold text-violet-300">Color Animation</span>
+                  {/* Panels container - uses flex and order for dynamic ordering */}
+                  <div className="flex flex-col">
+                  
+                  {/* Color Animation Controls - show if clip exists for selected layer */}
+                  {selectedLayerId && templateClips.some(c => c.layerId === selectedLayerId && c.template === 'color') && (
+                    <div 
+                      className="mt-4 rounded-xl border border-violet-500/20 bg-violet-500/5 overflow-hidden"
+                      style={{ order: panelOrder.indexOf('color') >= 0 ? panelOrder.indexOf('color') : 99 }}
+                    >
+                      {/* Collapsible Header */}
+                      <div
+                        onClick={() => setExpandedSections(prev => {
+                          const next = new Set(prev)
+                          if (next.has('color')) next.delete('color')
+                          else next.add('color')
+                          return next
+                        })}
+                        className="w-full flex items-center justify-between p-3 hover:bg-white/5 transition-colors cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2">
+                          <svg 
+                            viewBox="0 0 24 24" 
+                            className={cn("w-3 h-3 text-violet-400 transition-transform", expandedSections.has('color') && "rotate-90")} 
+                            fill="none" 
+                            stroke="currentColor" 
+                            strokeWidth="2.5"
+                          >
+                            <path d="M9 18l6-6-6-6" />
+                          </svg>
+                          <span className="text-[11px] font-semibold text-violet-300">Color Animation</span>
+                        </div>
                         <button 
-                          onClick={() => setExpandedCustomProp(null)}
-                          className="text-neutral-500 hover:text-white transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'color')
+                            if (clip) timeline.removeTemplateClip(clip.id)
+                          }}
+                          className="text-neutral-500 hover:text-red-400 transition-colors"
                         >
-                          <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
+                          <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M18 6L6 18M6 6l12 12" />
                           </svg>
                         </button>
                       </div>
+                      
+                      {/* Panel Content - only show when expanded */}
+                      {expandedSections.has('color') && (
+                        <div className="p-4 pt-0 space-y-4">
                       
                       {/* From Color */}
                       <div>
@@ -2270,28 +2311,56 @@ export default function DashboardLayout({
                         </div>
                       </div>
                       
+                        </div>
+                      )}
                     </div>
                   )}
                   
                   {/* Resize Animation Panel */}
-                  {expandedCustomProp === 'resize' && selectedLayerId && (
-                    <div className="mt-4 p-4 rounded-xl border border-violet-500/30 bg-violet-500/5 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-neutral-200">Resize Animation</span>
-                        <button
-                          onClick={() => {
-                            // Remove resize clip if closing
+                  {selectedLayerId && templateClips.some(c => c.layerId === selectedLayerId && c.template === 'resize') && (
+                    <div 
+                      className="mt-4 rounded-xl border border-violet-500/30 bg-violet-500/5 overflow-hidden"
+                      style={{ order: panelOrder.indexOf('resize') >= 0 ? panelOrder.indexOf('resize') : 99 }}
+                    >
+                      {/* Collapsible Header */}
+                      <div
+                        onClick={() => setExpandedSections(prev => {
+                          const next = new Set(prev)
+                          if (next.has('resize')) next.delete('resize')
+                          else next.add('resize')
+                          return next
+                        })}
+                        className="w-full flex items-center justify-between p-3 hover:bg-white/5 transition-colors cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2">
+                          <svg 
+                            viewBox="0 0 24 24" 
+                            className={cn("w-3 h-3 text-violet-400 transition-transform", expandedSections.has('resize') && "rotate-90")} 
+                            fill="none" 
+                            stroke="currentColor" 
+                            strokeWidth="2.5"
+                          >
+                            <path d="M9 18l6-6-6-6" />
+                          </svg>
+                          <span className="text-xs font-medium text-neutral-200">Resize Animation</span>
+                        </div>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation()
                             const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
                             if (clip) timeline.removeTemplateClip(clip.id)
-                            setExpandedCustomProp(null)
                           }}
-                          className="text-neutral-500 hover:text-white transition-colors"
+                          className="text-neutral-500 hover:text-red-400 transition-colors"
                         >
-                          <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
+                          <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M18 6L6 18M6 6l12 12" />
                           </svg>
                         </button>
                       </div>
+                      
+                      {/* Panel Content */}
+                      {expandedSections.has('resize') && (
+                        <div className="p-4 pt-0 space-y-4">
                       
                       {/* Initial Value (From) - Read-only from layer */}
                       <div>
@@ -2304,14 +2373,20 @@ export default function DashboardLayout({
                               inputMode="numeric"
                               value={customResizeFromWidth}
                               onChange={(e) => {
-                                const filtered = e.target.value.replace(/[^0-9.-]/g, '')
-                                const val = parseFloat(filtered)
-                                if (!isNaN(val) && val >= 0) {
-                                  setCustomResizeFromWidth(val)
+                                const val = e.target.value
+                                setCustomResizeFromWidth(val)
+                                const num = parseFloat(val)
+                                if (!isNaN(num)) {
                                   const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
-                                  if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { resizeFromWidth: val } })
-                                } else if (filtered === '' || filtered === '-') {
-                                  // Allow empty or typing minus sign
+                                  if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { resizeFromWidth: num } })
+                                }
+                              }}
+                              onBlur={(e) => {
+                                const num = parseFloat(e.target.value)
+                                if (e.target.value === '' || isNaN(num)) {
+                                  setCustomResizeFromWidth('0')
+                                  const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
+                                  if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { resizeFromWidth: 0 } })
                                 }
                               }}
                               className="w-20 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-400 text-right focus:outline-none focus:border-violet-500/50"
@@ -2324,12 +2399,20 @@ export default function DashboardLayout({
                               inputMode="numeric"
                               value={customResizeFromHeight}
                               onChange={(e) => {
-                                const filtered = e.target.value.replace(/[^0-9.-]/g, '')
-                                const val = parseFloat(filtered)
-                                if (!isNaN(val) && val >= 0) {
-                                  setCustomResizeFromHeight(val)
+                                const val = e.target.value
+                                setCustomResizeFromHeight(val)
+                                const num = parseFloat(val)
+                                if (!isNaN(num)) {
                                   const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
-                                  if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { resizeFromHeight: val } })
+                                  if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { resizeFromHeight: num } })
+                                }
+                              }}
+                              onBlur={(e) => {
+                                const num = parseFloat(e.target.value)
+                                if (e.target.value === '' || isNaN(num)) {
+                                  setCustomResizeFromHeight('0')
+                                  const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
+                                  if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { resizeFromHeight: 0 } })
                                 }
                               }}
                               className="w-20 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-400 text-right focus:outline-none focus:border-violet-500/50"
@@ -2351,12 +2434,20 @@ export default function DashboardLayout({
                               inputMode="numeric"
                               value={customResizeToWidth}
                               onChange={(e) => {
-                                const filtered = e.target.value.replace(/[^0-9.-]/g, '')
-                                const val = parseFloat(filtered)
-                                if (!isNaN(val) && val >= 0) {
-                                  setCustomResizeToWidth(val)
+                                const val = e.target.value
+                                setCustomResizeToWidth(val)
+                                const num = parseFloat(val)
+                                if (!isNaN(num)) {
                                   const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
-                                  if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { resizeToWidth: val } })
+                                  if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { resizeToWidth: num } })
+                                }
+                              }}
+                              onBlur={(e) => {
+                                const num = parseFloat(e.target.value)
+                                if (e.target.value === '' || isNaN(num)) {
+                                  setCustomResizeToWidth('0')
+                                  const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
+                                  if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { resizeToWidth: 0 } })
                                 }
                               }}
                               className="w-20 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200 text-right focus:outline-none focus:border-violet-500/50"
@@ -2369,12 +2460,20 @@ export default function DashboardLayout({
                               inputMode="numeric"
                               value={customResizeToHeight}
                               onChange={(e) => {
-                                const filtered = e.target.value.replace(/[^0-9.-]/g, '')
-                                const val = parseFloat(filtered)
-                                if (!isNaN(val) && val >= 0) {
-                                  setCustomResizeToHeight(val)
+                                const val = e.target.value
+                                setCustomResizeToHeight(val)
+                                const num = parseFloat(val)
+                                if (!isNaN(num)) {
                                   const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
-                                  if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { resizeToHeight: val } })
+                                  if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { resizeToHeight: num } })
+                                }
+                              }}
+                              onBlur={(e) => {
+                                const num = parseFloat(e.target.value)
+                                if (e.target.value === '' || isNaN(num)) {
+                                  setCustomResizeToHeight('0')
+                                  const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'resize')
+                                  if (clip) timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { resizeToHeight: 0 } })
                                 }
                               }}
                               className="w-20 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200 text-right focus:outline-none focus:border-violet-500/50"
@@ -2434,27 +2533,56 @@ export default function DashboardLayout({
                         </div>
                       </div>
                       
+                        </div>
+                      )}
                     </div>
                   )}
                   
                   {/* Rotation Animation Panel */}
-                  {expandedCustomProp === 'rotate' && selectedLayerId && (
-                    <div className="mb-6 p-4 rounded-xl border border-violet-500/30 bg-gradient-to-b from-violet-500/10 to-transparent">
-                      <div className="flex items-center justify-between mb-4">
-                        <span className="text-xs font-medium text-violet-300">Rotation Animation</span>
-                        <button
-                          onClick={() => {
+                  {selectedLayerId && templateClips.some(c => c.layerId === selectedLayerId && c.template === 'rotate') && (
+                    <div 
+                      className="mt-4 rounded-xl border border-violet-500/30 bg-gradient-to-b from-violet-500/10 to-transparent overflow-hidden"
+                      style={{ order: panelOrder.indexOf('rotate') >= 0 ? panelOrder.indexOf('rotate') : 99 }}
+                    >
+                      {/* Collapsible Header */}
+                      <div
+                        onClick={() => setExpandedSections(prev => {
+                          const next = new Set(prev)
+                          if (next.has('rotate')) next.delete('rotate')
+                          else next.add('rotate')
+                          return next
+                        })}
+                        className="w-full flex items-center justify-between p-3 hover:bg-white/5 transition-colors cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2">
+                          <svg 
+                            viewBox="0 0 24 24" 
+                            className={cn("w-3 h-3 text-violet-400 transition-transform", expandedSections.has('rotate') && "rotate-90")} 
+                            fill="none" 
+                            stroke="currentColor" 
+                            strokeWidth="2.5"
+                          >
+                            <path d="M9 18l6-6-6-6" />
+                          </svg>
+                          <span className="text-xs font-medium text-violet-300">Rotation Animation</span>
+                        </div>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation()
                             const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'rotate')
                             if (clip) timeline.removeTemplateClip(clip.id)
-                            setExpandedCustomProp(null)
                           }}
-                          className="text-neutral-400 hover:text-white transition-colors"
+                          className="text-neutral-400 hover:text-red-400 transition-colors"
                         >
-                          <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
+                          <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M18 6L6 18M6 6l12 12" />
                           </svg>
                         </button>
                       </div>
+                      
+                      {/* Panel Content */}
+                      {expandedSections.has('rotate') && (
+                        <div className="p-4 pt-0 space-y-4">
                       
                       {/* From Angle */}
                       <div>
@@ -2555,11 +2683,16 @@ export default function DashboardLayout({
                         </div>
                       </div>
                       
+                        </div>
+                      )}
                     </div>
                   )}
                   
-                  {/* Coming soon notice */}
-                  {!expandedCustomProp && (
+                  </div>
+                  {/* End of flex container for dynamic panel ordering */}
+                  
+                  {/* Coming soon notice - show when no custom animations are applied */}
+                  {selectedLayerId && !templateClips.some(c => c.layerId === selectedLayerId && ['color', 'resize', 'rotate'].includes(c.template)) && (
                   <div className="mt-6 p-4 rounded-xl border border-violet-500/20 bg-violet-500/5">
                     <div className="flex items-center gap-2 mb-2">
                       <svg viewBox="0 0 24 24" className="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" strokeWidth="2">
@@ -3325,7 +3458,7 @@ export default function DashboardLayout({
                   value={layers.find(l => l.id === selectedLayerId)?.counterStart ?? 0}
                   onChange={(e) => {
                     if (!selectedLayerId) return
-                    onUpdateCounterStart?.(selectedLayerId, Number(e.target.value))
+                    onUpdateCounterStart?.(selectedLayerId, parseNum(e.target.value))
                   }}
                   className="w-full rounded bg-neutral-800 px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-purple-500"
                 />
@@ -3339,7 +3472,7 @@ export default function DashboardLayout({
                   value={layers.find(l => l.id === selectedLayerId)?.counterEnd ?? 100}
                   onChange={(e) => {
                     if (!selectedLayerId) return
-                    onUpdateCounterEnd?.(selectedLayerId, Number(e.target.value))
+                    onUpdateCounterEnd?.(selectedLayerId, parseNum(e.target.value))
                   }}
                   className="w-full rounded bg-neutral-800 px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-purple-500"
                 />
@@ -3376,7 +3509,7 @@ export default function DashboardLayout({
                   value={layers.find(l => l.id === selectedLayerId)?.fontSize ?? 72}
                   onChange={(e) => {
                     if (!selectedLayerId) return
-                    onUpdateLayerFontSize?.(selectedLayerId, Number(e.target.value))
+                    onUpdateLayerFontSize?.(selectedLayerId, parseNum(e.target.value))
                   }}
                   className="w-full rounded bg-neutral-800 px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-purple-500"
                 />
@@ -3415,7 +3548,7 @@ export default function DashboardLayout({
                   max={5000}
                   step={100}
                   value={selectedClipDuration}
-                  onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
+                  onChange={(e) => onClipDurationChange?.(parseNum(e.target.value))}
                   className="w-full accent-violet-500"
                 />
               </div>
@@ -3433,7 +3566,7 @@ export default function DashboardLayout({
                     max={3}
                     step={0.05}
                     value={templateSpeed}
-                    onChange={(e) => onTemplateSpeedChange?.(Number(e.target.value))}
+                    onChange={(e) => onTemplateSpeedChange?.(parseNum(e.target.value))}
                     className="w-full accent-violet-500"
                   />
                 </div>
@@ -3448,7 +3581,7 @@ export default function DashboardLayout({
                     max={1}
                     step={0.01}
                     value={rollDistance}
-                    onChange={(e) => onRollDistanceChange?.(Number(e.target.value))}
+                    onChange={(e) => onRollDistanceChange?.(parseNum(e.target.value))}
                     className="w-full accent-violet-500"
                   />
                 </div>
@@ -3463,7 +3596,7 @@ export default function DashboardLayout({
                     max={10}
                     step={0.5}
                     value={rollRotation ?? 2}
-                    onChange={(e) => onRollRotationChange?.(Number(e.target.value))}
+                    onChange={(e) => onRollRotationChange?.(parseNum(e.target.value))}
                     className="w-full accent-violet-500"
                   />
                 </div>
@@ -3482,7 +3615,7 @@ export default function DashboardLayout({
                     max={3}
                     step={0.05}
                     value={popScale}
-                    onChange={(e) => onPopScaleChange?.(Number(e.target.value))}
+                    onChange={(e) => onPopScaleChange?.(parseNum(e.target.value))}
                     className="w-full accent-violet-500"
                   />
                 </div>
@@ -3497,7 +3630,7 @@ export default function DashboardLayout({
                     max={3}
                     step={0.05}
                     value={popSpeed}
-                    onChange={(e) => onPopSpeedChange?.(Number(e.target.value))}
+                    onChange={(e) => onPopSpeedChange?.(parseNum(e.target.value))}
                     className="w-full accent-violet-500"
                   />
                 </div>
@@ -3529,7 +3662,7 @@ export default function DashboardLayout({
                     max={100}
                     step={1}
                     value={shakeDistance}
-                    onChange={(e) => onShakeDistanceChange?.(Number(e.target.value))}
+                    onChange={(e) => onShakeDistanceChange?.(parseNum(e.target.value))}
                     className="w-full accent-violet-500"
                   />
                 </div>
@@ -3544,7 +3677,7 @@ export default function DashboardLayout({
                     max={3000}
                     step={50}
                     value={selectedClipDuration ?? 500}
-                    onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
+                    onChange={(e) => onClipDurationChange?.(parseNum(e.target.value))}
                     className="w-full accent-violet-500"
                   />
                 </div>
@@ -3559,7 +3692,7 @@ export default function DashboardLayout({
                     max={4}
                     step={0.1}
                     value={templateSpeed}
-                    onChange={(e) => onTemplateSpeedChange?.(Number(e.target.value))}
+                    onChange={(e) => onTemplateSpeedChange?.(parseNum(e.target.value))}
                     className="w-full accent-violet-500"
                   />
                 </div>
@@ -3578,7 +3711,7 @@ export default function DashboardLayout({
                     max={1}
                     step={0.01}
                     value={pulseScale}
-                    onChange={(e) => onPulseScaleChange?.(Number(e.target.value))}
+                    onChange={(e) => onPulseScaleChange?.(parseNum(e.target.value))}
                     className="w-full accent-violet-500"
                   />
                 </div>
@@ -3593,7 +3726,7 @@ export default function DashboardLayout({
                     max={5}
                     step={0.1}
                     value={pulseSpeed}
-                    onChange={(e) => onPulseSpeedChange?.(Number(e.target.value))}
+                    onChange={(e) => onPulseSpeedChange?.(parseNum(e.target.value))}
                     className="w-full accent-violet-500"
                   />
                 </div>
@@ -3608,7 +3741,7 @@ export default function DashboardLayout({
                     max={4000}
                     step={50}
                     value={selectedClipDuration ?? 800}
-                    onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
+                    onChange={(e) => onClipDurationChange?.(parseNum(e.target.value))}
                     className="w-full accent-violet-500"
                   />
                 </div>
@@ -3627,7 +3760,7 @@ export default function DashboardLayout({
                     max={10}
                     step={0.1}
                     value={spinSpeed}
-                    onChange={(e) => onSpinSpeedChange?.(Number(e.target.value))}
+                    onChange={(e) => onSpinSpeedChange?.(parseNum(e.target.value))}
                     className="w-full accent-violet-500"
                   />
                 </div>
@@ -3666,7 +3799,7 @@ export default function DashboardLayout({
                     max={4000}
                     step={50}
                     value={selectedClipDuration ?? 1200}
-                    onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
+                    onChange={(e) => onClipDurationChange?.(parseNum(e.target.value))}
                     className="w-full accent-violet-500"
                   />
                 </div>
@@ -3686,7 +3819,7 @@ export default function DashboardLayout({
                       const clip = templateClips.find(c => c.id === selectedClipId)
                       if (clip && selectedLayerId) {
                         timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
-                          parameters: { ...clip.parameters, counterStart: Number(e.target.value) }
+                          parameters: { ...clip.parameters, counterStart: parseNum(e.target.value) }
                         })
                       }
                     }}
@@ -3704,7 +3837,7 @@ export default function DashboardLayout({
                       const clip = templateClips.find(c => c.id === selectedClipId)
                       if (clip && selectedLayerId) {
                         timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
-                          parameters: { ...clip.parameters, counterEnd: Number(e.target.value) }
+                          parameters: { ...clip.parameters, counterEnd: parseNum(e.target.value) }
                         })
                       }
                     }}
@@ -3759,7 +3892,7 @@ export default function DashboardLayout({
                     max={10000}
                     step={100}
                     value={selectedClipDuration ?? 2000}
-                    onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
+                    onChange={(e) => onClipDurationChange?.(parseNum(e.target.value))}
                     className="w-full accent-violet-500"
                   />
                 </div>
@@ -3791,7 +3924,7 @@ export default function DashboardLayout({
                       onChange={(e) => {
                         if (selectedLayerId) {
                           timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
-                            parameters: { ...panZoomClip.parameters, panZoomIntensity: Number(e.target.value) }
+                            parameters: { ...panZoomClip.parameters, panZoomIntensity: parseNum(e.target.value) }
                           })
                         }
                       }}
@@ -3818,7 +3951,7 @@ export default function DashboardLayout({
                       onChange={(e) => {
                         if (selectedLayerId) {
                           timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
-                            parameters: { ...panZoomClip.parameters, panZoomHoldDuration: Number(e.target.value) }
+                            parameters: { ...panZoomClip.parameters, panZoomHoldDuration: parseNum(e.target.value) }
                           })
                         }
                       }}
@@ -3860,7 +3993,7 @@ export default function DashboardLayout({
                       max={6000}
                       step={100}
                       value={selectedClipDuration ?? 2000}
-                      onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
+                      onChange={(e) => onClipDurationChange?.(parseNum(e.target.value))}
                       className="w-full accent-violet-500"
                     />
                   </div>
@@ -3920,7 +4053,7 @@ export default function DashboardLayout({
                         onChange={(e) => {
                           if (selectedLayerId) {
                             timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
-                              parameters: { ...maskClip.parameters, maskAngle: Number(e.target.value) % 360 }
+                              parameters: { ...maskClip.parameters, maskAngle: parseNum(e.target.value) % 360 }
                             })
                           }
                         }}
@@ -3941,7 +4074,7 @@ export default function DashboardLayout({
                       max={5000}
                       step={100}
                       value={selectedClipDuration ?? 1000}
-                      onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
+                      onChange={(e) => onClipDurationChange?.(parseNum(e.target.value))}
                       className="w-full accent-violet-500"
                     />
                   </div>
@@ -4001,7 +4134,7 @@ export default function DashboardLayout({
                         onChange={(e) => {
                           if (selectedLayerId) {
                             timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
-                              parameters: { ...maskClip.parameters, maskAngle: Number(e.target.value) % 360 }
+                              parameters: { ...maskClip.parameters, maskAngle: parseNum(e.target.value) % 360 }
                             })
                           }
                         }}
@@ -4022,7 +4155,7 @@ export default function DashboardLayout({
                       max={5000}
                       step={100}
                       value={selectedClipDuration ?? 1000}
-                      onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
+                      onChange={(e) => onClipDurationChange?.(parseNum(e.target.value))}
                       className="w-full accent-violet-500"
                     />
                   </div>
@@ -4082,7 +4215,7 @@ export default function DashboardLayout({
                         onChange={(e) => {
                           if (selectedLayerId) {
                             timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
-                              parameters: { ...maskClip.parameters, maskAngle: Number(e.target.value) % 360 }
+                              parameters: { ...maskClip.parameters, maskAngle: parseNum(e.target.value) % 360 }
                             })
                           }
                         }}
@@ -4101,7 +4234,7 @@ export default function DashboardLayout({
                       onChange={(e) => {
                         if (selectedLayerId) {
                           timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
-                            parameters: { ...maskClip.parameters, maskEasing: e.target.value }
+                            parameters: { ...maskClip.parameters, maskEasing: e.target.value as 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out' }
                           })
                         }
                       }}
@@ -4125,7 +4258,7 @@ export default function DashboardLayout({
                       max={5000}
                       step={100}
                       value={selectedClipDuration ?? 1000}
-                      onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
+                      onChange={(e) => onClipDurationChange?.(parseNum(e.target.value))}
                       className="w-full accent-violet-500"
                     />
                   </div>
@@ -4185,7 +4318,7 @@ export default function DashboardLayout({
                         onChange={(e) => {
                           if (selectedLayerId) {
                             timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
-                              parameters: { ...maskClip.parameters, maskAngle: Number(e.target.value) % 360 }
+                              parameters: { ...maskClip.parameters, maskAngle: parseNum(e.target.value) % 360 }
                             })
                           }
                         }}
@@ -4204,7 +4337,7 @@ export default function DashboardLayout({
                       onChange={(e) => {
                         if (selectedLayerId) {
                           timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
-                            parameters: { ...maskClip.parameters, maskEasing: e.target.value }
+                            parameters: { ...maskClip.parameters, maskEasing: e.target.value as 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out' }
                           })
                         }
                       }}
@@ -4228,7 +4361,7 @@ export default function DashboardLayout({
                       max={5000}
                       step={100}
                       value={selectedClipDuration ?? 1000}
-                      onChange={(e) => onClipDurationChange?.(Number(e.target.value))}
+                      onChange={(e) => onClipDurationChange?.(parseNum(e.target.value))}
                       className="w-full accent-violet-500"
                     />
                   </div>
@@ -4271,7 +4404,7 @@ export default function DashboardLayout({
                         max={5}
                         step={0.1}
                         value={layerEffects.find(e => e.type === 'glow')?.params.intensity ?? 0}
-                        onChange={(e) => onUpdateEffect?.('glow', { intensity: Number(e.target.value) })}
+                        onChange={(e) => onUpdateEffect?.('glow', { intensity: parseNum(e.target.value) })}
                         className="w-full accent-violet-500"
                       />
                     </div>
@@ -4288,7 +4421,7 @@ export default function DashboardLayout({
                         max={50}
                         step={1}
                         value={layerEffects.find(e => e.type === 'glow')?.params.blur ?? 0}
-                        onChange={(e) => onUpdateEffect?.('glow', { blur: Number(e.target.value) })}
+                        onChange={(e) => onUpdateEffect?.('glow', { blur: parseNum(e.target.value) })}
                         className="w-full accent-violet-500"
                       />
                     </div>
@@ -4311,7 +4444,7 @@ export default function DashboardLayout({
                         max={50}
                         step={1}
                         value={layerEffects.find(e => e.type === 'dropShadow')?.params.distance ?? 5}
-                        onChange={(e) => onUpdateEffect?.('dropShadow', { distance: Number(e.target.value) })}
+                        onChange={(e) => onUpdateEffect?.('dropShadow', { distance: parseNum(e.target.value) })}
                         className="w-full accent-violet-500"
                       />
                     </div>
@@ -4328,7 +4461,7 @@ export default function DashboardLayout({
                         max={20}
                         step={1}
                         value={layerEffects.find(e => e.type === 'dropShadow')?.params.blur ?? 2}
-                        onChange={(e) => onUpdateEffect?.('dropShadow', { blur: Number(e.target.value) })}
+                        onChange={(e) => onUpdateEffect?.('dropShadow', { blur: parseNum(e.target.value) })}
                         className="w-full accent-violet-500"
                       />
                     </div>
@@ -4345,7 +4478,7 @@ export default function DashboardLayout({
                         max={360}
                         step={15}
                         value={layerEffects.find(e => e.type === 'dropShadow')?.params.rotation ?? 45}
-                        onChange={(e) => onUpdateEffect?.('dropShadow', { rotation: Number(e.target.value) })}
+                        onChange={(e) => onUpdateEffect?.('dropShadow', { rotation: parseNum(e.target.value) })}
                         className="w-full accent-violet-500"
                       />
                     </div>
@@ -4367,7 +4500,7 @@ export default function DashboardLayout({
                       max={20}
                       step={0.5}
                       value={layerEffects.find(e => e.type === 'blur')?.params.strength ?? 0}
-                      onChange={(e) => onUpdateEffect?.('blur', { strength: Number(e.target.value) })}
+                      onChange={(e) => onUpdateEffect?.('blur', { strength: parseNum(e.target.value) })}
                       className="w-full accent-violet-500"
                     />
                   </div>
@@ -4388,7 +4521,7 @@ export default function DashboardLayout({
                       max={20}
                       step={1}
                       value={layerEffects.find(e => e.type === 'glitch')?.params.slices ?? 0}
-                      onChange={(e) => onUpdateEffect?.('glitch', { slices: Number(e.target.value) })}
+                      onChange={(e) => onUpdateEffect?.('glitch', { slices: parseNum(e.target.value) })}
                       className="w-full accent-violet-500"
                     />
                   </div>
@@ -4409,7 +4542,7 @@ export default function DashboardLayout({
                       max={50}
                       step={2}
                       value={layerEffects.find(e => e.type === 'pixelate')?.params.size ?? 10}
-                      onChange={(e) => onUpdateEffect?.('pixelate', { size: Number(e.target.value) })}
+                      onChange={(e) => onUpdateEffect?.('pixelate', { size: parseNum(e.target.value) })}
                       className="w-full accent-violet-500"
                     />
                   </div>
@@ -4431,7 +4564,7 @@ export default function DashboardLayout({
                         max={1}
                         step={0.05}
                         value={layerEffects.find(e => e.type === activeEffectId)?.params.density ?? 0.5}
-                        onChange={(e) => onUpdateEffect?.(activeEffectId, { density: Number(e.target.value) })}
+                        onChange={(e) => onUpdateEffect?.(activeEffectId, { density: parseNum(e.target.value) })}
                         className="w-full accent-violet-500"
                       />
                     </div>
@@ -4448,7 +4581,7 @@ export default function DashboardLayout({
                         max={3}
                         step={0.1}
                         value={layerEffects.find(e => e.type === activeEffectId)?.params.speed ?? 1}
-                        onChange={(e) => onUpdateEffect?.(activeEffectId, { speed: Number(e.target.value) })}
+                        onChange={(e) => onUpdateEffect?.(activeEffectId, { speed: parseNum(e.target.value) })}
                         className="w-full accent-violet-500"
                       />
                     </div>
@@ -4469,7 +4602,7 @@ export default function DashboardLayout({
                     max={3}
                     step={0.05}
                     value={templateSpeed}
-                    onChange={(e) => onTemplateSpeedChange?.(Number(e.target.value))}
+                    onChange={(e) => onTemplateSpeedChange?.(parseNum(e.target.value))}
                     className="w-full accent-violet-500"
                   />
                 </div>
