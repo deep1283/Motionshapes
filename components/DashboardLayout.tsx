@@ -82,7 +82,9 @@ const ResizeClipItem = ({
   const [widthTo, setWidthTo] = useState(String(clip.parameters?.resizeToWidth ?? 100))
   const [heightTo, setHeightTo] = useState(String(clip.parameters?.resizeToHeight ?? 100))
   const [duration, setDuration] = useState(String(clip.duration ?? 800))
+
   const [easing, setEasing] = useState(clip.parameters?.resizeEasing ?? 'linear')
+  const [anchor, setAnchor] = useState(clip.parameters?.resizeAnchor ?? 'middle')
 
   useEffect(() => {
     setWidthFrom(String(clip.parameters?.resizeFromWidth ?? 100))
@@ -90,7 +92,9 @@ const ResizeClipItem = ({
     setWidthTo(String(clip.parameters?.resizeToWidth ?? 100))
     setHeightTo(String(clip.parameters?.resizeToHeight ?? 100))
     setDuration(String(clip.duration ?? 800))
+
     setEasing(clip.parameters?.resizeEasing ?? 'linear')
+    setAnchor(clip.parameters?.resizeAnchor ?? 'middle')
   }, [clip])
 
   const updateParam = (key: string, value: any) => {
@@ -211,6 +215,23 @@ const ResizeClipItem = ({
                 {EASING_OPTIONS.map(opt => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
                 ))}
+              </select>
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-neutral-400">Anchor</span>
+              <select value={anchor}
+                onChange={e => {
+                  setAnchor(e.target.value)
+                  updateParam('resizeAnchor', e.target.value)
+                }}
+                className="px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200"
+              >
+                <option value="middle">Middle</option>
+                <option value="top">Top</option>
+                <option value="bottom">Bottom</option>
+                <option value="left">Left</option>
+                <option value="right">Right</option>
               </select>
             </div>
           </div>
@@ -776,7 +797,9 @@ export default function DashboardLayout({
   const [customResizeToWidth, setCustomResizeToWidth] = useState<string>('100')
   const [customResizeToHeight, setCustomResizeToHeight] = useState<string>('100')
   const [customResizeDuration, setCustomResizeDuration] = useState(800) // in ms
+
   const [customResizeEasing, setCustomResizeEasing] = useState<'none' | 'ease-in' | 'ease-out' | 'ease-in-out'>('none')
+  const [customResizeAnchor, setCustomResizeAnchor] = useState<'middle' | 'top' | 'bottom' | 'left' | 'right'>('middle')
 
   // Sync resize animation controls with timeline clip
   useEffect(() => {
@@ -791,6 +814,9 @@ export default function DashboardLayout({
         if (params.resizeToHeight !== undefined) setCustomResizeToHeight(String(params.resizeToHeight))
         if (params.resizeEasing) {
           setCustomResizeEasing(params.resizeEasing === 'linear' ? 'none' : params.resizeEasing as any)
+        }
+        if (params.resizeAnchor) {
+          setCustomResizeAnchor(params.resizeAnchor as any)
         }
       }
     }
@@ -2368,6 +2394,7 @@ export default function DashboardLayout({
                                 setCustomResizeToHeight(String(layerHeight))
                                 setCustomResizeDuration(800)
                                 setCustomResizeEasing('none')
+                                setCustomResizeAnchor('middle')
                                 
                                 // Expand the panel
                                 setExpandedSections(prev => new Set(prev).add('resize'))

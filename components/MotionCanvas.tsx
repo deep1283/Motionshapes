@@ -1112,6 +1112,24 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           g.scale.set(actualScaleX, actualScaleY)
         }
         
+        // Calculate anchor offsets to simulate fixed edges
+        // (Default is middle, so center stays fixed)
+        let anchorOffsetX = 0
+        let anchorOffsetY = 0
+        
+        if (resizeAnchor !== 'middle') {
+          const diffX = animatedWidth - (layerData?.width || safeBaseWidth)
+          const diffY = animatedHeight - (layerData?.height || safeBaseHeight)
+          
+          if (resizeAnchor === 'left') anchorOffsetX = diffX / 2 // Move center right
+          else if (resizeAnchor === 'right') anchorOffsetX = -diffX / 2 // Move center left
+          else if (resizeAnchor === 'top') anchorOffsetY = diffY / 2 // Move center down
+          else if (resizeAnchor === 'bottom') anchorOffsetY = -diffY / 2 // Move center up
+        }
+        
+        g.x += anchorOffsetX
+        g.y += anchorOffsetY
+        
         // Always use center pivot (0,0) - this ensures no snapping when animation ends
         // and works correctly with path animation
         g.pivot.set(0, 0)
