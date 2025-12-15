@@ -2322,21 +2322,7 @@ export default function DashboardLayout({
                     
                     {/* Property toggles - each on its own line */}
                     <div className="flex flex-col gap-2">
-                      <button
-                        className={cn(
-                          "flex items-center gap-2 px-3 py-2 rounded-lg border transition-all text-left",
-                          selectedLayerId
-                            ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/30"
-                            : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
-                        )}
-                        disabled={!selectedLayerId}
-                      >
-                        <svg viewBox="0 0 24 24" className="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" strokeWidth="2">
-                          <circle cx="12" cy="12" r="2" />
-                          <path d="M12 2v4m0 12v4M2 12h4m12 0h4" />
-                        </svg>
-                        <span className="text-[10px] text-neutral-300">Position</span>
-                      </button>
+
                       
                       <div className="flex items-center">
                         <button
