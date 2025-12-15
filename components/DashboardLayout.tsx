@@ -752,14 +752,14 @@ export default function DashboardLayout({
   
   // Custom animation state - Set allows multiple panels to be expanded simultaneously
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set())
-  // Panel order - most recently added/clicked appears first
-  const [panelOrder, setPanelOrder] = useState<string[]>([])
+  // Clip order - most recently added/clicked clip ID appears first
+  const [clipOrder, setClipOrder] = useState<string[]>([])
   
-  // Helper to bring a panel to the front of the order
-  const bringPanelToFront = (panelType: string) => {
-    setPanelOrder(prev => {
-      const filtered = prev.filter(p => p !== panelType)
-      return [panelType, ...filtered]
+  // Helper to bring a clip to the front of the order
+  const bringClipToFront = (clipId: string) => {
+    setClipOrder(prev => {
+      const filtered = prev.filter(id => id !== clipId)
+      return [clipId, ...filtered]
     })
   }
   
@@ -858,10 +858,11 @@ export default function DashboardLayout({
       const selectedClip = templateClips.find(c => c.id === selectedClipId)
       if (selectedClip && ['color', 'resize', 'rotate'].includes(selectedClip.template)) {
         setExpandedSections(prev => new Set(prev).add(selectedClip.template))
-        bringPanelToFront(selectedClip.template)
+        bringClipToFront(selectedClipId)
       }
     }
-  }, [selectedClipId, templateClips])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClipId]) // Only run when selectedClipId changes, not on every templateClips update
 
   const [showTextColorPicker, setShowTextColorPicker] = useState(false)
   
@@ -901,8 +902,15 @@ export default function DashboardLayout({
     }
 
     const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
-      // Reset to current prop value on blur to indicate no change if not committed
-      setLocalValue(String(value))
+      // Commit the value on blur (clicking away)
+      const rawVal = e.currentTarget.value.replace(/[^0-9]/g, '')
+      if (rawVal === '') {
+        // If empty, reset to original value
+        setLocalValue(String(value))
+        return
+      }
+      const val = Math.max(0, parseInt(rawVal))
+      onCommit(val)
     }
 
     return (
@@ -2379,7 +2387,7 @@ export default function DashboardLayout({
                                 const layerWidth = layer?.width ?? 100
                                 const layerHeight = layer?.height ?? 100
                                 
-                                timeline.addTemplateClip(selectedLayerId, 'resize', 0, 800, {
+                                const newClipId = timeline.addTemplateClip(selectedLayerId, 'resize', 0, 800, {
                                   resizeFromWidth: layerWidth,
                                   resizeFromHeight: layerHeight,
                                   resizeToWidth: layerWidth,
@@ -2398,7 +2406,7 @@ export default function DashboardLayout({
                                 
                                 // Expand the panel
                                 setExpandedSections(prev => new Set(prev).add('resize'))
-                                bringPanelToFront('resize')
+                                if (newClipId) bringClipToFront(newClipId)
                               }
                             }
                           }}
@@ -2429,7 +2437,7 @@ export default function DashboardLayout({
                                 , resizeClips[0])
                                 const newStart = (lastClip.start ?? 0) + (lastClip.duration ?? 800)
                                 
-                                timeline.addTemplateClip(selectedLayerId, 'resize', newStart, 800, {
+                                const newClipId = timeline.addTemplateClip(selectedLayerId, 'resize', newStart, 800, {
                                   resizeFromWidth: layerWidth,
                                   resizeFromHeight: layerHeight,
                                   resizeToWidth: layerWidth,
@@ -2440,7 +2448,7 @@ export default function DashboardLayout({
                                 
                                 // Expand the panel
                                 setExpandedSections(prev => new Set(prev).add('resize'))
-                                bringPanelToFront('resize')
+                                if (newClipId) bringClipToFront(newClipId)
                               }
                             }}
                           >
@@ -2481,7 +2489,7 @@ export default function DashboardLayout({
                                 const fromAngle = Math.round((layerRotation * 180) / Math.PI)
                                 const toAngle = fromAngle + 45
                                 
-                                timeline.addTemplateClip(selectedLayerId, 'rotate', 0, 800, {
+                                const newClipId = timeline.addTemplateClip(selectedLayerId, 'rotate', 0, 800, {
                                   rotateFromAngle: fromAngle,
                                   rotateToAngle: toAngle,
                                   rotateEasing: 'linear'
@@ -2494,7 +2502,7 @@ export default function DashboardLayout({
                                 
                                 // Expand the panel
                                 setExpandedSections(prev => new Set(prev).add('rotate'))
-                                bringPanelToFront('rotate')
+                                if (newClipId) bringClipToFront(newClipId)
                               }
                             }
                           }}
@@ -2524,7 +2532,7 @@ export default function DashboardLayout({
                                 const fromAngle = lastClip.parameters?.rotateToAngle ?? 0
                                 const toAngle = fromAngle + 45
                                 
-                                timeline.addTemplateClip(selectedLayerId, 'rotate', newStart, 800, {
+                                const newClipId = timeline.addTemplateClip(selectedLayerId, 'rotate', newStart, 800, {
                                   rotateFromAngle: fromAngle,
                                   rotateToAngle: toAngle,
                                   rotateEasing: 'linear'
@@ -2532,7 +2540,7 @@ export default function DashboardLayout({
                                 
                                 // Expand the panel
                                 setExpandedSections(prev => new Set(prev).add('rotate'))
-                                bringPanelToFront('rotate')
+                                if (newClipId) bringClipToFront(newClipId)
                               }
                             }}
                           >
@@ -2572,7 +2580,7 @@ export default function DashboardLayout({
                                 const layerColor = layer?.fillColor ?? 0xffffff
                                 const fromColor = '#' + layerColor.toString(16).toUpperCase().padStart(6, '0')
                                 
-                                timeline.addTemplateClip(selectedLayerId, 'color', 0, 1000, {
+                                const newClipId = timeline.addTemplateClip(selectedLayerId, 'color', 0, 1000, {
                                   colorFrom: layerColor,
                                   colorTo: 0xFFFFFF,
                                   colorEasing: 'linear'
@@ -2585,7 +2593,7 @@ export default function DashboardLayout({
                                 
                                 // Expand the panel
                                 setExpandedSections(prev => new Set(prev).add('color'))
-                                bringPanelToFront('color')
+                                if (newClipId) bringClipToFront(newClipId)
                               }
                             }
                           }}
@@ -2623,7 +2631,7 @@ export default function DashboardLayout({
                                 // Get end color of last clip as start color for new clip
                                 const fromColor = lastClip.parameters?.colorTo ?? (layer?.fillColor ?? 0xffffff)
                                 
-                                timeline.addTemplateClip(selectedLayerId, 'color', newStart, 1000, {
+                                const newClipId = timeline.addTemplateClip(selectedLayerId, 'color', newStart, 1000, {
                                   colorFrom: fromColor,
                                   colorTo: 0xFFFFFF,
                                   colorEasing: 'linear'
@@ -2631,7 +2639,7 @@ export default function DashboardLayout({
                                 
                                 // Expand the panel
                                 setExpandedSections(prev => new Set(prev).add('color'))
-                                bringPanelToFront('color')
+                                if (newClipId) bringClipToFront(newClipId)
                               }
                             }}
                           >
@@ -2649,7 +2657,7 @@ export default function DashboardLayout({
                   
                   {/* Color Clips */}
                   {selectedLayerId && templateClips.filter(c => c.layerId === selectedLayerId && c.template === 'color').map((clip, i) => (
-                    <div key={clip.id} style={{ order: panelOrder.indexOf('color') >= 0 ? panelOrder.indexOf('color') : 99 }}>
+                    <div key={clip.id} style={{ order: clipOrder.indexOf(clip.id) >= 0 ? clipOrder.indexOf(clip.id) : 99 }}>
                       <ColorClipItem
                         clip={clip}
                         index={i}
@@ -2660,7 +2668,7 @@ export default function DashboardLayout({
 
                   {/* Resize Clips */}
                   {selectedLayerId && templateClips.filter(c => c.layerId === selectedLayerId && c.template === 'resize').map((clip, i) => (
-                    <div key={clip.id} style={{ order: panelOrder.indexOf('resize') >= 0 ? panelOrder.indexOf('resize') : 99 }}>
+                    <div key={clip.id} style={{ order: clipOrder.indexOf(clip.id) >= 0 ? clipOrder.indexOf(clip.id) : 99 }}>
                       <ResizeClipItem
                         clip={clip}
                         index={i}
@@ -2671,7 +2679,7 @@ export default function DashboardLayout({
 
                   {/* Rotation Clips */}
                   {selectedLayerId && templateClips.filter(c => c.layerId === selectedLayerId && c.template === 'rotate').map((clip, i) => (
-                    <div key={clip.id} style={{ order: panelOrder.indexOf('rotate') >= 0 ? panelOrder.indexOf('rotate') : 99 }}>
+                    <div key={clip.id} style={{ order: clipOrder.indexOf(clip.id) >= 0 ? clipOrder.indexOf(clip.id) : 99 }}>
                       <RotateClipItem
                         clip={clip}
                         index={i}

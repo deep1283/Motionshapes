@@ -1142,6 +1142,24 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           (g as any).__resizeProgress = null
           g.pivot.set(0, 0)
           g.scale.set(finalScale)
+          
+          // For PILL shapes: if previously resized, redraw at base dimensions
+          const shapeKind = layerData?.shapeKind
+          if (shapeKind === 'pill' && g instanceof PIXI.Graphics) {
+            const lastDims = (g as any).__lastPillDims as { w: number, h: number } | undefined
+            const pillBaseWidth = layerData?.width ?? 100
+            const pillBaseHeight = layerData?.height ?? 100
+            
+            // Only redraw if the pill was previously drawn at different dimensions
+            if (lastDims && (Math.abs(lastDims.w - pillBaseWidth) > 0.1 || Math.abs(lastDims.h - pillBaseHeight) > 0.1)) {
+              g.clear()
+              const pillRadius = Math.min(pillBaseWidth, pillBaseHeight) / 2
+              g.roundRect(-pillBaseWidth / 2, -pillBaseHeight / 2, pillBaseWidth, pillBaseHeight, pillRadius)
+              g.fill(layerData?.fillColor ?? 0xffffff)
+              ;(g as any).__lastPillDims = { w: pillBaseWidth, h: pillBaseHeight }
+              ;(g as any).__shapeSize = { width: pillBaseWidth, height: pillBaseHeight }
+            }
+          }
           // Clear last pill dims cache when not animating
           ;(g as any).__lastPillDims = null
         }
