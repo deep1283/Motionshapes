@@ -77,7 +77,7 @@ export type TemplateId =
   | 'mask_top'
   | 'mask_center_out'
   | 'mask_top_out'
-  | 'typewriter' | 'bounce_in' | 'bounce_out' | 'scramble' // Text animations
+  | 'typewriter' | 'bounce_in' | 'bounce_out' | 'scramble' | 'fade_in_char' | 'fade_out_char' // Text animations
   | 'transition_fade' | 'transition_slide' | 'transition_zoom' | 'transition_blur' // Unified transitions
   | 'color' // Custom color animation
   | 'resize' // Custom resize animation
@@ -124,7 +124,7 @@ export interface TemplateClip {
     maskAngle?: number // Angle in degrees (0 = horizontal, 90 = vertical)
     maskEasing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'
     // Text animation parameters
-    textAnimation?: 'typewriter' | 'bounce_in' | 'bounce_out' | 'scramble'
+    textAnimation?: 'typewriter' | 'bounce_in' | 'bounce_out' | 'scramble' | 'fade_in_char' | 'fade_out_char'
     showCursor?: boolean
     // Color parameters
     colorFrom?: number

@@ -590,11 +590,12 @@ interface DashboardLayoutProps {
   // Path smoothing
   showSmoothPathButton?: boolean
   onSmoothPath?: () => void
-  // Text animations
   onAddTypewriter?: (layerId: string) => void
   onAddBounceIn?: (layerId: string) => void
   onAddBounceOut?: (layerId: string) => void
   onAddScramble?: (layerId: string) => void
+  onAddFadeInChar?: (layerId: string) => void
+  onAddFadeOutChar?: (layerId: string) => void
   // Transitions
   onAddTransition?: (fromLayerId: string, toLayerId: string, transitionType: 'fade' | 'slide' | 'zoom' | 'blur') => void
   // Export support - refs from parent for canvas access
@@ -705,6 +706,8 @@ export default function DashboardLayout({
   onAddBounceIn,
   onAddBounceOut,
   onAddScramble,
+  onAddFadeInChar,
+  onAddFadeOutChar,
   onAddTransition,
   exportCanvasRef,
   exportRenderRef,
@@ -2060,6 +2063,52 @@ export default function DashboardLayout({
                         </svg>
                       </div>
                       <span className="text-[11px] font-medium text-neutral-300">Scramble</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (!selectedLayerId) return
+                        onAddFadeInChar?.(selectedLayerId)
+                      }}
+                      disabled={!selectedLayerId || selectedLayer?.type !== 'text'}
+                      className={cn(
+                        "flex flex-col items-center justify-center gap-2 p-4 rounded-lg border transition-all",
+                        selectedLayerId && selectedLayer?.type === 'text'
+                          ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/50 cursor-pointer"
+                          : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
+                      )}
+                    >
+                      <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 text-purple-400">
+                          <path d="M4 7V4h16v3" />
+                          <path d="M12 4v16" />
+                          <path d="M8 20h8" />
+                          <circle cx="12" cy="12" r="2" opacity="0.5" />
+                        </svg>
+                      </div>
+                      <span className="text-[11px] font-medium text-neutral-300">Fade In</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (!selectedLayerId) return
+                        onAddFadeOutChar?.(selectedLayerId)
+                      }}
+                      disabled={!selectedLayerId || selectedLayer?.type !== 'text'}
+                      className={cn(
+                        "flex flex-col items-center justify-center gap-2 p-4 rounded-lg border transition-all",
+                        selectedLayerId && selectedLayer?.type === 'text'
+                          ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/50 cursor-pointer"
+                          : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
+                      )}
+                    >
+                      <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 text-purple-400">
+                          <path d="M4 7V4h16v3" />
+                          <path d="M12 4v16" />
+                          <path d="M8 20h8" />
+                          <circle cx="12" cy="12" r="2" opacity="0.3" strokeDasharray="2 1" />
+                        </svg>
+                      </div>
+                      <span className="text-[11px] font-medium text-neutral-300">Fade Out</span>
                     </button>
 
                   </>

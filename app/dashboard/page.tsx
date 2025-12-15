@@ -1171,6 +1171,7 @@ function DashboardContent() {
     setSelectedLayerId(id)
     setSelectedClipId('')
     setSelectedTemplate('')  // Clear template to prevent accidentally applying it to the layer
+    setActivePathPoints([])  // Clear active path points to prevent old path animation from triggering
     setShowSelectShapeHint(false)
     // Playhead stays at current position - user can edit at current time
     // Timeline clip clicks (handleClipClick) still jump to clip start
@@ -2085,6 +2086,70 @@ function DashboardContent() {
           )
           
           setSelectedTemplate('scramble')
+          setSelectedClipId(clipId)
+          timeline.setPlaying(false)
+          timeline.setCurrentTime(lastEnd)
+          pushSnapshot()
+        }}
+        onAddFadeInChar={(layerId) => {
+          const layer = layers.find(l => l.id === layerId)
+          if (!layer || layer.type !== 'text') return
+          
+          const now = timeline.getState().currentTime
+          const textLength = layer.text?.length ?? 10
+          // Duration based on text length: ~80ms per character + base
+          const duration = Math.max(1000, 400 + textLength * 80)
+          
+          const layerClips = templateClips.filter(c => c.layerId === layerId)
+          const lastEnd = layerClips.length
+            ? Math.max(...layerClips.map(c => (c.start ?? 0) + (c.duration ?? 0)))
+            : now
+            
+          const clipId = timeline.addTemplateClip(
+            layerId,
+            'fade_in_char',
+            lastEnd,
+            duration,
+            {
+              textAnimation: 'fade_in_char',
+            },
+            layer.scale ?? 1,
+            { position: { x: layer.x, y: layer.y }, scale: layer.scale ?? 1 }
+          )
+          
+          setSelectedTemplate('fade_in_char')
+          setSelectedClipId(clipId)
+          timeline.setPlaying(false)
+          timeline.setCurrentTime(lastEnd)
+          pushSnapshot()
+        }}
+        onAddFadeOutChar={(layerId) => {
+          const layer = layers.find(l => l.id === layerId)
+          if (!layer || layer.type !== 'text') return
+          
+          const now = timeline.getState().currentTime
+          const textLength = layer.text?.length ?? 10
+          // Duration based on text length: ~80ms per character + base
+          const duration = Math.max(1000, 400 + textLength * 80)
+          
+          const layerClips = templateClips.filter(c => c.layerId === layerId)
+          const lastEnd = layerClips.length
+            ? Math.max(...layerClips.map(c => (c.start ?? 0) + (c.duration ?? 0)))
+            : now
+            
+          const clipId = timeline.addTemplateClip(
+            layerId,
+            'fade_out_char',
+            lastEnd,
+            duration,
+            {
+              textAnimation: 'fade_out_char',
+            },
+            layer.scale ?? 1,
+            { position: { x: layer.x, y: layer.y }, scale: layer.scale ?? 1 }
+          )
+          
+          setSelectedTemplate('fade_out_char')
           setSelectedClipId(clipId)
           timeline.setPlaying(false)
           timeline.setCurrentTime(lastEnd)

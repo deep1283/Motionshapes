@@ -86,7 +86,7 @@ type TimelineState = {
       maskAngle?: number // Angle in degrees (0 = horizontal, 90 = vertical)
       maskEasing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'
       // Text animation parameters
-      textAnimation?: 'typewriter' | 'bounce_in' | 'bounce_out' | 'scramble'
+      textAnimation?: 'typewriter' | 'bounce_in' | 'bounce_out' | 'scramble' | 'fade_in_char' | 'fade_out_char'
       showCursor?: boolean
       // Transition parameters
       transitionToLayerId?: string

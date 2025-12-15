@@ -5,7 +5,7 @@ export type TemplateId =
   | 'fade_in' | 'slide_in' | 'grow_in' | 'shrink_in' | 'spin_in' | 'twist_in' | 'move_scale_in'
   | 'fade_out' | 'slide_out' | 'grow_out' | 'shrink_out' | 'spin_out' | 'twist_out' | 'move_scale_out'
   | 'mask_center' | 'mask_top' | 'mask_center_out' | 'mask_top_out'
-  | 'typewriter' | 'bounce_in' | 'bounce_out' | 'scramble' // Text animations
+  | 'typewriter' | 'bounce_in' | 'bounce_out' | 'scramble' | 'fade_in_char' | 'fade_out_char' // Text animations
   | 'transition_fade' | 'transition_slide' | 'transition_zoom' | 'transition_blur' // Unified transitions
   | 'color' // Custom color animation
   | 'resize' // Custom resize animation
@@ -640,6 +640,28 @@ const scramblePreset = (duration: number = 2000): PresetResult => ({
   } as any,
 })
 
+export const FADE_IN_CHAR_DURATION = 1500
+
+const fadeInCharPreset = (duration: number = FADE_IN_CHAR_DURATION): PresetResult => ({
+  duration,
+  // Scale/Opacity are handled by MotionCanvas per-letter (no scale change, just fade)
+  scale: [],
+  opacity: [],
+  meta: {
+    textAnimation: 'fade_in_char',
+  } as any,
+})
+
+const fadeOutCharPreset = (duration: number = FADE_IN_CHAR_DURATION): PresetResult => ({
+  duration,
+  // Scale/Opacity are handled by MotionCanvas per-letter (no scale change, just fade out)
+  scale: [],
+  opacity: [],
+  meta: {
+    textAnimation: 'fade_out_char',
+  } as any,
+})
+
 const colorPreset = (duration: number = 1000, fromColor: number = 0xffffff, toColor: number = 0xff0000, easing: string = 'linear'): PresetResult => ({
   duration,
   color: [
@@ -737,6 +759,8 @@ export const PRESET_BUILDERS = {
   bounce_in: bounceInPreset,
   bounce_out: bounceOutPreset,
   scramble: scramblePreset,
+  fade_in_char: fadeInCharPreset,
+  fade_out_char: fadeOutCharPreset,
   color: colorPreset,
   resize: resizePreset,
   rotate: rotatePreset,

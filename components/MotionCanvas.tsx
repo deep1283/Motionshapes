@@ -2750,13 +2750,15 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           const text = new PIXI.Text({ text: finalText, style: textStyle })
           text.anchor.set(0.5)
           
-          // BOUNCE IN/OUT/SCRAMBLE: Split text implementation
+          // BOUNCE IN/OUT/SCRAMBLE/FADE_IN_CHAR/FADE_OUT_CHAR: Split text implementation
           const bounceInClip = templateClips.find(c => c.layerId === layer.id && c.template === 'bounce_in')
           const bounceOutClip = templateClips.find(c => c.layerId === layer.id && c.template === 'bounce_out')
           const scrambleClip = templateClips.find(c => c.layerId === layer.id && c.template === 'scramble')
+          const fadeInCharClip = templateClips.find(c => c.layerId === layer.id && c.template === 'fade_in_char')
+          const fadeOutCharClip = templateClips.find(c => c.layerId === layer.id && c.template === 'fade_out_char')
           let parts: PIXI.Text[] | undefined
           
-          if ((bounceInClip || bounceOutClip || scrambleClip) && layer.text) {
+          if ((bounceInClip || bounceOutClip || scrambleClip || fadeInCharClip || fadeOutCharClip) && layer.text) {
              text.visible = false // Hide main text
              parts = []
              const fullText = layer.text
@@ -3624,12 +3626,14 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
                 }
               }
 
-              // Update bounce_in/out/scramble parts animation
+              // Update bounce_in/out/scramble/fade_in_char/fade_out_char parts animation
               const bounceInClip = templateClips.find(c => c.layerId === layer.id && c.template === 'bounce_in')
               const bounceOutClip = templateClips.find(c => c.layerId === layer.id && c.template === 'bounce_out')
               const scrambleClip = templateClips.find(c => c.layerId === layer.id && c.template === 'scramble')
+              const fadeInCharClip = templateClips.find(c => c.layerId === layer.id && c.template === 'fade_in_char')
+              const fadeOutCharClip = templateClips.find(c => c.layerId === layer.id && c.template === 'fade_out_char')
               
-              if ((bounceInClip || bounceOutClip || scrambleClip) && textWrapper?.parts) {
+              if ((bounceInClip || bounceOutClip || scrambleClip || fadeInCharClip || fadeOutCharClip) && textWrapper?.parts) {
                 const stagger = 80 // ms per letter
                 const letterDuration = 1000 
                 const c4 = (2 * Math.PI) / 3
@@ -3663,7 +3667,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
                          const x = progress
                          const ease = x === 0 ? 0 : x === 1 ? 1 : Math.pow(2, -10 * x) * Math.sin((x * 10 - 0.75) * c4) + 1
                          scale *= ease
-                         // Opacity fades in over 10%
                          alpha *= Math.min(1, progress * 10)
                       }
                    }
@@ -3676,67 +3679,103 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
                       const progress = Math.max(0, Math.min(1, relativeTime / letterDuration))
                       
                       if (relativeTime < 0) {
-                        // Before exit starts: no impact (multiplier 1)
+                        // Before exit starts: no impact
                       } else if (progress >= 1) {
                          scale *= 0
                          alpha *= 0
                       } else {
-                         // Use 1 - ElasticOut(progress) for immediate action "Bounce Drop"
-                         // This creates a bounce that diminishes towards 0
                          const x = progress
                          const ease = x === 0 ? 0 : x === 1 ? 1 : Math.pow(2, -10 * x) * Math.sin((x * 10 - 0.75) * c4) + 1
-                         
-                         // 1 - ease goes 1 -> 0. 
-                         // Use Math.abs to handle negative overshoot (prevents flipping)
                          scale *= Math.abs(1 - ease)
-                         
-                         // Simple linear fade out
                          alpha *= (1 - progress)
                       }
                    }
                    
-                   // Scramble animation (reveal with scrambling)
+                   // Scramble animation
                    if (scrambleClip) {
                       const start = scrambleClip.start ?? 0
                       const clipDuration = scrambleClip.duration ?? 2000
                       const numParts = textWrapper.parts?.length ?? 1
                       
-                      // Calculate timing based on clip duration
-                      // Last letter should settle exactly at clip end
-                      // Add initial delay so animation starts from nothing
-                      const initialDelay = Math.max(50, clipDuration * 0.05) // 5% initial "nothing" delay
+                      const initialDelay = Math.max(50, clipDuration * 0.05)
                       const availableTime = clipDuration - initialDelay
+                      const scrambleRatio = 0.25
                       
-                      const scrambleRatio = 0.25 // 25% of time spent on each letter scrambling
-                      
-                      // For N letters: last letter settles at: start + initialDelay + (N-1)*stagger + scrambleDuration = start + clipDuration
                       const dynamicScrambleDuration = Math.max(80, availableTime * scrambleRatio / Math.max(1, numParts))
                       const dynamicStagger = numParts > 1 
                         ? (availableTime - dynamicScrambleDuration) / (numParts - 1)
                         : availableTime - dynamicScrambleDuration
                       
-                      // Each letter starts scrambling at a staggered time (with initial delay)
                       const letterStartTime = start + initialDelay + i * dynamicStagger
                       const letterSettleTime = letterStartTime + dynamicScrambleDuration
-                      
-                      // Scramble speed also scales with duration (slower when stretched)
                       const dynamicScrambleSpeed = Math.max(30, dynamicScrambleDuration / 6)
                       
                       if (playhead < letterStartTime) {
-                         // Before this letter starts - hide it
                          alpha *= 0
                          scale *= 0
                       } else if (playhead >= letterSettleTime) {
-                         // This letter has settled - show correct character
                          part.text = originalChar
-                         // alpha and scale stay at 1 (visible)
                       } else {
-                         // Currently scrambling this letter
-                         // Show random character cycling
                          const cycleIndex = Math.floor(playhead / dynamicScrambleSpeed)
                          const charIndex = (cycleIndex + i * 7) % scrambleChars.length
                          part.text = scrambleChars[charIndex]
-                         // Visible during scramble
+                      }
+                   }
+                   
+                   // Fade In Per Character animation
+                   if (fadeInCharClip) {
+                      const start = fadeInCharClip.start ?? 0
+                      const clipDuration = fadeInCharClip.duration ?? 1500
+                      const numParts = textWrapper.parts?.length ?? 1
+                      
+                      const fadeStagger = 60
+                      const fadeDuration = 200
+                      
+                      const baseAnimTime = (numParts - 1) * fadeStagger + fadeDuration
+                      const timeScale = clipDuration / baseAnimTime
+                      
+                      const scaledStagger = fadeStagger * timeScale
+                      const scaledFadeDuration = fadeDuration * timeScale
+                      
+                      const letterStart = start + i * scaledStagger
+                      const relativeTime = playhead - letterStart
+                      const progress = Math.max(0, Math.min(1, relativeTime / scaledFadeDuration))
+                      
+                      if (relativeTime < 0) {
+                         alpha *= 0
+                      } else {
+                         alpha *= progress
+                      }
+                   }
+                   
+                   // Fade Out Per Character animation (letters fade out one by one)
+                   if (fadeOutCharClip) {
+                      const start = fadeOutCharClip.start ?? 0
+                      const clipDuration = fadeOutCharClip.duration ?? 1500
+                      const numParts = textWrapper.parts?.length ?? 1
+                      
+                      const fadeStagger = 60
+                      const fadeDuration = 200
+                      
+                      const baseAnimTime = (numParts - 1) * fadeStagger + fadeDuration
+                      const timeScale = clipDuration / baseAnimTime
+                      
+                      const scaledStagger = fadeStagger * timeScale
+                      const scaledFadeDuration = fadeDuration * timeScale
+                      
+                      const letterStart = start + i * scaledStagger
+                      const relativeTime = playhead - letterStart
+                      const progress = Math.max(0, Math.min(1, relativeTime / scaledFadeDuration))
+                      
+                      if (relativeTime < 0) {
+                         // Before this letter starts fading out - fully visible
+                         // alpha stays at 1
+                      } else if (progress >= 1) {
+                         // Fully faded out
+                         alpha *= 0
+                      } else {
+                         // Linear fade out (1 -> 0)
+                         alpha *= (1 - progress)
                       }
                    }
                    
@@ -4051,10 +4090,13 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       </div>
     )}
       
-      {/* Show the finished path (non-interactive, just visual) - hide during playback */}
+      {/* Show the finished path - INTERACTIVE: drag start/end points */}
       {!isDrawingPath && !isPlaying && allPathClips.length > 0 && (
-        <div className="absolute inset-0" style={{ zIndex: 25, pointerEvents: 'none' }}>
-          <svg className="h-full w-full">
+        <div 
+          className="absolute inset-0" 
+          style={{ zIndex: 25, pointerEvents: 'none' }}
+        >
+          <svg className="h-full w-full" style={{ pointerEvents: 'none' }}>
             {allPathClips.map((pathClip, pathIndex) => (
               <g key={pathClip.id || pathIndex}>
                 {/* Path line */}
@@ -4070,7 +4112,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
                   fill="none"
                   opacity={0.5}
                 />
-                {/* Start point (green circle) */}
+                {/* Start point (green circle) - DRAGGABLE */}
                 {pathClip.points.length > 0 && (() => {
                   const { width, height } = canvasBounds
                   if (!width || !height) return null
@@ -4079,14 +4121,54 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
                     <circle
                       cx={startPt.x * width + offsetX}
                       cy={startPt.y * height + offsetY}
-                      r={6}
+                      r={8}
                       fill="#22c55e"
                       stroke="#0f172a"
                       strokeWidth={2}
+                      style={{ pointerEvents: 'auto', cursor: 'grab' }}
+                      onPointerDown={(e) => {
+                        e.stopPropagation()
+                        e.preventDefault()
+                        
+                        const handleMove = (ev: PointerEvent) => {
+                          const container = containerRef.current
+                          if (!container) return
+                          const bounds = container.getBoundingClientRect()
+                          const x = (ev.clientX - bounds.left - offsetX) / width
+                          const y = (ev.clientY - bounds.top - offsetY) / height
+                          const clampedX = Math.max(0, Math.min(1, x))
+                          const clampedY = Math.max(0, Math.min(1, y))
+                          
+                          // Find the path clip and update its points
+                          const clip = templateClips.find(c => c.id === pathClip.id)
+                          if (clip && clip.parameters?.pathPoints) {
+                            const newPoints = [...clip.parameters.pathPoints]
+                            newPoints[0] = { x: clampedX, y: clampedY }
+                            
+                            // Also update layer position to follow start point
+                            onUpdateLayerPosition?.(clip.layerId, clampedX, clampedY)
+                            
+                            // Update the template clip with new path points
+                            timelineActions.updateTemplateClip(clip.layerId, clip.id, {
+                              parameters: { pathPoints: newPoints }
+                            })
+                          }
+                        }
+                        
+                        const handleUp = () => {
+                          window.removeEventListener('pointermove', handleMove)
+                          window.removeEventListener('pointerup', handleUp)
+                          document.body.style.cursor = ''
+                        }
+                        
+                        document.body.style.cursor = 'grabbing'
+                        window.addEventListener('pointermove', handleMove)
+                        window.addEventListener('pointerup', handleUp)
+                      }}
                     />
                   )
                 })()}
-                {/* End point (red circle) */}
+                {/* End point (red circle) - DRAGGABLE */}
                 {pathClip.points.length > 1 && (() => {
                   const { width, height } = canvasBounds
                   if (!width || !height) return null
@@ -4095,10 +4177,47 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
                     <circle
                       cx={endPt.x * width + offsetX}
                       cy={endPt.y * height + offsetY}
-                      r={6}
+                      r={8}
                       fill="#ef4444"
                       stroke="#0f172a"
                       strokeWidth={2}
+                      style={{ pointerEvents: 'auto', cursor: 'grab' }}
+                      onPointerDown={(e) => {
+                        e.stopPropagation()
+                        e.preventDefault()
+                        
+                        const handleMove = (ev: PointerEvent) => {
+                          const container = containerRef.current
+                          if (!container) return
+                          const bounds = container.getBoundingClientRect()
+                          const x = (ev.clientX - bounds.left - offsetX) / width
+                          const y = (ev.clientY - bounds.top - offsetY) / height
+                          const clampedX = Math.max(0, Math.min(1, x))
+                          const clampedY = Math.max(0, Math.min(1, y))
+                          
+                          // Find the path clip and update its points
+                          const clip = templateClips.find(c => c.id === pathClip.id)
+                          if (clip && clip.parameters?.pathPoints) {
+                            const newPoints = [...clip.parameters.pathPoints]
+                            newPoints[newPoints.length - 1] = { x: clampedX, y: clampedY }
+                            
+                            // Update the template clip with new path points
+                            timelineActions.updateTemplateClip(clip.layerId, clip.id, {
+                              parameters: { pathPoints: newPoints }
+                            })
+                          }
+                        }
+                        
+                        const handleUp = () => {
+                          window.removeEventListener('pointermove', handleMove)
+                          window.removeEventListener('pointerup', handleUp)
+                          document.body.style.cursor = ''
+                        }
+                        
+                        document.body.style.cursor = 'grabbing'
+                        window.addEventListener('pointermove', handleMove)
+                        window.addEventListener('pointerup', handleUp)
+                      }}
                     />
                   )
                 })()}
