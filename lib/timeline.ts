@@ -420,15 +420,19 @@ export const sampleLayerTracksUnified = (
   }
 
   // Handle paths - prioritize active paths over completed ones
+  // IMPORTANT: Paths are stored in absolute screen coordinates (where user drew them)
+  // We need to convert them to RELATIVE motion so they follow the shape's current position
   let pathResult: Vec2 | null = null
+  let pathFirstPoint: Vec2 | null = null
   let activePathId: string | undefined
   if (layer.paths && layer.paths.length > 0) {
     // First pass: find a path that is CURRENTLY within its time range (actively animating)
     for (const clip of layer.paths) {
       if (time >= clip.startTime && time <= clip.startTime + clip.duration) {
         const p = samplePathClip(clip, time)
-        if (p) {
+        if (p && clip.points.length > 0) {
           pathResult = p
+          pathFirstPoint = clip.points[0] // Store first point as origin
           activePathId = clip.id
           break
         }
@@ -438,11 +442,12 @@ export const sampleLayerTracksUnified = (
     if (!pathResult) {
       let latestEndTime = -Infinity
       for (const clip of layer.paths) {
-        if (time > clip.startTime + clip.duration) {
+        if (time > clip.startTime + clip.duration && clip.points.length > 0) {
           const endTime = clip.startTime + clip.duration
           if (endTime > latestEndTime) {
             latestEndTime = endTime
             pathResult = clip.points[clip.points.length - 1]
+            pathFirstPoint = clip.points[0] // Store first point as origin
             activePathId = clip.id
           }
         }
@@ -450,16 +455,24 @@ export const sampleLayerTracksUnified = (
     }
   }
 
-  // Calculate position offsets from animations (pos - basePosition)
-  const positionOffset = { 
-    x: pos.x - layerBasePosition.x, 
-    y: pos.y - layerBasePosition.y 
+  // Calculate final position
+  // For paths: treat path as RELATIVE motion from the shape's current animated position
+  // The path's first point is the "origin" - we calculate offset from there and apply to `pos`
+  let finalPosition: Vec2
+  if (pathResult && pathFirstPoint) {
+    // Calculate how far along the path we've moved from the first point
+    const pathOffset = {
+      x: pathResult.x - pathFirstPoint.x,
+      y: pathResult.y - pathFirstPoint.y
+    }
+    // Apply path offset to the shape's current animated position (includes Roll, etc.)
+    finalPosition = {
+      x: pos.x + pathOffset.x,
+      y: pos.y + pathOffset.y
+    }
+  } else {
+    finalPosition = pos
   }
-  
-  // Combine path result with position offsets from other animations (roll, shake, etc.)
-  const finalPosition = pathResult
-    ? { x: pathResult.x + positionOffset.x, y: pathResult.y + positionOffset.y }
-    : pos
 
   return {
     position: finalPosition,

@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase'
 import DashboardLayout, { BackgroundSettings, Effect, EffectType } from '@/components/DashboardLayout'
 import dynamic from 'next/dynamic'
 import { TimelineProvider, useTimeline, useTimelineActions } from '@/lib/timeline-store'
-import { sampleTimeline } from '@/lib/timeline'
+import { sampleTimeline, sampleTimelineUnified } from '@/lib/timeline'
 import type { TemplateId } from '@/lib/presets'
 import { rollDurationForDistance, jumpHeightForDuration } from '@/lib/presets'
 import ConfirmDialog from '@/components/ConfirmDialog'
@@ -1189,19 +1189,45 @@ function DashboardContent() {
       setTimeout(() => setShowSelectShapeHint(false), 3000)
       return
     }
+    
+    // Determine starting point: sample at end of ALL clips (Roll, Jump, path, etc.)
+    const layer = layers.find((l) => l.id === selectedLayerId)
+    const layerPos = { x: layer?.x ?? 0.5, y: layer?.y ?? 0.5 }
+    
+    // Find the end time of the last clip on this layer (any template type)
+    const layerClips = templateClips.filter((c) => c.layerId === selectedLayerId)
+    const lastClipEndTime = layerClips.reduce((maxEnd, c) => {
+      const clipEnd = (c.start ?? 0) + (c.duration ?? 0)
+      return clipEnd > maxEnd ? clipEnd : maxEnd
+    }, 0)
+    
+    let startPos = layerPos
+    if (lastClipEndTime > 0) {
+      // Sample at the end of all animations using unified sampling
+      const layerBaseStates: Record<string, { x: number; y: number; rotation?: number; scale?: number; color?: number }> = {}
+      layers.forEach((l) => {
+        layerBaseStates[l.id] = { x: l.x, y: l.y, rotation: l.rotation ?? 0, scale: l.scale ?? 1, color: l.fillColor }
+      })
+      
+      const clipInfos = templateClips.map((c) => ({
+        id: c.id,
+        layerId: c.layerId,
+        template: c.template,
+        start: c.start ?? 0,
+        duration: c.duration ?? 0,
+      }))
+      
+      const sampled = sampleTimelineUnified(tracks, clipInfos, lastClipEndTime, undefined, layerBaseStates)[selectedLayerId]
+      if (sampled?.position) {
+        startPos = { x: sampled.position.x, y: sampled.position.y }
+      }
+    }
+    
     setIsDrawingPath(true)
     setIsDrawingLine(false)
-    setPathPoints([])
-    setActivePathPoints([])
+    setPathPoints([startPos])  // Seed with start position
+    setActivePathPoints([startPos])
     setPathVersion(v => v + 1)
-    
-    // Clear any existing clips for this layer to avoid conflicts
-    const existingClips = templateClips.filter(c => c.layerId === selectedLayerId)
-    existingClips.forEach(clip => {
-      // removeTemplateClip doesn't exist, we need to implement it or use setState directly if possible (but we can't from here)
-      // Actually, let's check if there's a method to remove template clips.
-      // If not, I'll add it to the store.
-    })
   }
 
   const handleStartDrawLine = () => {
@@ -1210,16 +1236,36 @@ function DashboardContent() {
       setTimeout(() => setShowSelectShapeHint(false), 3000)
       return
     }
-    // Determine starting point: end of last path clip if it exists, otherwise layer position
+    // Determine starting point: sample at end of ALL clips (Roll, Jump, path, etc.)
     const layer = layers.find((l) => l.id === selectedLayerId)
     const layerPos = { x: layer?.x ?? 0.5, y: layer?.y ?? 0.5 }
-    const lastPathClip = templateClips
-      .filter((c) => c.layerId === selectedLayerId && c.template === 'path')
-      .sort((a, b) => (b.start + b.duration) - (a.start + a.duration))[0]
+    
+    // Find the end time of the last clip on this layer (any template type)
+    const layerClips = templateClips.filter((c) => c.layerId === selectedLayerId)
+    const lastClipEndTime = layerClips.reduce((maxEnd, c) => {
+      const clipEnd = (c.start ?? 0) + (c.duration ?? 0)
+      return clipEnd > maxEnd ? clipEnd : maxEnd
+    }, 0)
+    
     let startPos = layerPos
-    if (lastPathClip) {
-      const endTime = (lastPathClip.start ?? 0) + (lastPathClip.duration ?? 0)
-      const sampled = sampleTimeline(tracks, endTime)[selectedLayerId]
+    if (lastClipEndTime > 0) {
+      // Sample at the end of all animations using unified sampling
+      // Build layer base states for sampling
+      const layerBaseStates: Record<string, { x: number; y: number; rotation?: number; scale?: number; color?: number }> = {}
+      layers.forEach((l) => {
+        layerBaseStates[l.id] = { x: l.x, y: l.y, rotation: l.rotation ?? 0, scale: l.scale ?? 1, color: l.fillColor }
+      })
+      
+      // Build clip infos for sampling
+      const clipInfos = templateClips.map((c) => ({
+        id: c.id,
+        layerId: c.layerId,
+        template: c.template,
+        start: c.start ?? 0,
+        duration: c.duration ?? 0,
+      }))
+      
+      const sampled = sampleTimelineUnified(tracks, clipInfos, lastClipEndTime, undefined, layerBaseStates)[selectedLayerId]
       if (sampled?.position) {
         startPos = { x: sampled.position.x, y: sampled.position.y }
       }
