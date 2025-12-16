@@ -690,18 +690,57 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
               } else {
                 // Layer is visible - show and position handles
                 const localPos = { x: g.x, y: g.y }
-                const halfW = layer.width / 2
-                const halfH = layer.height / 2
+                const rotation = g.rotation
                 
-                // Update outline
+                // For TEXT layers: use layer dimensions directly (text doesn't use scale for sizing)
+                // For other shapes: use animated dimensions from graphics scale
+                let animatedWidth: number
+                let animatedHeight: number
+                
+                if (layer.type === 'text') {
+                  // Text uses wordWrapWidth, not scale - get actual rendered text bounds
+                  const textWrapper = textsByIdRef.current[layer.id]
+                  if (textWrapper?.text) {
+                    // Use actual rendered text dimensions for accurate handle positioning
+                    animatedWidth = Math.max(layer.width, textWrapper.text.width)
+                    animatedHeight = Math.max(layer.height, textWrapper.text.height)
+                  } else {
+                    animatedWidth = layer.width
+                    animatedHeight = layer.height
+                  }
+                } else {
+                  const scaleX = g.scale.x
+                  const scaleY = g.scale.y
+                  animatedWidth = layer.width * Math.abs(scaleX)
+                  animatedHeight = layer.height * Math.abs(scaleY)
+                }
+                
+                const halfW = animatedWidth / 2
+                const halfH = animatedHeight / 2
+                
+                // Update outline with animated dimensions and rotation
                 if (outline) {
                   outline.visible = true
                   outline.x = localPos.x
                   outline.y = localPos.y
+                  outline.rotation = rotation // Apply shape's rotation to outline
+                  // Redraw at animated size
+                  outline.clear()
+                  outline.rect(-halfW, -halfH, animatedWidth, animatedHeight)
+                  outline.stroke({ color: layer.type === 'text' ? 0xA855F7 : 0x9333ea, width: 2, alpha: 1 })
                 }
                 
-                // Update handle positions
+                // Update handle positions with animated dimensions and rotation
                 if (handles && handles.length === 8) {
+                  const cos = Math.cos(rotation)
+                  const sin = Math.sin(rotation)
+                  
+                  // Rotate a point around origin
+                  const rotatePoint = (x: number, y: number) => ({
+                    x: x * cos - y * sin,
+                    y: x * sin + y * cos
+                  })
+                  
                   const cornerOffsets = [
                     { x: -halfW, y: -halfH }, { x: halfW, y: -halfH },
                     { x: halfW, y: halfH }, { x: -halfW, y: halfH }
@@ -710,15 +749,28 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
                     { x: 0, y: -halfH }, { x: 0, y: halfH },
                     { x: -halfW, y: 0 }, { x: halfW, y: 0 }
                   ]
+                  // Corners - rotate around center
                   for (let i = 0; i < 4; i++) {
+                    const rotated = rotatePoint(cornerOffsets[i].x, cornerOffsets[i].y)
                     handles[i].visible = true
-                    handles[i].x = localPos.x + cornerOffsets[i].x
-                    handles[i].y = localPos.y + cornerOffsets[i].y
+                    handles[i].x = localPos.x + rotated.x
+                    handles[i].y = localPos.y + rotated.y
                   }
+                  // Edges - also rotate and redraw at animated size
+                  const edgeThickness = 1
                   for (let i = 4; i < 8; i++) {
+                    const rotated = rotatePoint(edgeOffsets[i - 4].x, edgeOffsets[i - 4].y)
                     handles[i].visible = true
-                    handles[i].x = localPos.x + edgeOffsets[i - 4].x
-                    handles[i].y = localPos.y + edgeOffsets[i - 4].y
+                    handles[i].x = localPos.x + rotated.x
+                    handles[i].y = localPos.y + rotated.y
+                    handles[i].rotation = rotation // Rotate edge handles too
+                    handles[i].clear()
+                    if (i === 4 || i === 5) { // t, b - horizontal edges
+                      handles[i].rect(-animatedWidth / 2, -edgeThickness / 2, animatedWidth, edgeThickness)
+                    } else { // l, r - vertical edges
+                      handles[i].rect(-edgeThickness / 2, -animatedHeight / 2, edgeThickness, animatedHeight)
+                    }
+                    handles[i].fill(layer.type === 'text' ? 0xA855F7 : 0x9333ea)
                   }
                 }
               }
@@ -885,27 +937,62 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     // Both the shape (g) and the overlay are children of the same stage
     // So we can use the shape's position directly
     const localPos = { x: g.x, y: g.y }
+    const rotation = g.rotation
     
-    // Get current dimensions for handle positioning
-    const halfW = layer.width / 2
-    const halfH = layer.height / 2
+    // For TEXT layers: use layer dimensions directly (text doesn't use scale for sizing)
+    // For other shapes: use animated dimensions from graphics scale
+    let animatedWidth: number
+    let animatedHeight: number
     
-    // Update outline position and size
+    if (layer.type === 'text') {
+      // Text uses wordWrapWidth, not scale - get actual rendered text bounds
+      const textWrapper = textsByIdRef.current[layer.id]
+      if (textWrapper?.text) {
+        // Use actual rendered text dimensions for accurate handle positioning
+        animatedWidth = Math.max(layer.width, textWrapper.text.width)
+        animatedHeight = Math.max(layer.height, textWrapper.text.height)
+      } else {
+        animatedWidth = layer.width
+        animatedHeight = layer.height
+      }
+    } else {
+      // Get ANIMATED dimensions for handle positioning
+      // Use the graphics object's scale to get the actual rendered size
+      const scaleX = g.scale.x
+      const scaleY = g.scale.y
+      animatedWidth = layer.width * Math.abs(scaleX)
+      animatedHeight = layer.height * Math.abs(scaleY)
+    }
+    
+    const halfW = animatedWidth / 2
+    const halfH = animatedHeight / 2
+    
+    // Update outline position, size, and rotation
     const outline = outlinesByIdRef.current[layerId]
     if (outline) {
       outline.visible = true // Ensure visible when syncing
       outline.x = localPos.x
       outline.y = localPos.y
-      // Redraw outline at correct size (doesn't scale with shape)
+      outline.rotation = rotation // Apply shape's rotation to outline
+      // Redraw outline at correct size (uses animated dimensions)
       outline.clear()
-      outline.rect(-halfW, -halfH, layer.width, layer.height)
+      outline.rect(-halfW, -halfH, animatedWidth, animatedHeight)
       outline.stroke({ color: layer.type === 'text' ? 0xA855F7 : 0x9333ea, width: 2, alpha: 1 })
     }
     
     // Update handle positions (relative to shape center in world space)
     const handles = resizeHandlesRef.current[layerId]
     if (handles && handles.length === 8) {
-      // Corner positions (relative to shape center)
+      const cos = Math.cos(rotation)
+      const sin = Math.sin(rotation)
+      
+      // Rotate a point around origin
+      const rotatePoint = (x: number, y: number) => ({
+        x: x * cos - y * sin,
+        y: x * sin + y * cos
+      })
+      
+      // Corner positions (relative to shape center, using animated dimensions)
       const cornerOffsets = [
         { x: -halfW, y: -halfH }, // tl
         { x: halfW, y: -halfH },  // tr
@@ -920,33 +1007,35 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         { x: halfW, y: 0 },  // r
       ]
       
-      // Position and redraw corners
+      // Position and redraw corners (rotated around center)
       const cornerSize = 8
       for (let i = 0; i < 4; i++) {
         const h = handles[i]
+        const rotated = rotatePoint(cornerOffsets[i].x, cornerOffsets[i].y)
         h.visible = true
         h.alpha = 1
-        h.x = localPos.x + cornerOffsets[i].x
-        h.y = localPos.y + cornerOffsets[i].y
+        h.x = localPos.x + rotated.x
+        h.y = localPos.y + rotated.y
         h.clear()
         h.rect(-cornerSize / 2, -cornerSize / 2, cornerSize, cornerSize)
         h.fill(layer.type === 'text' ? 0xA855F7 : 0x9333ea)
       }
-      // Position and redraw edges (they need to resize with shape width/height)
-      const handleSize = 8
+      // Position and redraw edges (rotated, with correct animated dimensions)
       const edgeThickness = 1
       for (let i = 4; i < 8; i++) {
         const h = handles[i]
+        const rotated = rotatePoint(edgeOffsets[i - 4].x, edgeOffsets[i - 4].y)
         h.visible = true // Ensure edges visible
-        h.x = localPos.x + edgeOffsets[i - 4].x
-        h.y = localPos.y + edgeOffsets[i - 4].y
+        h.x = localPos.x + rotated.x
+        h.y = localPos.y + rotated.y
+        h.rotation = rotation // Rotate edge handles to match shape
         
-        // Redraw edge handles at correct size
+        // Redraw edge handles at correct size (using animated dimensions)
         h.clear()
         if (i === 4 || i === 5) { // t, b - horizontal edges
-          h.rect(-layer.width / 2, -edgeThickness / 2, layer.width, edgeThickness)
+          h.rect(-animatedWidth / 2, -edgeThickness / 2, animatedWidth, edgeThickness)
         } else { // l, r - vertical edges
-          h.rect(-edgeThickness / 2, -layer.height / 2, edgeThickness, layer.height)
+          h.rect(-edgeThickness / 2, -animatedHeight / 2, edgeThickness, animatedHeight)
         }
         h.fill(layer.type === 'text' ? 0xA855F7 : 0x9333ea)
       }
