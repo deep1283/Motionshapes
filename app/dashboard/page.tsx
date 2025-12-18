@@ -78,6 +78,10 @@ function DashboardContent() {
   const [isDrawingLine, setIsDrawingLine] = useState(false)
   const [pathPoints, setPathPoints] = useState<Array<{ x: number; y: number }>>([])
   const [activePathPoints, setActivePathPoints] = useState<Array<{ x: number; y: number }>>([])
+  // Separate state for line drawing (2 points only)
+  const [linePoints, setLinePoints] = useState<Array<{ x: number; y: number }>>([])
+  // Separate state for custom path drawing (multiple points)
+  const [customPathPoints, setCustomPathPoints] = useState<Array<{ x: number; y: number }>>([])
   const [pathVersion, setPathVersion] = useState(0)
   const [selectedLayerId, setSelectedLayerId] = useState('')
   const [selectedClipId, setSelectedClipId] = useState('')
@@ -1282,8 +1286,121 @@ function DashboardContent() {
 
   const handleAddPathPoint = (x: number, y: number) => {
     setPathPoints((prev) => [...prev, { x, y }])
+    setActivePathPoints((prev) => [...prev, { x, y }])
   }
 
+  // === LINE DRAWING HANDLERS (independent) ===
+  const handleAddLinePoint = (x: number, y: number) => {
+    // For line: keep only start and end (2 points max)
+    setLinePoints((prev) => {
+      if (prev.length === 0) return [{ x, y }]
+      if (prev.length === 1) return [...prev, { x, y }]
+      // Update end point
+      return [prev[0], { x, y }]
+    })
+  }
+
+  const handleFinishLine = (start: { x: number; y: number }, end: { x: number; y: number }) => {
+    setIsDrawingLine(false)
+    if (!selectedLayerId) return
+    
+    const simplified = [start, end]
+    const length = Math.hypot(end.x - start.x, end.y - start.y)
+    
+    // Append after the last clip on this layer
+    const layerClips = templateClips.filter(c => c.layerId === selectedLayerId)
+    const lastEnd = layerClips.length
+      ? Math.max(...layerClips.map(c => (c.start ?? 0) + (c.duration ?? 0)))
+      : 0
+    
+    const clipId = timeline.addTemplateClip(
+      selectedLayerId,
+      'path',
+      lastEnd,
+      2000,
+      {
+        pathPoints: simplified,
+        pathLength: length,
+        templateSpeed: 1
+      },
+      layers.find(l => l.id === selectedLayerId)?.scale ?? 1
+    )
+    
+    setSelectedTemplate('path')
+    setSelectedClipId(clipId)
+    setLinePoints([])
+    timeline.setPlaying(false)
+    timeline.setCurrentTime(lastEnd)
+    pushSnapshot()
+    
+    if (smoothPathTimerRef.current) clearTimeout(smoothPathTimerRef.current)
+    setShowSmoothPathButton(true)
+    smoothPathTimerRef.current = setTimeout(() => {
+      setShowSmoothPathButton(false)
+      smoothPathTimerRef.current = null
+    }, 3000)
+  }
+
+  // === CUSTOM PATH DRAWING HANDLERS (independent) ===
+  const handleAddCustomPathPoint = (x: number, y: number) => {
+    setCustomPathPoints((prev) => [...prev, { x, y }])
+  }
+
+  const handleFinishCustomPath = () => {
+    setIsDrawingPath(false)
+    if (!selectedLayerId || customPathPoints.length < 2) {
+      setCustomPathPoints([])
+      return
+    }
+    
+    // Simplify to avoid over-sampling
+    const simplified = customPathPoints.filter((pt, idx, arr) => {
+      if (idx === 0 || idx === arr.length - 1) return true
+      const prev = arr[idx - 1]
+      return Math.hypot(pt.x - prev.x, pt.y - prev.y) > 0.005
+    })
+    
+    if (simplified.length < 2) {
+      setCustomPathPoints([])
+      return
+    }
+    
+    let length = 0
+    for (let i = 1; i < simplified.length; i++) {
+      length += Math.hypot(simplified[i].x - simplified[i-1].x, simplified[i].y - simplified[i-1].y)
+    }
+    
+    const now = timeline.getState().currentTime
+    
+    const clipId = timeline.addTemplateClip(
+      selectedLayerId,
+      'path',
+      now,
+      2000,
+      {
+        pathPoints: simplified,
+        pathLength: length,
+        templateSpeed: 1
+      },
+      layers.find(l => l.id === selectedLayerId)?.scale ?? 1
+    )
+    
+    setSelectedTemplate('path')
+    setSelectedClipId(clipId)
+    setCustomPathPoints([])
+    timeline.setPlaying(false)
+    timeline.setCurrentTime(now)
+    pushSnapshot()
+    
+    if (smoothPathTimerRef.current) clearTimeout(smoothPathTimerRef.current)
+    setShowSmoothPathButton(true)
+    smoothPathTimerRef.current = setTimeout(() => {
+      setShowSmoothPathButton(false)
+      smoothPathTimerRef.current = null
+    }, 3000)
+  }
+
+  // Original handleFinishPath kept for backward compatibility
   const handleFinishPath = (finalPoints?: Array<{ x: number; y: number }>) => {
     setIsDrawingPath(false)
     setIsDrawingLine(false)
@@ -2314,6 +2431,9 @@ function DashboardContent() {
           pathLayerId={selectedLayerId}
           onAddPathPoint={handleAddPathPoint}
           onFinishPath={handleFinishPath}
+          onFinishLine={handleFinishLine}
+          onAddCustomPathPoint={handleAddCustomPathPoint}
+          onFinishCustomPath={handleFinishCustomPath}
           onPathPlaybackComplete={handlePathPlaybackComplete}
           onUpdateActivePathPoint={handleUpdateActivePathPoint}
           onClearPath={handleClearPath}

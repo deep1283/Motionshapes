@@ -56,6 +56,10 @@ interface MotionCanvasProps {
   layerOrder?: string[]
   onAddPathPoint?: (x: number, y: number) => void
   onFinishPath?: () => void
+  // Separate callbacks for independent line/path handling
+  onFinishLine?: (start: { x: number; y: number }, end: { x: number; y: number }) => void
+  onAddCustomPathPoint?: (x: number, y: number) => void
+  onFinishCustomPath?: () => void
   onSelectLayer?: (id: string) => void
   selectedLayerId?: string
   activePathPoints?: Array<{ x: number; y: number }>
@@ -131,6 +135,7 @@ type LineOverlayProps = {
   onAddPathPoint?: (x: number, y: number) => void
   onUpdateActivePathPoint?: (index: number, x: number, y: number) => void
   onFinishPath?: (pts?: Array<{ x: number; y: number }>) => void
+  onFinishLine?: (start: { x: number; y: number }, end: { x: number; y: number }) => void
   lineStartRef: React.MutableRefObject<{ x: number; y: number } | null>
   lineEndRef: React.MutableRefObject<{ x: number; y: number } | null>
   lineHasEndRef: React.MutableRefObject<boolean>
@@ -149,6 +154,7 @@ function LineOverlay({
   onAddPathPoint,
   onUpdateActivePathPoint,
   onFinishPath,
+  onFinishLine,
   lineStartRef,
   lineEndRef,
   lineHasEndRef,
@@ -204,7 +210,12 @@ function LineOverlay({
     if (Math.hypot(end.x - start.x, end.y - start.y) < 0.001) {
       end = { x: Math.min(1, start.x + 0.05), y: start.y }
     }
-    onFinishPath?.([start, end])
+    // Use separate onFinishLine if available, otherwise fall back to onFinishPath
+    if (onFinishLine) {
+      onFinishLine(start, end)
+    } else {
+      onFinishPath?.([start, end])
+    }
     lineStartRef.current = null
     lineEndRef.current = null
     lineHasEndRef.current = false
@@ -251,7 +262,7 @@ function LineOverlay({
   )
 }
 
-export default function MotionCanvas({ template, templateVersion, layers = [], layerOrder = [], onUpdateLayerPosition, onUpdateLayerSize, onTemplateComplete, isDrawingPath = false, isDrawingLine = false, pathPoints = [], onAddPathPoint, onFinishPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint, background: _background, viewportWidth = 640, viewportHeight = 360, offsetX = 0, offsetY = 0, popReappear = false, onCanvasBackgroundClick, selectedClipId, onUpdatePanZoomRegions, onCanvasReady }: MotionCanvasProps) {
+export default function MotionCanvas({ template, templateVersion, layers = [], layerOrder = [], onUpdateLayerPosition, onUpdateLayerSize, onTemplateComplete, isDrawingPath = false, isDrawingLine = false, pathPoints = [], onAddPathPoint, onFinishPath, onFinishLine, onAddCustomPathPoint, onFinishCustomPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint, background: _background, viewportWidth = 640, viewportHeight = 360, offsetX = 0, offsetY = 0, popReappear = false, onCanvasBackgroundClick, selectedClipId, onUpdatePanZoomRegions, onCanvasReady }: MotionCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<PIXI.Application | null>(null)
   const [isReady, setIsReady] = useState(false)
@@ -4448,42 +4459,68 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           onPointerDown={(e) => {
             if (!containerRef.current) return
             const bounds = containerRef.current.getBoundingClientRect()
-            const x = (e.clientX - bounds.left - offsetX) / bounds.width
-            const y = (e.clientY - bounds.top - offsetY) / bounds.height
+            const { width, height } = canvasBounds
+            if (!width || !height) return
+            const x = (e.clientX - bounds.left - offsetX) / width
+            const y = (e.clientY - bounds.top - offsetY) / height
             pathTraceActiveRef.current = true
             lastPathPointRef.current = { x, y }
-            onAddPathPoint?.(x, y)
+            // Use separate callback if available
+            if (onAddCustomPathPoint) {
+              onAddCustomPathPoint(x, y)
+            } else {
+              onAddPathPoint?.(x, y)
+            }
           }}
           onPointerMove={(e) => {
             if (!pathTraceActiveRef.current || !containerRef.current) return
             const bounds = containerRef.current.getBoundingClientRect()
-            const x = (e.clientX - bounds.left - offsetX) / bounds.width
-            const y = (e.clientY - bounds.top - offsetY) / bounds.height
+            const { width, height } = canvasBounds
+            if (!width || !height) return
+            const x = (e.clientX - bounds.left - offsetX) / width
+            const y = (e.clientY - bounds.top - offsetY) / height
             const last = lastPathPointRef.current
             const dx = last ? x - last.x : 0
             const dy = last ? y - last.y : 0
             if (!last || Math.hypot(dx, dy) > 0.02) {
               lastPathPointRef.current = { x, y }
-              onAddPathPoint?.(x, y)
+              // Use separate callback if available
+              if (onAddCustomPathPoint) {
+                onAddCustomPathPoint(x, y)
+              } else {
+                onAddPathPoint?.(x, y)
+              }
             }
           }}
-      onPointerUp={(e) => {
-        if (!pathTraceActiveRef.current || !containerRef.current) return
-        const bounds = containerRef.current.getBoundingClientRect()
-        const x = (e.clientX - bounds.left - offsetX) / bounds.width
-        const y = (e.clientY - bounds.top - offsetY) / bounds.height
-            onAddPathPoint?.(x, y)
+          onPointerUp={(e) => {
+            if (!pathTraceActiveRef.current || !containerRef.current) return
+            const bounds = containerRef.current.getBoundingClientRect()
+            const { width, height } = canvasBounds
+            if (!width || !height) return
+            const x = (e.clientX - bounds.left - offsetX) / width
+            const y = (e.clientY - bounds.top - offsetY) / height
+            // Add final point
+            if (onAddCustomPathPoint) {
+              onAddCustomPathPoint(x, y)
+            } else {
+              onAddPathPoint?.(x, y)
+            }
             pathTraceActiveRef.current = false
-            onFinishPath?.()
-      }}
-    >
-      <svg className="h-full w-full" style={{ pointerEvents: 'none' }}>
-          {pathPointsSvg && (
-            <path d={pathPointsSvg.d} stroke="#22c55e" strokeWidth={2} fill="none" data-path-element="true" />
-          )}
-        </svg>
-      </div>
-    )}
+            // Use separate callback if available
+            if (onFinishCustomPath) {
+              onFinishCustomPath()
+            } else {
+              onFinishPath?.()
+            }
+          }}
+        >
+          <svg className="h-full w-full" style={{ pointerEvents: 'none' }}>
+            {pathPointsSvg && (
+              <path d={pathPointsSvg.d} stroke="#22c55e" strokeWidth={2} fill="none" data-path-element="true" />
+            )}
+          </svg>
+        </div>
+      )}
       
       {/* Show the finished path - INTERACTIVE: drag start/end points */}
       {!isDrawingPath && !isPlaying && allPathClips.length > 0 && (
@@ -4507,11 +4544,12 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
                   fill="none"
                   opacity={0.5}
                 />
-                {/* Start point (green circle) - DRAGGABLE */}
+                {/* Start point (green circle) - DRAGGABLE (disabled when drawing new path) */}
                 {pathClip.points.length > 0 && (() => {
                   const { width, height } = canvasBounds
                   if (!width || !height) return null
                   const startPt = pathClip.points[0]
+                  const canDrag = !isDrawingPath && !isDrawingLine
                   return (
                     <circle
                       cx={startPt.x * width + offsetX}
@@ -4520,7 +4558,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
                       fill="#22c55e"
                       stroke="#0f172a"
                       strokeWidth={2}
-                      style={{ pointerEvents: 'auto', cursor: 'grab' }}
+                      style={{ pointerEvents: canDrag ? 'auto' : 'none', cursor: canDrag ? 'grab' : 'default' }}
                       onPointerDown={(e) => {
                         e.stopPropagation()
                         e.preventDefault()
@@ -4563,11 +4601,12 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
                     />
                   )
                 })()}
-                {/* End point (red circle) - DRAGGABLE */}
+                {/* End point (red circle) - DRAGGABLE (disabled when drawing new path) */}
                 {pathClip.points.length > 1 && (() => {
                   const { width, height } = canvasBounds
                   if (!width || !height) return null
                   const endPt = pathClip.points[pathClip.points.length - 1]
+                  const canDrag = !isDrawingPath && !isDrawingLine
                   return (
                     <circle
                       cx={endPt.x * width + offsetX}
@@ -4576,7 +4615,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
                       fill="#ef4444"
                       stroke="#0f172a"
                       strokeWidth={2}
-                      style={{ pointerEvents: 'auto', cursor: 'grab' }}
+                      style={{ pointerEvents: canDrag ? 'auto' : 'none', cursor: canDrag ? 'grab' : 'default' }}
                       onPointerDown={(e) => {
                         e.stopPropagation()
                         e.preventDefault()
@@ -4636,6 +4675,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           onAddPathPoint={onAddPathPoint}
           onUpdateActivePathPoint={onUpdateActivePathPoint}
           onFinishPath={onFinishPath}
+          onFinishLine={onFinishLine}
           lineStartRef={lineStartRef}
           lineEndRef={lineEndRef}
           lineHasEndRef={lineHasEndRef}
