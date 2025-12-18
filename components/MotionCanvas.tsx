@@ -814,6 +814,11 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         if (onCanvasReady) {
           // Function to hide all selection outlines and resize handles
           const hideHandles = () => {
+            // Hide entire handles overlay container (most robust approach)
+            if (handlesOverlayRef.current) {
+              handlesOverlayRef.current.visible = false
+            }
+            // Also hide individual handles (belt and suspenders)
             Object.values(outlinesByIdRef.current).forEach(outline => {
               if (outline) outline.visible = false
             })
@@ -825,6 +830,10 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           
           // Function to restore handle visibility based on selection
           const showHandles = () => {
+            // Restore entire handles overlay container visibility
+            if (handlesOverlayRef.current) {
+              handlesOverlayRef.current.visible = true
+            }
             Object.entries(outlinesByIdRef.current).forEach(([id, outline]) => {
               if (outline) outline.visible = selectedLayerId === id
             })
@@ -888,6 +897,28 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             
             // Reset stage position to (0,0) so content is centered
             app.stage.position.set(0, 0)
+            
+            // Recalculate background for export dimensions
+            // During export, canvas = viewport, so background should be at (0,0)
+            if (bgMaskRef.current) {
+              bgMaskRef.current.clear()
+              bgMaskRef.current.rect(0, 0, width, height)
+              bgMaskRef.current.fill({ color: 0xffffff })
+            }
+            
+            // Redraw solid background at (0,0) for export
+            if (bgGraphicsRef.current && _background && _background.mode === 'solid') {
+              bgGraphicsRef.current.clear()
+              const color = parseInt(_background.solid.replace('#', ''), 16)
+              bgGraphicsRef.current.rect(0, 0, width, height)
+              bgGraphicsRef.current.fill({ color, alpha: _background.opacity ?? 1 })
+            }
+            
+            // Reposition background sprite at (0,0) for export (gradient/image backgrounds)
+            if (bgSpriteRef.current) {
+              bgSpriteRef.current.x = 0
+              bgSpriteRef.current.y = 0
+            }
             
             app.render()
           }
@@ -2327,6 +2358,17 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     
     // Cleanup previous scene
     stage.removeChildren()
+    
+    // Re-add background container FIRST (at bottom)
+    if (bgContainerRef.current) {
+      bgContainerRef.current.zIndex = -1000
+      stage.addChild(bgContainerRef.current)
+    }
+    
+    // Re-add background mask (needs to be on stage for masking to work)
+    if (bgMaskRef.current) {
+      stage.addChild(bgMaskRef.current)
+    }
     
     // Re-add particle containers if they exist
     // This is critical because stage.removeChildren() wipes them out

@@ -24,11 +24,21 @@ export interface ExportBackground {
   imageMode?: 'cover' | 'contain' | 'stretch'
 }
 
+interface ViewportBounds {
+  x: number // Viewport left edge in canvas coordinates
+  y: number // Viewport top edge in canvas coordinates
+  width: number // Viewport width
+  height: number // Viewport height
+}
+
 interface ExportOptions {
   canvas: HTMLCanvasElement
   duration: number // ms
   fps: ExportFPS
   quality: ExportQuality
+  viewportBounds: ViewportBounds // Region to capture from canvas (physical pixels)
+  outputWidth: number // Output video width (logical pixels)
+  outputHeight: number // Output video height (logical pixels)
   background?: ExportBackground
   onProgress?: (progress: number, currentFrame: number, totalFrames: number, phase: 'capturing' | 'encoding') => void
   onSeek: (time: number) => void // Function to seek the timeline
@@ -43,21 +53,37 @@ const QUALITY_BITRATE: Record<ExportQuality, number> = {
 
 /**
  * Capture a single frame from canvas as ImageData
- * Background is now rendered directly by PIXI, so we just copy the canvas.
+ * Crops to the viewport region so export matches what's visible in the viewport.
+ * 
+ * viewportBounds: Source region in PHYSICAL pixels (on the canvas)
+ * outputWidth/Height: Output dimensions in LOGICAL pixels (for the video)
+ * 
  * Works with both 2D and WebGL canvases by drawing to a temporary 2D canvas.
  */
-function captureFrame(canvas: HTMLCanvasElement): ImageData {
-  // Create a temporary 2D canvas to capture the frame
+function captureFrame(
+  canvas: HTMLCanvasElement, 
+  viewportBounds: ViewportBounds,
+  outputWidth: number,
+  outputHeight: number
+): ImageData {
+  const { x, y, width, height } = viewportBounds
+  
+  // Create a temporary 2D canvas sized to OUTPUT dimensions (logical pixels)
   const tempCanvas = document.createElement('canvas')
-  tempCanvas.width = canvas.width
-  tempCanvas.height = canvas.height
+  tempCanvas.width = outputWidth
+  tempCanvas.height = outputHeight
   const ctx = tempCanvas.getContext('2d', { willReadFrequently: true })
   if (!ctx) throw new Error('Could not create 2D context for frame capture')
   
-  // Draw PIXI canvas (includes background rendered by PIXI)
-  ctx.drawImage(canvas, 0, 0)
+  // Draw the viewport region from physical canvas to logical output
+  // This scales from physical pixels to logical pixels
+  ctx.drawImage(
+    canvas,
+    x, y, width, height,           // Source: physical pixel region from canvas
+    0, 0, outputWidth, outputHeight // Destination: logical output size
+  )
   
-  return ctx.getImageData(0, 0, canvas.width, canvas.height)
+  return ctx.getImageData(0, 0, outputWidth, outputHeight)
 }
 
 /**
@@ -82,7 +108,7 @@ async function waitForRender(isFirstFrame: boolean = false): Promise<void> {
  * This ensures smooth output regardless of system performance during capture.
  */
 export async function exportToWebM(options: ExportOptions): Promise<Blob> {
-  const { canvas, duration, fps, quality, background, onProgress, onSeek, onRender } = options
+  const { canvas, duration, fps, quality, viewportBounds, outputWidth, outputHeight, background, onProgress, onSeek, onRender } = options
   
   const frameInterval = 1000 / fps
   const totalFrames = Math.ceil(duration / frameInterval)
@@ -105,8 +131,8 @@ export async function exportToWebM(options: ExportOptions): Promise<Blob> {
     onRender()
     await waitForRender(isFirstFrame)
     
-    // Capture frame (background is rendered by PIXI)
-    frames.push(captureFrame(canvas))
+    // Capture frame (crop from physical canvas, output at logical size)
+    frames.push(captureFrame(canvas, viewportBounds, outputWidth, outputHeight))
     
     // Report progress (Phase 1: 0% - 50%)
     if (onProgress) {
@@ -119,10 +145,10 @@ export async function exportToWebM(options: ExportOptions): Promise<Blob> {
   // PHASE 2: Encode frames to video
   // ============================================
   
-  // Create offscreen canvas for encoding at canvas size
+  // Create offscreen canvas for encoding at OUTPUT size (logical pixels)
   const encodeCanvas = document.createElement('canvas')
-  encodeCanvas.width = canvas.width
-  encodeCanvas.height = canvas.height
+  encodeCanvas.width = outputWidth
+  encodeCanvas.height = outputHeight
   const encodeCtx = encodeCanvas.getContext('2d')
   if (!encodeCtx) throw new Error('Could not create encode context')
   

@@ -4960,10 +4960,32 @@ export default function DashboardLayout({
         onSetPlaying={(playing) => timeline.setPlaying(playing)}
         onHideHandles={() => exportHideHandlesRef?.current?.()}
         onShowHandles={() => exportShowHandlesRef?.current?.()}
-        onResetStagePosition={() => exportResetStagePositionRef?.current?.()}
-        onRestoreStagePosition={() => exportRestoreStagePositionRef?.current?.()}
-        onResizeForExport={(width, height) => exportResizeForExportRef?.current?.(width, height)}
-        onRestoreFromExport={() => exportRestoreFromExportRef?.current?.()}
+        getViewportBounds={() => {
+          // Calculate viewport bounds in canvas coordinates
+          // Viewport is centered in the canvas area
+          const canvas = exportCanvasRef?.current
+          if (!canvas) return { x: 0, y: 0, width: canvasWidth, height: canvasHeight }
+          
+          // IMPORTANT: canvas.width/height are in PHYSICAL pixels (scaled by devicePixelRatio)
+          // canvasWidth/Height and canvasX/Y are in LOGICAL pixels (CSS pixels)
+          // We need to work in physical pixel space for drawImage
+          const dpr = window.devicePixelRatio || 1
+          
+          // Physical pixel dimensions
+          const physicalViewportWidth = canvasWidth * dpr
+          const physicalViewportHeight = canvasHeight * dpr
+          const physicalCanvasX = canvasX * dpr
+          const physicalCanvasY = canvasY * dpr
+          
+          // The canvas fills the workspace. The viewport is centered.
+          const workspaceWidth = canvas.width  // Already in physical pixels
+          const workspaceHeight = canvas.height
+          
+          const x = (workspaceWidth - physicalViewportWidth) / 2 + physicalCanvasX
+          const y = (workspaceHeight - physicalViewportHeight) / 2 + physicalCanvasY
+          
+          return { x, y, width: physicalViewportWidth, height: physicalViewportHeight }
+        }}
       />
     </div>
   )
