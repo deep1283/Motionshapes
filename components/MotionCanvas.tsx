@@ -4719,12 +4719,39 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         const rollClip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'roll')
         const clipRollDistance = rollClip?.parameters?.rollDistance ?? rollDistance
         
+        // Check for preceding Path clip to determine start position
+        // If a path exists, the roll should start from the end of that path
+        const layerClips = templateClips
+          .filter(c => c.layerId === selectedLayerId)
+          .sort((a, b) => (a.start || 0) - (b.start || 0))
+        
+        let startX = layer.x
+        let startY = layer.y
+        
+        for (const clip of layerClips) {
+           // Stop if we reach the specific roll clip we are rendering
+           if (rollClip && clip.template === 'roll' && clip.id === rollClip.id) break;
+
+           if (clip.template === 'path' && clip.parameters?.pathPoints) {
+             const points = clip.parameters.pathPoints
+             if (points.length > 0) {
+               startX = points[points.length - 1].x
+               startY = points[points.length - 1].y
+             }
+           }
+           
+           if (clip.template === 'roll') {
+             startX += clip.parameters?.rollDistance ?? 0.3
+           }
+        }
+
         // Shape center position
-        const centerX = layer.x * width + offsetX
-        const centerY = layer.y * height + offsetY
+        const centerX = startX * width + offsetX
+        const centerY = startY * height + offsetY
         
         // End position (roll goes right by rollDistance)
-        const endX = (layer.x + clipRollDistance) * width + offsetX
+        // Note: drag calculation needs to account for this offset too
+        const endX = (startX + clipRollDistance) * width + offsetX
         const endY = centerY
         
         // Only allow dragging when roll template is selected OR a roll clip is selected AND not in drawing mode
@@ -4777,8 +4804,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
                     const bounds = container.getBoundingClientRect()
                     const x = (ev.clientX - bounds.left - offsetX) / width
                     
-                    // Calculate new distance from layer position
-                    const newDistance = Math.max(0.05, Math.min(1 - layer.x, x - layer.x))
+                    // Calculate new distance from start position (which might be offset by a path)
+                    const newDistance = Math.max(0.05, Math.min(1 - startX, x - startX))
                     onRollDistanceChangeRef.current?.(newDistance)
                   }
                   
@@ -4820,23 +4847,39 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           .filter(c => c.layerId === selectedLayerId)
           .sort((a, b) => (a.start ?? 0) - (b.start ?? 0))
         
-        let accumulatedX = 0
+        let currentX = layer.x
+        let currentY = layer.y
+        
         for (const clip of layerClips) {
-          // Stop when we reach the jump clip
-          if (clip.template === 'jump') break
-          // Add roll's horizontal offset
+          // Stop when we reach the jump clip (if it exists in the list)
+          // Note: if we are just previewing (no clip yet), we might iterate all.
+          // But usually layerClips includes the clip if it exists.
+          if (clip.template === 'jump' && clip.id === selectedClipId) break
+          // If we are just selecting 'jump' template but haven't added it, 
+          // we might want to stop at playhead? The loop iterates all clips.
+          // Let's assume for new jump, it comes after everything? 
+          // Or strictly use the sorted order. If 'jump' is not in list, it goes to end.
+          
+          if (clip.template === 'path' && clip.parameters?.pathPoints) {
+             const points = clip.parameters.pathPoints
+             if (points.length > 0) {
+               currentX = points[points.length - 1].x
+               currentY = points[points.length - 1].y
+             }
+          }
+          
           if (clip.template === 'roll') {
-            accumulatedX += clip.parameters?.rollDistance ?? 0.3
+            currentX += clip.parameters?.rollDistance ?? 0.3
           }
         }
         
         // Shape center position (with accumulated offset from prior clips)
-        const centerX = (layer.x + accumulatedX) * width + offsetX
-        const centerY = layer.y * height + offsetY
+        const centerX = currentX * width + offsetX
+        const centerY = currentY * height + offsetY
         
         // Top position (jump goes UP by jumpHeight)
         const topX = centerX
-        const topY = (layer.y - clipJumpHeight) * height + offsetY
+        const topY = (currentY - clipJumpHeight) * height + offsetY
         
         // Only allow dragging when jump template is selected OR a jump clip is selected AND not in drawing mode
         const isJumpClipSelected = selectedClipId ? templateClips.some(c => c.id === selectedClipId && c.template === 'jump') : false
@@ -4889,8 +4932,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
                     const y = (ev.clientY - bounds.top - offsetY) / height
                     
                     // Calculate new height (upward is negative in screen coords)
-                    // Use layer.y from closure - it's the base position which doesn't change during drag
-                    const newHeight = Math.max(0.05, Math.min(layer.y, layer.y - y))
+                    // Use currentY from closure - it's the base position which doesn't change during drag
+                    const newHeight = Math.max(0.05, Math.min(currentY, currentY - y))
                     onJumpHeightChangeRef.current?.(newHeight)
                   }
                   

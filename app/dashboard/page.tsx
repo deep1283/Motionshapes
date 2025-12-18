@@ -1331,8 +1331,11 @@ function DashboardContent() {
     setIsDrawingLine(false)
     if (!selectedLayerId) return
     
-    const simplified = [start, end]
-    const length = Math.hypot(end.x - start.x, end.y - start.y)
+    // Use the seeded start point (shape position) if available, otherwise use drag start
+    // This ensures the line starts exactly at the shape, preventing jumps
+    const actualStart = linePoints.length > 0 ? linePoints[0] : start
+    const simplified = [actualStart, end]
+    const length = Math.hypot(end.x - actualStart.x, end.y - actualStart.y)
     
     // Append after the last clip on this layer
     const layerClips = templateClips.filter(c => c.layerId === selectedLayerId)
@@ -1356,6 +1359,7 @@ function DashboardContent() {
     setSelectedTemplate('path')
     setSelectedClipId(clipId)
     setLinePoints([])
+    setActivePathPoints([]) // Clear visual overlay state
     timeline.setPlaying(false)
     timeline.setCurrentTime(lastEnd)
     pushSnapshot()
@@ -2473,7 +2477,7 @@ function DashboardContent() {
           activePathPoints={activePathPoints}
           pathVersion={pathVersion}
           pathLayerId={selectedLayerId}
-          onAddPathPoint={handleAddPathPoint}
+          onAddPathPoint={isDrawingLine ? handleAddLinePoint : handleAddPathPoint}
           onFinishPath={handleFinishPath}
           onFinishLine={handleFinishLine}
           onAddCustomPathPoint={handleAddCustomPathPoint}
