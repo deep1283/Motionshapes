@@ -1048,36 +1048,69 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       const position = _background.gradientPosition ?? 0.5
       
       if (isRadial) {
-        // Radial gradient - draw concentric circles
-        const centerX = bgX + width / 2
-        const centerY = bgY + height / 2
-        const maxRadius = Math.sqrt(width * width + height * height) / 2
-        
-        for (let i = steps; i >= 0; i--) {
-          const t = i / steps
-          const adjustedT = Math.min(1, Math.max(0, (t - position * 0.5) / (1 - position * 0.5)))
-          const r = Math.floor(((fromColor >> 16) & 0xff) * (1 - adjustedT) + ((toColor >> 16) & 0xff) * adjustedT)
-          const g = Math.floor(((fromColor >> 8) & 0xff) * (1 - adjustedT) + ((toColor >> 8) & 0xff) * adjustedT)
-          const b = Math.floor((fromColor & 0xff) * (1 - adjustedT) + (toColor & 0xff) * adjustedT)
-          const color = (r << 16) | (g << 8) | b
-          const radius = maxRadius * t
+        // Radial gradient - use canvas to create smooth gradient texture
+        const gradCanvas = document.createElement('canvas')
+        gradCanvas.width = width
+        gradCanvas.height = height
+        const ctx = gradCanvas.getContext('2d')
+        if (ctx) {
+          const centerX = width / 2
+          const centerY = height / 2
+          const maxRadius = Math.sqrt(width * width + height * height) / 2
           
-          bgGraphics.circle(centerX, centerY, radius)
-          bgGraphics.fill({ color, alpha: _background.opacity ?? 1 })
+          const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, maxRadius)
+          gradient.addColorStop(0, _background.from)
+          gradient.addColorStop(position, _background.from)
+          gradient.addColorStop(1, _background.to)
+          
+          ctx.fillStyle = gradient
+          ctx.fillRect(0, 0, width, height)
+          
+          // Create PIXI texture from canvas
+          const texture = PIXI.Texture.from(gradCanvas)
+          bgTextureRef.current = texture
+          
+          // Create sprite
+          const sprite = new PIXI.Sprite(texture)
+          sprite.x = bgX
+          sprite.y = bgY
+          sprite.alpha = _background.opacity ?? 1
+          
+          if (bgContainerRef.current) {
+            bgContainerRef.current.addChild(sprite)
+            bgSpriteRef.current = sprite
+          }
         }
       } else {
-        // Linear gradient (top to bottom) - draw horizontal strips
-        for (let i = 0; i < steps; i++) {
-          const t = i / steps
-          const adjustedT = Math.min(1, Math.max(0, (t - position * 0.5) / (1 - position * 0.5)))
-          const r = Math.floor(((fromColor >> 16) & 0xff) * (1 - adjustedT) + ((toColor >> 16) & 0xff) * adjustedT)
-          const g = Math.floor(((fromColor >> 8) & 0xff) * (1 - adjustedT) + ((toColor >> 8) & 0xff) * adjustedT)
-          const b = Math.floor((fromColor & 0xff) * (1 - adjustedT) + (toColor & 0xff) * adjustedT)
-          const color = (r << 16) | (g << 8) | b
+        // Linear gradient - use canvas to create smooth gradient texture
+        const gradCanvas = document.createElement('canvas')
+        gradCanvas.width = width
+        gradCanvas.height = height
+        const ctx = gradCanvas.getContext('2d')
+        if (ctx) {
+          // Create vertical gradient (top to bottom)
+          const gradient = ctx.createLinearGradient(0, 0, 0, height)
+          gradient.addColorStop(0, _background.from)
+          gradient.addColorStop(position, _background.from)
+          gradient.addColorStop(1, _background.to)
           
-          const stripHeight = height / steps
-          bgGraphics.rect(bgX, bgY + stripHeight * i, width, stripHeight + 1)
-          bgGraphics.fill({ color, alpha: _background.opacity ?? 1 })
+          ctx.fillStyle = gradient
+          ctx.fillRect(0, 0, width, height)
+          
+          // Create PIXI texture from canvas
+          const texture = PIXI.Texture.from(gradCanvas)
+          bgTextureRef.current = texture
+          
+          // Create sprite
+          const sprite = new PIXI.Sprite(texture)
+          sprite.x = bgX
+          sprite.y = bgY
+          sprite.alpha = _background.opacity ?? 1
+          
+          if (bgContainerRef.current) {
+            bgContainerRef.current.addChild(sprite)
+            bgSpriteRef.current = sprite
+          }
         }
       }
     } else if (_background.mode === 'image' && _background.image) {
