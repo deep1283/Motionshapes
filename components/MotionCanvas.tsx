@@ -1177,7 +1177,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     }
     
     app.render()
-  }, [_background, viewportWidth, viewportHeight, offsetX, offsetY, isReady])
+  }, [_background, viewportWidth, viewportHeight, isReady])
 
   // Apply timeline-sampled transforms onto Pixi graphics so playhead/scrub reflects on-canvas
   // Helper to update graphics from timeline state
