@@ -41,7 +41,9 @@ import {
   ChevronUp,
   ChevronDown,
   ChevronRight,
-  Trash2
+  Trash2,
+  Image as ImageIcon,
+  X
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
@@ -444,13 +446,16 @@ const ColorClipItem = ({
 }
 
 export type BackgroundSettings = {
-  mode: 'transparent' | 'solid' | 'gradient'
+  mode: 'transparent' | 'solid' | 'gradient' | 'image'
   solid: string
   from: string
   to: string
   opacity: number
   gradientType?: 'linear' | 'radial'
   gradientPosition?: number  // 0-1, default 0.5 (center)
+  // Image background
+  image?: string  // dataURL or URL
+  imageMode?: 'cover' | 'contain' | 'stretch'
 }
 
 export type EffectType = 'glow' | 'dropShadow' | 'blur' | 'glitch' | 'pixelate' | 'sparkles' | 'confetti'
@@ -1368,6 +1373,13 @@ export default function DashboardLayout({
             }
             return `linear-gradient(135deg, ${hexToRgba(background.from, background.opacity)} ${pos}%, ${hexToRgba(background.to, background.opacity)})`;
           })(),
+        }
+      : background.mode === 'image' && background.image
+      ? {
+          backgroundImage: `url(${background.image})`,
+          backgroundSize: background.imageMode === 'stretch' ? '100% 100%' : background.imageMode || 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
         }
       : {
           backgroundColor: hexToRgba(background.solid, background.opacity),
@@ -2965,6 +2977,13 @@ export default function DashboardLayout({
                           }
                           return `linear-gradient(135deg, ${background.from} ${pos}%, ${background.to})`;
                         })() }
+                      : background.mode === 'image' && background.image
+                      ? {
+                          backgroundImage: `url(${background.image})`,
+                          backgroundSize: background.imageMode === 'stretch' ? '100% 100%' : background.imageMode || 'cover',
+                          backgroundPosition: 'center',
+                          backgroundRepeat: 'no-repeat',
+                        }
                       : { backgroundColor: background.solid }),
                     opacity: background.mode === 'transparent' ? 0 : Math.max(0, Math.min(1, background.opacity ?? 1)),
                     zIndex: 0,
@@ -3174,6 +3193,17 @@ export default function DashboardLayout({
               >
                 Gradient
               </button>
+              <button
+                className={cn(
+                  "flex-1 py-1.5 px-2 text-[10px] font-medium rounded-md transition-all",
+                  background.mode === 'image' 
+                    ? "bg-white/10 text-white shadow-sm" 
+                    : "text-neutral-500 hover:text-neutral-300 hover:bg-white/5"
+                )}
+                onClick={() => updateBackground({ mode: 'image', imageMode: background.imageMode || 'cover' })}
+              >
+                Image
+              </button>
             </div>
             
             {/* Color inputs based on mode */}
@@ -3327,6 +3357,95 @@ export default function DashboardLayout({
                     />
                   </div>
                 </div>
+              </div>
+            )}
+            
+            {/* Image background controls */}
+            {background.mode === 'image' && (
+              <div className="space-y-3 pt-2">
+                {/* Image upload area */}
+                <div className="relative">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) {
+                        const reader = new FileReader()
+                        reader.onload = (event) => {
+                          updateBackground({ image: event.target?.result as string })
+                        }
+                        reader.readAsDataURL(file)
+                      }
+                    }}
+                  />
+                  {background.image ? (
+                    <div className="relative rounded-lg overflow-hidden border border-white/10 bg-neutral-900">
+                      <img 
+                        src={background.image} 
+                        alt="Background preview" 
+                        className="w-full h-24 object-cover"
+                      />
+                      <button
+                        className="absolute top-1 right-1 p-1 bg-black/60 rounded hover:bg-red-500/80 transition-colors z-20"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          updateBackground({ image: undefined })
+                        }}
+                      >
+                        <X size={12} className="text-white" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center gap-2 py-6 rounded-lg border border-dashed border-white/20 bg-neutral-900/50 hover:bg-neutral-800/50 transition-colors">
+                      <ImageIcon size={20} className="text-neutral-500" />
+                      <span className="text-[10px] text-neutral-500">Click to upload image</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Image mode selector */}
+                {background.image && (
+                  <div className="space-y-2">
+                    <span className="text-[10px] text-neutral-500">Fit Mode</span>
+                    <div className="flex bg-neutral-900 rounded-lg p-1 border border-white/5">
+                      <button
+                        className={cn(
+                          "flex-1 py-1.5 px-2 text-[10px] font-medium rounded-md transition-all",
+                          background.imageMode === 'cover' 
+                            ? "bg-white/10 text-white shadow-sm" 
+                            : "text-neutral-500 hover:text-neutral-300 hover:bg-white/5"
+                        )}
+                        onClick={() => updateBackground({ imageMode: 'cover' })}
+                      >
+                        Cover
+                      </button>
+                      <button
+                        className={cn(
+                          "flex-1 py-1.5 px-2 text-[10px] font-medium rounded-md transition-all",
+                          background.imageMode === 'contain' 
+                            ? "bg-white/10 text-white shadow-sm" 
+                            : "text-neutral-500 hover:text-neutral-300 hover:bg-white/5"
+                        )}
+                        onClick={() => updateBackground({ imageMode: 'contain' })}
+                      >
+                        Contain
+                      </button>
+                      <button
+                        className={cn(
+                          "flex-1 py-1.5 px-2 text-[10px] font-medium rounded-md transition-all",
+                          background.imageMode === 'stretch' 
+                            ? "bg-white/10 text-white shadow-sm" 
+                            : "text-neutral-500 hover:text-neutral-300 hover:bg-white/5"
+                        )}
+                        onClick={() => updateBackground({ imageMode: 'stretch' })}
+                      >
+                        Stretch
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
               </>

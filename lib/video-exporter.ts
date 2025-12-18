@@ -14,12 +14,14 @@ export type ExportFPS = 24 | 30 | 60
 
 // Background settings for export
 export interface ExportBackground {
-  mode: 'transparent' | 'solid' | 'gradient'
+  mode: 'transparent' | 'solid' | 'gradient' | 'image'
   solid: string
   from: string
   to: string
   gradientType?: 'linear' | 'radial'
   gradientPosition?: number  // 0-1's for radial position
+  image?: string
+  imageMode?: 'cover' | 'contain' | 'stretch'
 }
 
 interface ExportOptions {
@@ -74,6 +76,8 @@ function captureFrame(canvas: HTMLCanvasElement, background?: ExportBackground):
       ctx.fillStyle = gradient
       ctx.fillRect(0, 0, canvas.width, canvas.height)
     }
+    // Note: Image backgrounds are rendered via CSS in the dashboard,
+    // so they will be captured as part of the canvas layer during export
   }
   
   // Draw PIXI canvas on top

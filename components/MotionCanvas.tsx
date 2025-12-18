@@ -66,13 +66,15 @@ interface MotionCanvasProps {
   onClearPath?: () => void
   onInsertPathPoint?: (indexAfter: number, x: number, y: number) => void
   background?: {
-    mode: 'transparent' | 'solid' | 'gradient'
+    mode: 'transparent' | 'solid' | 'gradient' | 'image'
     solid: string
     from: string
     to: string
     opacity: number
     gradientType?: 'linear' | 'radial'
     gradientPosition?: number
+    image?: string
+    imageMode?: 'cover' | 'contain' | 'stretch'
   }
   offsetX?: number
   offsetY?: number
