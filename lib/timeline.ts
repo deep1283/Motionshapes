@@ -422,12 +422,30 @@ export const sampleLayerTracksUnified = (
   // Handle paths - prioritize active paths over completed ones
   // IMPORTANT: Paths are stored in absolute screen coordinates (where user drew them)
   // We need to convert them to RELATIVE motion so they follow the shape's current position
+  // AND accumulate offsets from ALL completed paths
   let pathResult: Vec2 | null = null
   let pathFirstPoint: Vec2 | null = null
   let activePathId: string | undefined
+  let accumulatedPathOffset = { x: 0, y: 0 } // Track total offset from all completed paths
+  
   if (layer.paths && layer.paths.length > 0) {
-    // First pass: find a path that is CURRENTLY within its time range (actively animating)
-    for (const clip of layer.paths) {
+    // Sort paths by start time to process in order
+    const sortedPaths = [...layer.paths].sort((a, b) => a.startTime - b.startTime)
+    
+    // Accumulate offsets from all COMPLETED paths (those that ended before current time)
+    for (const clip of sortedPaths) {
+      const clipEnd = clip.startTime + clip.duration
+      if (time > clipEnd && clip.points.length > 1) {
+        // This path is complete - add its full offset (end - start)
+        const startPt = clip.points[0]
+        const endPt = clip.points[clip.points.length - 1]
+        accumulatedPathOffset.x += endPt.x - startPt.x
+        accumulatedPathOffset.y += endPt.y - startPt.y
+      }
+    }
+    
+    // Find the ACTIVE path (currently animating)
+    for (const clip of sortedPaths) {
       if (time >= clip.startTime && time <= clip.startTime + clip.duration) {
         const p = samplePathClip(clip, time)
         if (p && clip.points.length > 0) {
@@ -438,20 +456,12 @@ export const sampleLayerTracksUnified = (
         }
       }
     }
-    // Second pass: if no active path, use the last completed path (most recent end position)
-    if (!pathResult) {
-      let latestEndTime = -Infinity
-      for (const clip of layer.paths) {
-        if (time > clip.startTime + clip.duration && clip.points.length > 0) {
-          const endTime = clip.startTime + clip.duration
-          if (endTime > latestEndTime) {
-            latestEndTime = endTime
-            pathResult = clip.points[clip.points.length - 1]
-            pathFirstPoint = clip.points[0] // Store first point as origin
-            activePathId = clip.id
-          }
-        }
-      }
+    
+    // If no active path but we have accumulated offset, apply it
+    if (!pathResult && (accumulatedPathOffset.x !== 0 || accumulatedPathOffset.y !== 0)) {
+      // Use a dummy point to trigger offset application
+      pathResult = { x: 0, y: 0 }
+      pathFirstPoint = { x: 0, y: 0 }
     }
   }
 
@@ -460,15 +470,15 @@ export const sampleLayerTracksUnified = (
   // The path's first point is the "origin" - we calculate offset from there and apply to `pos`
   let finalPosition: Vec2
   if (pathResult && pathFirstPoint) {
-    // Calculate how far along the path we've moved from the first point
-    const pathOffset = {
+    // Calculate how far along the current path we've moved from its first point
+    const currentPathOffset = {
       x: pathResult.x - pathFirstPoint.x,
       y: pathResult.y - pathFirstPoint.y
     }
-    // Apply path offset to the shape's current animated position (includes Roll, etc.)
+    // Apply BOTH accumulated offset from completed paths AND current path offset
     finalPosition = {
-      x: pos.x + pathOffset.x,
-      y: pos.y + pathOffset.y
+      x: pos.x + accumulatedPathOffset.x + currentPathOffset.x,
+      y: pos.y + accumulatedPathOffset.y + currentPathOffset.y
     }
   } else {
     finalPosition = pos

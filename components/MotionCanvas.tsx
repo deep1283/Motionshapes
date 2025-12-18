@@ -91,6 +91,13 @@ interface MotionCanvasProps {
   // Pan/Zoom region editing
   selectedClipId?: string
   onUpdatePanZoomRegions?: (clipId: string, targetRegion: PanZoomRegion) => void
+  // Roll visualization
+  selectedTemplate?: string
+  rollDistance?: number
+  onRollDistanceChange?: (distance: number) => void
+  // Jump visualization
+  jumpHeight?: number
+  onJumpHeightChange?: (height: number) => void
   // Export support - provides canvas access and UI control functions
   onCanvasReady?: (
     canvas: HTMLCanvasElement, 
@@ -262,7 +269,7 @@ function LineOverlay({
   )
 }
 
-export default function MotionCanvas({ template, templateVersion, layers = [], layerOrder = [], onUpdateLayerPosition, onUpdateLayerSize, onTemplateComplete, isDrawingPath = false, isDrawingLine = false, pathPoints = [], onAddPathPoint, onFinishPath, onFinishLine, onAddCustomPathPoint, onFinishCustomPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint, background: _background, viewportWidth = 640, viewportHeight = 360, offsetX = 0, offsetY = 0, popReappear = false, onCanvasBackgroundClick, selectedClipId, onUpdatePanZoomRegions, onCanvasReady }: MotionCanvasProps) {
+export default function MotionCanvas({ template, templateVersion, layers = [], layerOrder = [], onUpdateLayerPosition, onUpdateLayerSize, onTemplateComplete, isDrawingPath = false, isDrawingLine = false, pathPoints = [], onAddPathPoint, onFinishPath, onFinishLine, onAddCustomPathPoint, onFinishCustomPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint, background: _background, viewportWidth = 640, viewportHeight = 360, offsetX = 0, offsetY = 0, popReappear = false, onCanvasBackgroundClick, selectedClipId, onUpdatePanZoomRegions, onCanvasReady, selectedTemplate, rollDistance = 0.3, onRollDistanceChange, jumpHeight = 0.2, onJumpHeightChange }: MotionCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<PIXI.Application | null>(null)
   const [isReady, setIsReady] = useState(false)
@@ -347,6 +354,19 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   const clickMarkers = useTimeline((s) => s.clickMarkers)
   const templateClips = useTimeline((s) => s.templateClips)
   const effectClips = useTimeline((s) => s.effectClips)
+  
+  // Refs to keep callbacks stable for event listeners (fixes stale closure issue)
+  const onJumpHeightChangeRef = useRef(onJumpHeightChange)
+  const onRollDistanceChangeRef = useRef(onRollDistanceChange)
+  
+  // Keep callback refs in sync with props
+  useEffect(() => {
+    onJumpHeightChangeRef.current = onJumpHeightChange
+  }, [onJumpHeightChange])
+  
+  useEffect(() => {
+    onRollDistanceChangeRef.current = onRollDistanceChange
+  }, [onRollDistanceChange])
   
   // Keep playhead and timeline tracks refs in sync for per-frame handle visibility
   useEffect(() => {
@@ -453,6 +473,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       .filter(c => c.layerId === selectedLayerId && c.template === 'path' && c.parameters?.pathPoints)
       .map(c => ({
         id: c.id,
+        layerId: c.layerId,
         points: c.parameters!.pathPoints as Array<{ x: number; y: number }>,
         startTime: c.start ?? 0,
         duration: c.duration ?? 1000,
@@ -460,7 +481,10 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     
     // Also check old timelineTracks format for backward compatibility
     const track = timelineTracks.find((t) => t.layerId === selectedLayerId)
-    const pathsFromTracks = track?.paths ?? []
+    const pathsFromTracks = (track?.paths ?? []).map(p => ({
+      ...p,
+      layerId: selectedLayerId
+    }))
     
     // Combine both, preferring templateClips format
     return pathsFromTemplateClips.length > 0 ? pathsFromTemplateClips : pathsFromTracks
@@ -3573,6 +3597,14 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           handles.forEach(h => (h.visible = true))
           // Position handles correctly (they're in overlay, not on shape)
           syncHandlePositions(layer.id)
+          
+          // Check if layer has any template clips - if so, disable dragging
+          const hasClips = templateClips.some(c => c.layerId === layer.id)
+          if (hasClips) {
+            // Don't initiate drag - shape is locked after templates applied
+            return
+          }
+          
           dragRef.current = {
             id: layer.id,
             offsetX: pos.x - g.x,
@@ -4521,96 +4553,87 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           </svg>
         </div>
       )}
-      
       {/* Show the finished path - INTERACTIVE: drag start/end points */}
-      {!isDrawingPath && !isPlaying && allPathClips.length > 0 && (
+      {!isPlaying && allPathClips.length > 0 && (
         <div 
           className="absolute inset-0" 
           style={{ zIndex: 25, pointerEvents: 'none' }}
         >
           <svg className="h-full w-full" style={{ pointerEvents: 'none' }}>
-            {allPathClips.map((pathClip, pathIndex) => (
-              <g key={pathClip.id || pathIndex}>
-                {/* Path line */}
-                <path
-                  d={(() => {
-                    const { width, height } = canvasBounds
-                    if (!width || !height || !pathClip.points.length) return ''
-                    const pts = pathClip.points.map((pt) => ({ x: pt.x * width + offsetX, y: pt.y * height + offsetY }))
-                    return pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
-                  })()}
-                  stroke="#22c55e"
-                  strokeWidth={2}
-                  fill="none"
-                  opacity={0.5}
-                />
-                {/* Start point (green circle) - DRAGGABLE (disabled when drawing new path) */}
-                {pathClip.points.length > 0 && (() => {
-                  const { width, height } = canvasBounds
-                  if (!width || !height) return null
-                  const startPt = pathClip.points[0]
-                  const canDrag = !isDrawingPath && !isDrawingLine
-                  return (
-                    <circle
-                      cx={startPt.x * width + offsetX}
-                      cy={startPt.y * height + offsetY}
-                      r={8}
-                      fill="#22c55e"
-                      stroke="#0f172a"
-                      strokeWidth={2}
-                      style={{ pointerEvents: canDrag ? 'auto' : 'none', cursor: canDrag ? 'grab' : 'default' }}
-                      onPointerDown={(e) => {
-                        e.stopPropagation()
-                        e.preventDefault()
+            {allPathClips.map((pathClip, pathIndex) => {
+              const { width, height } = canvasBounds
+              if (!width || !height || !pathClip.points.length) return null
+              
+              // Simple absolute coordinates - render exactly where user drew
+              const renderedPts = pathClip.points.map((pt) => ({
+                x: pt.x * width + offsetX,
+                y: pt.y * height + offsetY
+              }))
+              
+              const pathD = renderedPts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
+              const startScreen = renderedPts[0]
+              const endScreen = renderedPts[renderedPts.length - 1]
+              const canDrag = !isDrawingPath && !isDrawingLine
+              
+              return (
+                <g key={pathClip.id || pathIndex}>
+                  {/* Path line */}
+                  <path
+                    d={pathD}
+                    stroke="#22c55e"
+                    strokeWidth={2}
+                    fill="none"
+                    opacity={0.5}
+                  />
+                  {/* Start point (green circle) */}
+                  <circle
+                    cx={startScreen.x}
+                    cy={startScreen.y}
+                    r={8}
+                    fill="#22c55e"
+                    stroke="#0f172a"
+                    strokeWidth={2}
+                    style={{ pointerEvents: canDrag ? 'auto' : 'none', cursor: canDrag ? 'grab' : 'default' }}
+                    onPointerDown={(e) => {
+                      e.stopPropagation()
+                      e.preventDefault()
+                      
+                      const handleMove = (ev: PointerEvent) => {
+                        const container = containerRef.current
+                        if (!container) return
+                        const bounds = container.getBoundingClientRect()
+                        const x = (ev.clientX - bounds.left - offsetX) / width
+                        const y = (ev.clientY - bounds.top - offsetY) / height
+                        const clampedX = Math.max(0, Math.min(1, x))
+                        const clampedY = Math.max(0, Math.min(1, y))
                         
-                        const handleMove = (ev: PointerEvent) => {
-                          const container = containerRef.current
-                          if (!container) return
-                          const bounds = container.getBoundingClientRect()
-                          const x = (ev.clientX - bounds.left - offsetX) / width
-                          const y = (ev.clientY - bounds.top - offsetY) / height
-                          const clampedX = Math.max(0, Math.min(1, x))
-                          const clampedY = Math.max(0, Math.min(1, y))
-                          
-                          // Find the path clip and update its points
-                          const clip = templateClips.find(c => c.id === pathClip.id)
-                          if (clip && clip.parameters?.pathPoints) {
-                            const newPoints = [...clip.parameters.pathPoints]
-                            newPoints[0] = { x: clampedX, y: clampedY }
-                            
-                            // Also update layer position to follow start point
-                            onUpdateLayerPosition?.(clip.layerId, clampedX, clampedY)
-                            
-                            // Update the template clip with new path points
-                            timelineActions.updateTemplateClip(clip.layerId, clip.id, {
-                              parameters: { pathPoints: newPoints }
-                            })
-                          }
+                        const clip = templateClips.find(c => c.id === pathClip.id)
+                        if (clip && clip.parameters?.pathPoints) {
+                          const newPoints = [...clip.parameters.pathPoints]
+                          newPoints[0] = { x: clampedX, y: clampedY }
+                          onUpdateLayerPosition?.(clip.layerId, clampedX, clampedY)
+                          timelineActions.updateTemplateClip(clip.layerId, clip.id, {
+                            parameters: { pathPoints: newPoints }
+                          })
                         }
-                        
-                        const handleUp = () => {
-                          window.removeEventListener('pointermove', handleMove)
-                          window.removeEventListener('pointerup', handleUp)
-                          document.body.style.cursor = ''
-                        }
-                        
-                        document.body.style.cursor = 'grabbing'
-                        window.addEventListener('pointermove', handleMove)
-                        window.addEventListener('pointerup', handleUp)
-                      }}
-                    />
-                  )
-                })()}
-                {/* End point (red circle) - DRAGGABLE (disabled when drawing new path) */}
-                {pathClip.points.length > 1 && (() => {
-                  const { width, height } = canvasBounds
-                  if (!width || !height) return null
-                  const endPt = pathClip.points[pathClip.points.length - 1]
-                  const canDrag = !isDrawingPath && !isDrawingLine
-                  return (
+                      }
+                      
+                      const handleUp = () => {
+                        window.removeEventListener('pointermove', handleMove)
+                        window.removeEventListener('pointerup', handleUp)
+                        document.body.style.cursor = ''
+                      }
+                      
+                      document.body.style.cursor = 'grabbing'
+                      window.addEventListener('pointermove', handleMove)
+                      window.addEventListener('pointerup', handleUp)
+                    }}
+                  />
+                  {/* End point (red circle) */}
+                  {pathClip.points.length > 1 && (
                     <circle
-                      cx={endPt.x * width + offsetX}
-                      cy={endPt.y * height + offsetY}
+                      cx={endScreen.x}
+                      cy={endScreen.y}
                       r={8}
                       fill="#ef4444"
                       stroke="#0f172a"
@@ -4629,13 +4652,10 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
                           const clampedX = Math.max(0, Math.min(1, x))
                           const clampedY = Math.max(0, Math.min(1, y))
                           
-                          // Find the path clip and update its points
                           const clip = templateClips.find(c => c.id === pathClip.id)
                           if (clip && clip.parameters?.pathPoints) {
                             const newPoints = [...clip.parameters.pathPoints]
                             newPoints[newPoints.length - 1] = { x: clampedX, y: clampedY }
-                            
-                            // Update the template clip with new path points
                             timelineActions.updateTemplateClip(clip.layerId, clip.id, {
                               parameters: { pathPoints: newPoints }
                             })
@@ -4653,10 +4673,10 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
                         window.addEventListener('pointerup', handleUp)
                       }}
                     />
-                  )
-                })()}
-              </g>
-            ))}
+                  )}
+                </g>
+              )
+            })}
           </svg>
         </div>
       )}
@@ -4682,6 +4702,214 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           lineDragActiveRef={lineDragActiveRef}
         />
       )}
+
+      {/* Roll distance visualization overlay - show when layer has roll clip */}
+      {selectedLayerId && !isPlaying && (() => {
+        // Check if layer has any roll clips
+        const hasRollClip = templateClips.some(c => c.layerId === selectedLayerId && c.template === 'roll')
+        if (!hasRollClip) return null
+        
+        const layer = renderLayers?.find(l => l.id === selectedLayerId)
+        if (!layer) return null
+        
+        const { width, height } = canvasBounds
+        if (!width || !height) return null
+        
+        // Get rollDistance from the clip if available
+        const rollClip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'roll')
+        const clipRollDistance = rollClip?.parameters?.rollDistance ?? rollDistance
+        
+        // Shape center position
+        const centerX = layer.x * width + offsetX
+        const centerY = layer.y * height + offsetY
+        
+        // End position (roll goes right by rollDistance)
+        const endX = (layer.x + clipRollDistance) * width + offsetX
+        const endY = centerY
+        
+        // Only allow dragging when roll template is selected OR a roll clip is selected AND not in drawing mode
+        const isRollClipSelected = selectedClipId ? templateClips.some(c => c.id === selectedClipId && c.template === 'roll') : false
+        const canDrag = (selectedTemplate === 'roll' || isRollClipSelected) && !isDrawingPath && !isDrawingLine
+        
+        return (
+          <div 
+            className="absolute inset-0" 
+            style={{ zIndex: 26, pointerEvents: 'none' }}
+          >
+            <svg className="h-full w-full" style={{ pointerEvents: 'none' }}>
+              {/* Dashed line from center to end */}
+              <line
+                x1={centerX}
+                y1={centerY}
+                x2={endX}
+                y2={endY}
+                stroke="#a855f7"
+                strokeWidth={2}
+                strokeDasharray="6 4"
+                opacity={canDrag ? 0.8 : 0.5}
+              />
+              {/* Start point (small circle at shape center) */}
+              <circle
+                cx={centerX}
+                cy={centerY}
+                r={6}
+                fill="none"
+                stroke="#a855f7"
+                strokeWidth={2}
+                opacity={canDrag ? 1 : 0.5}
+              />
+              {/* End point (draggable circle when roll selected, otherwise just visual) */}
+              <circle
+                cx={endX}
+                cy={endY}
+                r={8}
+                fill={canDrag ? "#a855f7" : "#a855f780"}
+                stroke="#0f172a"
+                strokeWidth={2}
+                style={{ pointerEvents: canDrag ? 'auto' : 'none', cursor: canDrag ? 'ew-resize' : 'default' }}
+                onPointerDown={canDrag ? (e) => {
+                  e.stopPropagation()
+                  e.preventDefault()
+                  
+                  const handleMove = (ev: PointerEvent) => {
+                    const container = containerRef.current
+                    if (!container) return
+                    const bounds = container.getBoundingClientRect()
+                    const x = (ev.clientX - bounds.left - offsetX) / width
+                    
+                    // Calculate new distance from layer position
+                    const newDistance = Math.max(0.05, Math.min(1 - layer.x, x - layer.x))
+                    onRollDistanceChangeRef.current?.(newDistance)
+                  }
+                  
+                  const handleUp = () => {
+                    window.removeEventListener('pointermove', handleMove)
+                    window.removeEventListener('pointerup', handleUp)
+                    document.body.style.cursor = ''
+                  }
+                  
+                  document.body.style.cursor = 'ew-resize'
+                  window.addEventListener('pointermove', handleMove)
+                  window.addEventListener('pointerup', handleUp)
+                } : undefined}
+              />
+            </svg>
+          </div>
+        )
+      })()}
+
+      {/* Jump height visualization overlay - show when layer has jump clip */}
+      {selectedLayerId && !isPlaying && (() => {
+        // Check if layer has any jump clips
+        const hasJumpClip = templateClips.some(c => c.layerId === selectedLayerId && c.template === 'jump')
+        if (!hasJumpClip) return null
+        
+        const layer = renderLayers?.find(l => l.id === selectedLayerId)
+        if (!layer) return null
+        
+        const { width, height } = canvasBounds
+        if (!width || !height) return null
+        
+        // Get jumpHeight from the clip if available
+        const jumpClip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'jump')
+        const clipJumpHeight = jumpClip?.parameters?.jumpHeight ?? jumpHeight
+        console.log('[JUMP RENDER] clipJumpHeight:', clipJumpHeight, 'from params:', jumpClip?.parameters?.jumpHeight, 'prop:', jumpHeight)
+        
+        // Calculate accumulated offset from Roll (if any exists before Jump)
+        // Sort clips by start time and find any roll clips that start before this jump
+        const layerClips = templateClips
+          .filter(c => c.layerId === selectedLayerId)
+          .sort((a, b) => (a.start ?? 0) - (b.start ?? 0))
+        
+        let accumulatedX = 0
+        for (const clip of layerClips) {
+          // Stop when we reach the jump clip
+          if (clip.template === 'jump') break
+          // Add roll's horizontal offset
+          if (clip.template === 'roll') {
+            accumulatedX += clip.parameters?.rollDistance ?? 0.3
+          }
+        }
+        
+        // Shape center position (with accumulated offset from prior clips)
+        const centerX = (layer.x + accumulatedX) * width + offsetX
+        const centerY = layer.y * height + offsetY
+        
+        // Top position (jump goes UP by jumpHeight)
+        const topX = centerX
+        const topY = (layer.y - clipJumpHeight) * height + offsetY
+        
+        // Only allow dragging when jump template is selected OR a jump clip is selected AND not in drawing mode
+        const isJumpClipSelected = selectedClipId ? templateClips.some(c => c.id === selectedClipId && c.template === 'jump') : false
+        const canDrag = (selectedTemplate === 'jump' || isJumpClipSelected) && !isDrawingPath && !isDrawingLine
+        
+        return (
+          <div 
+            className="absolute inset-0" 
+            style={{ zIndex: 27, pointerEvents: 'none' }}
+          >
+            <svg className="h-full w-full" style={{ pointerEvents: 'none' }}>
+              {/* Dashed line from center upward */}
+              <line
+                x1={centerX}
+                y1={centerY}
+                x2={topX}
+                y2={topY}
+                stroke="#22c55e"
+                strokeWidth={2}
+                strokeDasharray="6 4"
+                opacity={canDrag ? 0.8 : 0.5}
+              />
+              {/* Start point (small circle at shape center) */}
+              <circle
+                cx={centerX}
+                cy={centerY}
+                r={6}
+                fill="none"
+                stroke="#22c55e"
+                strokeWidth={2}
+                opacity={canDrag ? 1 : 0.5}
+              />
+              {/* Top point (draggable circle when jump selected) */}
+              <circle
+                cx={topX}
+                cy={topY}
+                r={8}
+                fill={canDrag ? "#22c55e" : "#22c55e80"}
+                stroke="#0f172a"
+                strokeWidth={2}
+                style={{ pointerEvents: canDrag ? 'auto' : 'none', cursor: canDrag ? 'ns-resize' : 'default' }}
+                onPointerDown={canDrag ? (e) => {
+                  e.stopPropagation()
+                  e.preventDefault()
+                  
+                  const handleMove = (ev: PointerEvent) => {
+                    const container = containerRef.current
+                    if (!container) return
+                    const bounds = container.getBoundingClientRect()
+                    const y = (ev.clientY - bounds.top - offsetY) / height
+                    
+                    // Calculate new height (upward is negative in screen coords)
+                    // Use layer.y from closure - it's the base position which doesn't change during drag
+                    const newHeight = Math.max(0.05, Math.min(layer.y, layer.y - y))
+                    onJumpHeightChangeRef.current?.(newHeight)
+                  }
+                  
+                  const handleUp = () => {
+                    window.removeEventListener('pointermove', handleMove)
+                    window.removeEventListener('pointerup', handleUp)
+                    document.body.style.cursor = ''
+                  }
+                  
+                  document.body.style.cursor = 'ns-resize'
+                  window.addEventListener('pointermove', handleMove)
+                  window.addEventListener('pointerup', handleUp)
+                } : undefined}
+              />
+            </svg>
+          </div>
+        )
+      })()}
 
       {/* Pan/Zoom region overlay - show when editing a pan_zoom clip and not playing */}
       {(() => {

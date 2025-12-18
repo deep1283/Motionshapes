@@ -1049,6 +1049,14 @@ function DashboardContent() {
   const handleUpdateLayerPosition = (id: string, x: number, y: number) => {
     const nx = Math.max(0, Math.min(1, x))
     const ny = Math.max(0, Math.min(1, y))
+    
+    // Get the old position to calculate delta
+    const oldLayer = layers.find(l => l.id === id)
+    const oldX = oldLayer?.x ?? 0.5
+    const oldY = oldLayer?.y ?? 0.5
+    const deltaX = nx - oldX
+    const deltaY = ny - oldY
+    
     setLayers((prev) =>
       prev.map((layer) =>
         layer.id === id
@@ -1056,6 +1064,23 @@ function DashboardContent() {
           : layer
       )
     )
+    
+    // Also update all path clips for this layer - move their points by the same delta
+    if (Math.abs(deltaX) > 0.001 || Math.abs(deltaY) > 0.001) {
+      const layerPathClips = templateClips.filter(c => c.layerId === id && c.template === 'path')
+      for (const clip of layerPathClips) {
+        if (clip.parameters?.pathPoints) {
+          const newPoints = clip.parameters.pathPoints.map((pt: { x: number; y: number }) => ({
+            x: pt.x + deltaX,
+            y: pt.y + deltaY
+          }))
+          timeline.updateTemplateClip(id, clip.id, {
+            parameters: { pathPoints: newPoints }
+          })
+        }
+      }
+    }
+    
     const currentScale = layers.find((l) => l.id === id)?.scale ?? 1
     lastLayerBaseRef.current[id] = { x: nx, y: ny, scale: currentScale }
     timeline.ensureTrack(id)
@@ -1229,8 +1254,9 @@ function DashboardContent() {
     
     setIsDrawingPath(true)
     setIsDrawingLine(false)
-    setPathPoints([startPos])  // Seed with start position
-    setActivePathPoints([startPos])
+    setPathPoints([startPos])  // Legacy support
+    setActivePathPoints([startPos]) // Legacy support
+    setCustomPathPoints([]) // New independent state - start empty (no linking)
     setPathVersion(v => v + 1)
   }
 
@@ -1278,6 +1304,7 @@ function DashboardContent() {
     setIsDrawingPath(false)
     setPathPoints([startPos]) // seed start; end will be set on drag
     setActivePathPoints([startPos])
+    setLinePoints([startPos]) // Seed start point for line drawing
     setPathVersion(v => v + 1)
     setSelectedTemplate('')
     setSelectedClipId('')
@@ -1370,12 +1397,16 @@ function DashboardContent() {
       length += Math.hypot(simplified[i].x - simplified[i-1].x, simplified[i].y - simplified[i-1].y)
     }
     
-    const now = timeline.getState().currentTime
+    // Find the end time of the last clip on this layer (append after it)
+    const layerClips = templateClips.filter(c => c.layerId === selectedLayerId)
+    const lastEnd = layerClips.length
+      ? Math.max(...layerClips.map(c => (c.start ?? 0) + (c.duration ?? 0)))
+      : 0
     
     const clipId = timeline.addTemplateClip(
       selectedLayerId,
       'path',
-      now,
+      lastEnd,  // Start AFTER the last clip ends
       2000,
       {
         pathPoints: simplified,
@@ -1389,7 +1420,7 @@ function DashboardContent() {
     setSelectedClipId(clipId)
     setCustomPathPoints([])
     timeline.setPlaying(false)
-    timeline.setCurrentTime(now)
+    timeline.setCurrentTime(lastEnd)  // Jump to new clip start
     pushSnapshot()
     
     if (smoothPathTimerRef.current) clearTimeout(smoothPathTimerRef.current)
@@ -1684,12 +1715,21 @@ function DashboardContent() {
   const handleJumpHeightChange = (value: number) => {
     timeline.setJumpHeight(value)
 
-    if (selectedClipId && selectedLayerId) {
-      const clip = templateClips.find(c => c.id === selectedClipId)
-      if (clip && clip.template === 'jump') {
+    if (selectedLayerId) {
+      // First try to find by selectedClipId (if it's a jump clip)
+      let clip = selectedClipId 
+        ? templateClips.find(c => c.id === selectedClipId && c.template === 'jump')
+        : null
+      
+      // Fallback: find any jump clip for this layer
+      if (!clip) {
+        clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'jump')
+      }
+      
+      if (clip) {
         timeline.updateTemplateClip(
           selectedLayerId,
-          selectedClipId,
+          clip.id,
           {
             parameters: {
               jumpHeight: value,
@@ -2425,7 +2465,7 @@ function DashboardContent() {
           selectedLayerId={selectedLayerId}
           isDrawingPath={isDrawingPath}
           isDrawingLine={isDrawingLine}
-          pathPoints={pathPoints}
+          pathPoints={isDrawingLine ? linePoints : (isDrawingPath ? customPathPoints : pathPoints)}
           activePathPoints={activePathPoints}
           pathVersion={pathVersion}
           pathLayerId={selectedLayerId}
@@ -2443,6 +2483,11 @@ function DashboardContent() {
           onCanvasBackgroundClick={handleDeselectShape}
           selectedClipId={selectedClipId}
           onUpdatePanZoomRegions={handleUpdatePanZoomRegions}
+          selectedTemplate={selectedTemplate}
+          rollDistance={rollDistance}
+          onRollDistanceChange={handleRollDistanceChange}
+          jumpHeight={jumpHeight}
+          onJumpHeightChange={handleJumpHeightChange}
           onCanvasReady={(canvas, render, hideHandles, showHandles, resetStagePosition, restoreStagePosition, resizeForExport, restoreFromExport) => {
             exportCanvasRef.current = canvas
             exportRenderRef.current = render

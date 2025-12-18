@@ -1503,13 +1503,25 @@ export default function DashboardLayout({
   }, [isResizingRightSidebar, rightSidebarWidth])
 
   return (
-    <div className="flex h-screen w-screen flex-col bg-[#0a0a0a] text-white overflow-hidden font-sans selection:bg-white/20">
+    <div className="flex h-screen w-screen flex-col bg-[#0a0a0a] text-white overflow-hidden font-sans selection:bg-white/20 relative group/dash">
+
       {/* Top Navbar */}
       <header className="flex h-14 items-center justify-between border-b border-white/5 bg-[#0a0a0a]/80 px-4 backdrop-blur-xl z-50 supports-[backdrop-filter]:bg-[#0a0a0a]/60 shrink-0">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" className="h-8 w-8 text-neutral-400 hover:text-white hover:bg-white/5" onClick={() => router.push('/')}>
+          {/* Mobile: Hamburger Button (Label for Checkbox) */}
+          <label 
+            htmlFor="mobile-menu-toggle" 
+            className="md:hidden p-2 -ml-2 text-neutral-400 hover:text-white cursor-pointer active:scale-95 transition-transform"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
+              <path d="M3 12h18M3 6h18M3 18h18" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </label>
+
+          <Button variant="ghost" size="icon" className="hidden md:flex h-8 w-8 text-neutral-400 hover:text-white hover:bg-white/5" onClick={() => router.push('/')}>
              <ChevronLeft className="h-4 w-4" />
           </Button>
+          
           <div className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-white/10 to-white/5 border border-white/5 shadow-inner">
                 <Layout className="h-4 w-4 text-white" />
@@ -1653,21 +1665,58 @@ export default function DashboardLayout({
                 <LogOut className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">Logout</span>
             </Button>
+            {/* Mobile: Settings Toggle (Label for Checkbox) */}
+            <label 
+              htmlFor="mobile-settings-toggle" 
+              className="md:hidden p-2 text-neutral-400 hover:text-white cursor-pointer active:scale-95 transition-transform"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
+                <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </label>
         </div>
       </header>
+      
+      {/* Mobile Sub-Header Navigation Tabs - Lower Layer */}
+      <div className="flex md:hidden items-center w-full h-12 border-b border-white/5 bg-[#0a0a0a]/80 backdrop-blur-xl shrink-0 overflow-x-auto no-scrollbar z-40 px-4 gap-4">
+            {['templates', 'animations', 'effects', 'shapes', 'transitions', 'custom'].map((tab) => (
+               <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab as typeof activeTab)}
+                  className={cn(
+                    "whitespace-nowrap px-3 py-1.5 text-xs font-medium rounded-full transition-colors capitalize shrink-0",
+                    activeTab === tab
+                      ? "bg-violet-500/20 text-violet-300 border border-violet-500/50"
+                      : "text-neutral-400 hover:text-white"
+                  )}
+               >
+                 {tab}
+               </button>
+            ))}
+      </div>
+      
+      {/* Mobile Drawer Backdrops */}
+      <label htmlFor="mobile-menu-toggle" className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40 hidden peer-checked/menu:block transition-opacity opacity-0 peer-checked/menu:opacity-100" />
+      <label htmlFor="mobile-settings-toggle" className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40 hidden peer-checked/settings:block transition-opacity opacity-0 peer-checked/settings:opacity-100" />
 
-      <div className="flex flex-1 overflow-hidden min-h-0">
-        {/* Left Sidebar */}
+      <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-h-0 relative">
+        {/* CSS-Only Checkbox Hack Triggers - Moved here to be siblings of peers */}
+        <input type="checkbox" id="mobile-menu-toggle" className="peer/menu hidden" />
+        <input type="checkbox" id="mobile-settings-toggle" className="peer/settings hidden" />
+        {/* Left Sidebar Wrapper - Mobile: Off-screen Drawer (Left) | Desktop: Fixed (Left) */}
+        <div className="fixed md:relative inset-y-0 left-0 z-50 w-[280px] md:w-auto h-full bg-[#0a0a0a] flex flex-col border-r border-white/5 transition-transform duration-300 -translate-x-full md:translate-x-0 peer-checked/menu:translate-x-0 order-last md:order-first shadow-2xl md:shadow-none">
         <aside 
             ref={sidebarRef}
             style={{ width: sidebarWidth }}
-            className="relative border-r border-white/5 bg-[#0a0a0a] p-4 flex flex-col gap-6 z-40 shrink-0 overflow-y-auto overscroll-contain min-h-0 max-h-screen pb-24"
+            className="relative w-full h-full flex flex-col gap-6 overflow-y-auto overscroll-contain p-4 min-h-0"
         >
           {/* Resize Handle */}
           <div
             className="absolute right-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-purple-500/50 active:bg-purple-500/50 transition-colors z-50"
             onMouseDown={startSidebarResize}
           />
+          
+
 
           {/* Templates Tab Content */}
           {activeTab === 'templates' && (
@@ -2772,6 +2821,12 @@ export default function DashboardLayout({
           )}
 
         </aside>
+        </div>
+
+        {/* MAIN CONTENT AREA */}
+        <div className="flex-1 flex flex-col relative min-w-0 h-[50vh] md:h-full order-1 md:order-none z-0">
+          
+
 
         {/* Center Canvas Area */}
       <main
@@ -3100,8 +3155,14 @@ export default function DashboardLayout({
              </div>
           </div>
         </main>
+      </div>
 
-        {/* Right Sidebar - Template Controls */}
+      {/* Timeline Panel - Mobile: Stacked, fixed height or auto */}
+
+
+        {/* RIGHT PROPERTIES PANEL - Mobile: Off-screen Drawer (Right) | Desktop: Fixed (Right) */}
+      <div className="fixed md:relative inset-y-0 right-0 z-50 w-[280px] md:w-80 h-full bg-[#0a0a0a]/95 backdrop-blur-xl flex flex-col border-l border-white/5 transition-transform duration-300 translate-x-full md:translate-x-0 peer-checked/settings:translate-x-0 order-last shadow-2xl md:shadow-none">
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6 space-y-6 md:space-y-8">
         <aside 
             ref={rightSidebarRef}
             style={{ width: rightSidebarWidth }}
@@ -4830,6 +4891,8 @@ export default function DashboardLayout({
             {!selectedTemplate && <p className="text-[11px] text-neutral-500">Select a template to adjust its controls.</p>}
           </div>
         </aside>
+      </div>
+      </div>
       </div>
 
       {/* Bottom Timeline - Absolute Overlay */}
