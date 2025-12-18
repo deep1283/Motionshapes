@@ -618,10 +618,15 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           ? rollDistanceForDuration(rollClip.duration, prev.templateSpeed)
           : prev.rollDistance
 
+      // If jumpHeight is explicitly passed in updates.parameters, use that value
+      // Only recalculate from duration if duration was changed (timeline bar drag) AND jumpHeight wasn't explicitly set
+      const explicitJumpHeight = updates.parameters?.jumpHeight
       const nextJumpHeight =
-        jumpClip && typeof jumpClip.duration === 'number'
-          ? jumpHeightForDuration(jumpClip.duration, prev.jumpVelocity)
-          : prev.jumpHeight
+        explicitJumpHeight !== undefined
+          ? explicitJumpHeight  // Use explicitly passed jumpHeight (from canvas drag or slider)
+          : jumpClip && typeof jumpClip.duration === 'number' && updates.duration !== undefined
+            ? jumpHeightForDuration(jumpClip.duration, prev.jumpVelocity)  // Recalculate from duration change
+            : prev.jumpHeight
 
       const nextPopSpeed =
         popClip && typeof popClip.duration === 'number'

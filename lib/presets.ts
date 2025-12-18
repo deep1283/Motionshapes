@@ -114,6 +114,26 @@ export const jumpHeightForDuration = (duration: number, velocity: number = 1.5) 
   }
 }
 
+// Calculate duration from height (inverse of jumpHeightForDuration)
+// This is used when dragging the canvas endpoint to update clip duration
+export const jumpDurationForHeight = (height: number, velocity: number = 1.5): number => {
+  const clampedHeight = Math.max(0.05, height)
+  const clampedVelocity = Math.max(0.2, velocity)
+  
+  // Ensure chosen velocity can reach desired height: v0^2 / (2g) >= h
+  const minVelocityForHeight = Math.sqrt(2 * GRAVITY * clampedHeight)
+  const v0 = Math.max(clampedVelocity, minVelocityForHeight)
+  
+  // Time to reach specified height on the way up: h = v0*t - 0.5*g*t^2
+  // Solving: t = (v0 - sqrt(v0^2 - 2gh)) / g
+  const underRoot = Math.max(0, v0 * v0 - 2 * GRAVITY * clampedHeight)
+  const timeUpSec = (v0 - Math.sqrt(underRoot)) / GRAVITY
+  
+  // Total duration is 2x time up (up + down)
+  const duration = Math.max(300, timeUpSec * 2 * 1000)
+  return duration
+}
+
 const jumpPreset = (height: number = 0.25, initialVelocity: number = 1.5): PresetResult => {
   const clampedHeight = Math.max(0.05, height)
   const clampedVelocity = Math.max(0.2, initialVelocity)

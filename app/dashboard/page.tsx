@@ -8,7 +8,7 @@ import dynamic from 'next/dynamic'
 import { TimelineProvider, useTimeline, useTimelineActions } from '@/lib/timeline-store'
 import { sampleTimeline, sampleTimelineUnified } from '@/lib/timeline'
 import type { TemplateId } from '@/lib/presets'
-import { rollDurationForDistance, jumpHeightForDuration } from '@/lib/presets'
+import { rollDurationForDistance, jumpHeightForDuration, jumpDurationForHeight } from '@/lib/presets'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { HistoryManager, type HistorySnapshot } from '@/lib/history-manager'
 import { debounce } from '@/lib/utils'
@@ -1727,10 +1727,14 @@ function DashboardContent() {
       }
       
       if (clip) {
+        // Calculate the duration needed for this height
+        const newDuration = jumpDurationForHeight(value, jumpVelocity)
+        
         timeline.updateTemplateClip(
           selectedLayerId,
           clip.id,
           {
+            duration: newDuration,  // Update clip duration to match new height
             parameters: {
               jumpHeight: value,
               jumpVelocity,

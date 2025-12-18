@@ -4813,7 +4813,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         // Get jumpHeight from the clip if available
         const jumpClip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'jump')
         const clipJumpHeight = jumpClip?.parameters?.jumpHeight ?? jumpHeight
-        console.log('[JUMP RENDER] clipJumpHeight:', clipJumpHeight, 'from params:', jumpClip?.parameters?.jumpHeight, 'prop:', jumpHeight)
         
         // Calculate accumulated offset from Roll (if any exists before Jump)
         // Sort clips by start time and find any roll clips that start before this jump

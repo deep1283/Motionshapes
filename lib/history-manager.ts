@@ -2,13 +2,15 @@ import type { Vec2 } from './timeline'
 
 // Background settings type (from dashboard)
 export interface BackgroundSettings {
-  mode: 'transparent' | 'solid' | 'gradient'
+  mode: 'transparent' | 'solid' | 'gradient' | 'image'
   solid: string
   from: string
   to: string
   opacity: number
   gradientType?: 'linear' | 'radial'
   gradientPosition?: number  // 0-1, default 0.5 (center)
+  image?: string  // dataURL or URL
+  imageMode?: 'cover' | 'contain' | 'stretch'
 }
 
 export type ShapeKind =
