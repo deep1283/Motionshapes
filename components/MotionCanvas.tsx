@@ -76,6 +76,8 @@ interface MotionCanvasProps {
     image?: string
     imageMode?: 'cover' | 'contain' | 'stretch'
   }
+  viewportWidth?: number
+  viewportHeight?: number
   offsetX?: number
   offsetY?: number
   popReappear?: boolean
@@ -249,7 +251,7 @@ function LineOverlay({
   )
 }
 
-export default function MotionCanvas({ template, templateVersion, layers = [], layerOrder = [], onUpdateLayerPosition, onUpdateLayerSize, onTemplateComplete, isDrawingPath = false, isDrawingLine = false, pathPoints = [], onAddPathPoint, onFinishPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint, background: _background, offsetX = 0, offsetY = 0, popReappear = false, onCanvasBackgroundClick, selectedClipId, onUpdatePanZoomRegions, onCanvasReady }: MotionCanvasProps) {
+export default function MotionCanvas({ template, templateVersion, layers = [], layerOrder = [], onUpdateLayerPosition, onUpdateLayerSize, onTemplateComplete, isDrawingPath = false, isDrawingLine = false, pathPoints = [], onAddPathPoint, onFinishPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint, background: _background, viewportWidth = 640, viewportHeight = 360, offsetX = 0, offsetY = 0, popReappear = false, onCanvasBackgroundClick, selectedClipId, onUpdatePanZoomRegions, onCanvasReady }: MotionCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<PIXI.Application | null>(null)
   const [isReady, setIsReady] = useState(false)
@@ -293,6 +295,11 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   const updateGraphicsFnRef = useRef<(() => void) | null>(null)
   // Track layer dimensions, color, and rotation to detect changes from control panel
   const layerDimensionsRef = useRef<Record<string, { width: number; height: number; fillColor: number; rotation: number }>>({})
+  // Background rendering refs
+  const bgContainerRef = useRef<PIXI.Container | null>(null)
+  const bgGraphicsRef = useRef<PIXI.Graphics | null>(null)
+  const bgSpriteRef = useRef<PIXI.Sprite | null>(null)
+  const bgTextureRef = useRef<PIXI.Texture | null>(null)
   const resizeStateRef = useRef<{
     layerId: string
     handle: 'tl' | 'tr' | 'br' | 'bl' | 't' | 'r' | 'b' | 'l'
@@ -781,6 +788,17 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           app.render()
         })
         
+        // Create background container (at bottom, zIndex 0)
+        const bgContainer = new PIXI.Container()
+        bgContainer.zIndex = -1000  // Always at bottom
+        app.stage.addChild(bgContainer)
+        bgContainerRef.current = bgContainer
+        
+        // Create background graphics for solid/gradient fills
+        const bgGraphics = new PIXI.Graphics()
+        bgContainer.addChild(bgGraphics)
+        bgGraphicsRef.current = bgGraphics
+        
         // Create handles overlay container (always on top, doesn't inherit shape transforms)
         const handlesOverlay = new PIXI.Container()
         handlesOverlay.sortableChildren = true
@@ -919,6 +937,198 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       }
     }
   }, [])
+
+  // BACKGROUND RENDERING EFFECT
+  // Renders solid/gradient/image backgrounds using PIXI
+  useEffect(() => {
+    console.log('[BG] Effect triggered:', { 
+      appReady: !!appRef.current, 
+      isReady, 
+      bgGraphicsReady: !!bgGraphicsRef.current,
+      background: _background,
+      viewportWidth, 
+      viewportHeight 
+    })
+    
+    if (!appRef.current || !isReady || !bgGraphicsRef.current) {
+      console.log('[BG] Early return - refs not ready')
+      return
+    }
+    
+    const app = appRef.current
+    const bgGraphics = bgGraphicsRef.current
+    const bgContainer = bgContainerRef.current
+    
+    // Ensure bgContainer is attached to stage
+    if (bgContainer && !bgContainer.parent) {
+      console.log('[BG] Adding bgContainer to stage')
+      bgContainer.zIndex = -1000
+      app.stage.addChildAt(bgContainer, 0) // Add at index 0 (bottom)
+    }
+    
+    // Use viewport dimensions from props
+    const width = viewportWidth
+    const height = viewportHeight
+    
+    // Calculate viewport position in stage coordinates
+    // The viewport is centered in the workspace. When stage pans, we want the background
+    // to move WITH the viewport (appear fixed on screen in the viewport area).
+    //
+    // Math: 
+    // - Stage position = (offsetX, offsetY) - this is the panning offset
+    // - Child at (x, y) appears at screen position (x + offsetX, y + offsetY)
+    // - Viewport top-left on screen = (workspaceWidth/2 + offsetX - width/2, workspaceHeight/2 + offsetY - height/2)
+    // - For child to appear at viewport top-left: x + offsetX = workspaceWidth/2 + offsetX - width/2
+    // - Solving: x = (workspaceWidth - width) / 2  (offsetX cancels out!)
+    //
+    // This means the background position in STAGE space is CONSTANT and doesn't depend on panning.
+    // The panning is handled by the stage.position, which moves all children together.
+    const container = containerRef.current
+    const workspaceWidth = container?.clientWidth || 1200
+    const workspaceHeight = container?.clientHeight || 800
+    
+    const bgX = (workspaceWidth - width) / 2
+    const bgY = (workspaceHeight - height) / 2
+    
+    console.log('[BG] Drawing background:', { mode: _background?.mode, width, height, bgX, bgY, workspaceWidth, workspaceHeight })
+    
+    // Clear existing background
+    bgGraphics.clear()
+    
+    // Remove old sprite if exists
+    if (bgSpriteRef.current && bgContainerRef.current) {
+      bgContainerRef.current.removeChild(bgSpriteRef.current)
+      bgSpriteRef.current.destroy()
+      bgSpriteRef.current = null
+    }
+    
+    // Destroy old texture if exists
+    if (bgTextureRef.current) {
+      bgTextureRef.current.destroy(true)
+      bgTextureRef.current = null
+    }
+    
+    if (!_background || _background.mode === 'transparent') {
+      // Transparent - no background needed
+      console.log('[BG] Transparent mode - no background')
+      app.render()
+      return
+    }
+    
+    if (_background.mode === 'solid') {
+      // Solid color background
+      const color = parseInt(_background.solid.replace('#', ''), 16)
+      console.log('[BG] Drawing solid:', { color: color.toString(16), rect: [bgX, bgY, width, height] })
+      
+      // Draw background at viewport position
+      bgGraphics.rect(bgX, bgY, width, height)
+      bgGraphics.fill({ color, alpha: _background.opacity ?? 1 })
+    } else if (_background.mode === 'gradient') {
+      // Gradient background - use a series of rects to approximate gradient
+      const fromColor = parseInt(_background.from.replace('#', ''), 16)
+      const toColor = parseInt(_background.to.replace('#', ''), 16)
+      const steps = 64 // Number of gradient steps
+      const isRadial = _background.gradientType === 'radial'
+      const position = _background.gradientPosition ?? 0.5
+      
+      if (isRadial) {
+        // Radial gradient - draw concentric circles
+        const centerX = bgX + width / 2
+        const centerY = bgY + height / 2
+        const maxRadius = Math.sqrt(width * width + height * height) / 2
+        
+        for (let i = steps; i >= 0; i--) {
+          const t = i / steps
+          const adjustedT = Math.min(1, Math.max(0, (t - position * 0.5) / (1 - position * 0.5)))
+          const r = Math.floor(((fromColor >> 16) & 0xff) * (1 - adjustedT) + ((toColor >> 16) & 0xff) * adjustedT)
+          const g = Math.floor(((fromColor >> 8) & 0xff) * (1 - adjustedT) + ((toColor >> 8) & 0xff) * adjustedT)
+          const b = Math.floor((fromColor & 0xff) * (1 - adjustedT) + (toColor & 0xff) * adjustedT)
+          const color = (r << 16) | (g << 8) | b
+          const radius = maxRadius * t
+          
+          bgGraphics.circle(centerX, centerY, radius)
+          bgGraphics.fill({ color, alpha: _background.opacity ?? 1 })
+        }
+      } else {
+        // Linear gradient (top to bottom) - draw horizontal strips
+        for (let i = 0; i < steps; i++) {
+          const t = i / steps
+          const adjustedT = Math.min(1, Math.max(0, (t - position * 0.5) / (1 - position * 0.5)))
+          const r = Math.floor(((fromColor >> 16) & 0xff) * (1 - adjustedT) + ((toColor >> 16) & 0xff) * adjustedT)
+          const g = Math.floor(((fromColor >> 8) & 0xff) * (1 - adjustedT) + ((toColor >> 8) & 0xff) * adjustedT)
+          const b = Math.floor((fromColor & 0xff) * (1 - adjustedT) + (toColor & 0xff) * adjustedT)
+          const color = (r << 16) | (g << 8) | b
+          
+          const stripHeight = height / steps
+          bgGraphics.rect(bgX, bgY + stripHeight * i, width, stripHeight + 1)
+          bgGraphics.fill({ color, alpha: _background.opacity ?? 1 })
+        }
+      }
+    } else if (_background.mode === 'image' && _background.image) {
+      // Image background - load texture and create sprite
+      const imageUrl = _background.image
+      const imageMode = _background.imageMode || 'cover'
+      
+      // Load the image
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = () => {
+        if (!bgContainerRef.current || !appRef.current) return
+        
+        // Create texture from image
+        const texture = PIXI.Texture.from(img)
+        bgTextureRef.current = texture
+        
+        // Create sprite
+        const sprite = new PIXI.Sprite(texture)
+        bgSpriteRef.current = sprite
+        
+        // Position sprite at viewport origin (using captured bgX, bgY)
+        sprite.x = bgX
+        sprite.y = bgY
+        
+        // Apply sizing based on imageMode
+        const imgWidth = img.width
+        const imgHeight = img.height
+        const imgAspect = imgWidth / imgHeight
+        const viewportAspect = width / height
+        
+        if (imageMode === 'stretch') {
+          // Stretch to fill exactly
+          sprite.width = width
+          sprite.height = height
+        } else if (imageMode === 'contain') {
+          // Fit within viewport (letterboxing)
+          if (imgAspect > viewportAspect) {
+            sprite.width = width
+            sprite.height = width / imgAspect
+            sprite.y = bgY + (height - sprite.height) / 2
+          } else {
+            sprite.height = height
+            sprite.width = height * imgAspect
+            sprite.x = bgX + (width - sprite.width) / 2
+          }
+        } else {
+          // Cover - fill viewport (cropping)
+          if (imgAspect > viewportAspect) {
+            sprite.height = height
+            sprite.width = height * imgAspect
+            sprite.x = bgX + (width - sprite.width) / 2
+          } else {
+            sprite.width = width
+            sprite.height = width / imgAspect
+            sprite.y = bgY + (height - sprite.height) / 2
+          }
+        }
+        
+        bgContainerRef.current.addChild(sprite)
+        appRef.current.render()
+      }
+      img.src = imageUrl
+    }
+    
+    app.render()
+  }, [_background, viewportWidth, viewportHeight, offsetX, offsetY, isReady])
 
   // Apply timeline-sampled transforms onto Pixi graphics so playhead/scrub reflects on-canvas
   // Helper to update graphics from timeline state

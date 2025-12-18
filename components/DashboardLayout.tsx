@@ -2958,37 +2958,7 @@ export default function DashboardLayout({
                 className="absolute inset-0"
                 onPointerDown={handleBackgroundClick}
               >
-                {/* Viewport-scoped background */}
-                <div
-                  className="absolute pointer-events-none"
-                  style={{
-                    width: canvasWidth,
-                    height: canvasHeight,
-                    left: `calc(50% + ${canvasX}px)`,
-                    top: `calc(50% + ${canvasY}px)`,
-                    transform: 'translate(-50%, -50%)',
-                    ...(background.mode === 'transparent'
-                      ? { backgroundColor: 'transparent' }
-                      : background.mode === 'gradient'
-                      ? { backgroundImage: (() => {
-                          const pos = Math.round((background.gradientPosition ?? 0.5) * 100);
-                          if (background.gradientType === 'radial') {
-                            return `radial-gradient(circle at center, ${background.from} ${pos}%, ${background.to})`;
-                          }
-                          return `linear-gradient(135deg, ${background.from} ${pos}%, ${background.to})`;
-                        })() }
-                      : background.mode === 'image' && background.image
-                      ? {
-                          backgroundImage: `url(${background.image})`,
-                          backgroundSize: background.imageMode === 'stretch' ? '100% 100%' : background.imageMode || 'cover',
-                          backgroundPosition: 'center',
-                          backgroundRepeat: 'no-repeat',
-                        }
-                      : { backgroundColor: background.solid }),
-                    opacity: background.mode === 'transparent' ? 0 : Math.max(0, Math.min(1, background.opacity ?? 1)),
-                    zIndex: 0,
-                  }}
-                />
+                {/* Background is now rendered via PIXI in MotionCanvas */}
 
                 {/* Viewport grid */}
                 <div
@@ -3010,7 +2980,7 @@ export default function DashboardLayout({
                {React.Children.map(children, child => {
                  if (React.isValidElement(child)) {
                    // @ts-ignore - We know MotionCanvas accepts these props
-                   return React.cloneElement(child, { offsetX: canvasX, offsetY: canvasY })
+                   return React.cloneElement(child, { offsetX: canvasX, offsetY: canvasY, viewportWidth: canvasWidth, viewportHeight: canvasHeight })
                  }
                  return child
                })}

@@ -43,10 +43,10 @@ const QUALITY_BITRATE: Record<ExportQuality, number> = {
 
 /**
  * Capture a single frame from canvas as ImageData
- * Draws background first (if specified), then PIXI content on top.
+ * Background is now rendered directly by PIXI, so we just copy the canvas.
  * Works with both 2D and WebGL canvases by drawing to a temporary 2D canvas.
  */
-function captureFrame(canvas: HTMLCanvasElement, background?: ExportBackground): ImageData {
+function captureFrame(canvas: HTMLCanvasElement): ImageData {
   // Create a temporary 2D canvas to capture the frame
   const tempCanvas = document.createElement('canvas')
   tempCanvas.width = canvas.width
@@ -54,33 +54,7 @@ function captureFrame(canvas: HTMLCanvasElement, background?: ExportBackground):
   const ctx = tempCanvas.getContext('2d', { willReadFrequently: true })
   if (!ctx) throw new Error('Could not create 2D context for frame capture')
   
-  // Draw background FIRST (if not transparent)
-  if (background && background.mode !== 'transparent') {
-    if (background.mode === 'solid') {
-      ctx.fillStyle = background.solid
-      ctx.fillRect(0, 0, canvas.width, canvas.height)
-    } else if (background.mode === 'gradient') {
-      let gradient: CanvasGradient
-      if (background.gradientType === 'radial') {
-        // Radial gradient from center
-        const centerX = canvas.width / 2
-        const centerY = canvas.height / 2
-        const radius = Math.max(canvas.width, canvas.height) / 2
-        gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius)
-      } else {
-        // Linear gradient top to bottom
-        gradient = ctx.createLinearGradient(0, 0, 0, canvas.height)
-      }
-      gradient.addColorStop(0, background.from)
-      gradient.addColorStop(1, background.to)
-      ctx.fillStyle = gradient
-      ctx.fillRect(0, 0, canvas.width, canvas.height)
-    }
-    // Note: Image backgrounds are rendered via CSS in the dashboard,
-    // so they will be captured as part of the canvas layer during export
-  }
-  
-  // Draw PIXI canvas on top
+  // Draw PIXI canvas (includes background rendered by PIXI)
   ctx.drawImage(canvas, 0, 0)
   
   return ctx.getImageData(0, 0, canvas.width, canvas.height)
@@ -131,8 +105,8 @@ export async function exportToWebM(options: ExportOptions): Promise<Blob> {
     onRender()
     await waitForRender(isFirstFrame)
     
-    // Capture frame with background
-    frames.push(captureFrame(canvas, background))
+    // Capture frame (background is rendered by PIXI)
+    frames.push(captureFrame(canvas))
     
     // Report progress (Phase 1: 0% - 50%)
     if (onProgress) {
