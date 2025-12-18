@@ -298,6 +298,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   // Background rendering refs
   const bgContainerRef = useRef<PIXI.Container | null>(null)
   const bgGraphicsRef = useRef<PIXI.Graphics | null>(null)
+  const bgMaskRef = useRef<PIXI.Graphics | null>(null)
   const bgSpriteRef = useRef<PIXI.Sprite | null>(null)
   const bgTextureRef = useRef<PIXI.Texture | null>(null)
   const resizeStateRef = useRef<{
@@ -994,6 +995,21 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     
     // Clear existing background
     bgGraphics.clear()
+    
+    // Create/update mask to clip background to viewport bounds
+    if (!bgMaskRef.current && bgContainer) {
+      const mask = new PIXI.Graphics()
+      bgMaskRef.current = mask
+      app.stage.addChild(mask) // Mask needs to be on stage
+      bgContainer.mask = mask
+    }
+    
+    // Update mask to match viewport position and size
+    if (bgMaskRef.current) {
+      bgMaskRef.current.clear()
+      bgMaskRef.current.rect(bgX, bgY, width, height)
+      bgMaskRef.current.fill({ color: 0xffffff })
+    }
     
     // Remove old sprite if exists
     if (bgSpriteRef.current && bgContainerRef.current) {
