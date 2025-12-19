@@ -2328,114 +2328,176 @@ export default function DashboardLayout({
           )}
 
           {/* Transitions Tab Content */}
-          {activeTab === 'transitions' && (
-            <div className="flex-1 min-h-0 overflow-y-auto pr-1 pb-96">
-              <h2 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-neutral-600 px-2">
-                Transitions
-              </h2>
-              
-              <div className="px-2 mb-4 space-y-4">
-                {/* Info message */}
-                {!selectedLayerId ? (
-                  <p className="text-[10px] text-amber-400/80 flex items-center gap-1.5">
-                    <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
-                      <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                    </svg>
-                    Select a layer to add transitions
-                  </p>
-                ) : (
-                  <p className="text-[10px] text-neutral-400">
-                    Transition will apply between the selected layer and the next layer
-                  </p>
-                )}
+          {activeTab === 'transitions' && (() => {
+            // Filter only image layers
+            const imageLayers = layers.filter(l => l.type === 'image')
+            
+            // Find next image layer based on array order
+            const getNextImageLayer = (fromLayerId: string) => {
+              const fromIndex = imageLayers.findIndex(l => l.id === fromLayerId)
+              if (fromIndex === -1 || fromIndex >= imageLayers.length - 1) return null
+              return imageLayers[fromIndex + 1]
+            }
+            
+            // Check if selected layer is a valid "from" image (not the last one)
+            const validFromImages = imageLayers.slice(0, -1)
+            const isValidFromImage = selectedLayerId && validFromImages.some(l => l.id === selectedLayerId)
+            const selectedFromLayer = isValidFromImage ? imageLayers.find(l => l.id === selectedLayerId) : null
+            const nextImageLayer = selectedFromLayer ? getNextImageLayer(selectedLayerId!) : null
+            
+            // Check if transitions can be applied
+            const canApplyTransition = selectedFromLayer && nextImageLayer
+            
+            // Get the index of the selected "from" image for display
+            const selectedFromIndex = selectedFromLayer ? imageLayers.findIndex(l => l.id === selectedLayerId) : -1
+            const nextImageIndex = nextImageLayer ? imageLayers.findIndex(l => l.id === nextImageLayer.id) : -1
+            
+            return (
+              <div className="flex-1 min-h-0 overflow-y-auto pr-1 pb-96">
+                <h2 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-neutral-600 px-2">
+                  Image Transitions
+                </h2>
                 
-                {/* Transition types */}
-                <div className="grid grid-cols-3 gap-2">
-                  <button
-                    className={cn(
-                      "flex flex-col items-center justify-center gap-2 p-4 rounded-xl border transition-all group",
-                      selectedLayerId
-                        ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/30 cursor-pointer"
-                        : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
-                    )}
-                    onClick={() => {
-                      if (selectedLayerId) {
-                        onAddTransition?.(selectedLayerId, '', 'fade')
-                      }
-                    }}
-                    disabled={!selectedLayerId}
-                  >
-                    <svg viewBox="0 0 24 24" className="w-6 h-6 text-neutral-400 group-hover:text-purple-400" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <circle cx="12" cy="12" r="8" strokeDasharray="4 2" />
-                    </svg>
-                    <span className="text-[10px] font-medium text-neutral-400 group-hover:text-white">Fade</span>
-                  </button>
-                  
-                  <button
-                    className={cn(
-                      "flex flex-col items-center justify-center gap-2 p-4 rounded-xl border transition-all group",
-                      selectedLayerId
-                        ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/30 cursor-pointer"
-                        : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
-                    )}
-                    onClick={() => {
-                      if (selectedLayerId) {
-                        onAddTransition?.(selectedLayerId, '', 'slide')
-                      }
-                    }}
-                    disabled={!selectedLayerId}
-                  >
-                    <svg viewBox="0 0 24 24" className="w-6 h-6 text-neutral-400 group-hover:text-purple-400" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <path d="M5 12h14M12 5l7 7-7 7" />
-                    </svg>
-                    <span className="text-[10px] font-medium text-neutral-400 group-hover:text-white">Slide</span>
-                  </button>
-                  
-                  <button
-                    className={cn(
-                      "flex flex-col items-center justify-center gap-2 p-4 rounded-xl border transition-all group",
-                      selectedLayerId
-                        ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/30 cursor-pointer"
-                        : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
-                    )}
-                    onClick={() => {
-                      if (selectedLayerId) {
-                        onAddTransition?.(selectedLayerId, '', 'zoom')
-                      }
-                    }}
-                    disabled={!selectedLayerId}
-                  >
-                    <svg viewBox="0 0 24 24" className="w-6 h-6 text-neutral-400 group-hover:text-purple-400" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <circle cx="12" cy="12" r="3" />
-                      <circle cx="12" cy="12" r="8" />
-                    </svg>
-                    <span className="text-[10px] font-medium text-neutral-400 group-hover:text-white">Zoom</span>
-                  </button>
-                  
-                  <button
-                    className={cn(
-                      "flex flex-col items-center justify-center gap-2 p-4 rounded-xl border transition-all group",
-                      selectedLayerId
-                        ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/30 cursor-pointer"
-                        : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
-                    )}
-                    onClick={() => {
-                      if (selectedLayerId) {
-                        onAddTransition?.(selectedLayerId, '', 'blur')
-                      }
-                    }}
-                    disabled={!selectedLayerId}
-                  >
-                    <svg viewBox="0 0 24 24" className="w-6 h-6 text-neutral-400 group-hover:text-purple-400" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <circle cx="12" cy="12" r="6" strokeDasharray="2 1" />
-                      <circle cx="12" cy="12" r="9" strokeDasharray="3 2" opacity="0.5" />
-                    </svg>
-                    <span className="text-[10px] font-medium text-neutral-400 group-hover:text-white">Blur</span>
-                  </button>
+                <div className="px-2 mb-4 space-y-4">
+                  {/* No images message */}
+                  {imageLayers.length === 0 ? (
+                    <p className="text-[10px] text-amber-400/80 flex items-center gap-1.5">
+                      <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                        <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                      </svg>
+                      Add at least 2 images to use transitions
+                    </p>
+                  ) : imageLayers.length < 2 ? (
+                    <p className="text-[10px] text-amber-400/80 flex items-center gap-1.5">
+                      <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                        <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                      </svg>
+                      Add at least 2 images to use transitions
+                    </p>
+                  ) : (
+                    <>
+                      {/* From Layer Dropdown */}
+                      <div className="space-y-2">
+                        <label className="text-[10px] text-neutral-400 font-medium">From Image</label>
+                        <select
+                          value={isValidFromImage ? selectedLayerId : ''}
+                          onChange={(e) => onSelectLayer?.(e.target.value)}
+                          className="w-full px-3 py-2 text-[11px] bg-white/5 border border-white/10 rounded-lg text-neutral-200 focus:outline-none focus:border-violet-500/50"
+                        >
+                          <option value="" disabled>Select an image...</option>
+                          {validFromImages.map((layer, index) => (
+                            <option key={layer.id} value={layer.id}>
+                              Image {index + 1}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      
+                      {/* To Layer (Auto-selected) */}
+                      {selectedFromLayer && nextImageLayer && (
+                        <div className="space-y-2">
+                          <label className="text-[10px] text-neutral-400 font-medium">To Image</label>
+                          <div className="w-full px-3 py-2 text-[11px] bg-white/5 border border-white/10 rounded-lg text-neutral-400">
+                            <span className="text-neutral-200">
+                              Image {nextImageIndex + 1}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Transition types */}
+                      <div className="pt-2">
+                        <label className="text-[10px] text-neutral-400 font-medium mb-2 block">Transition Type</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            className={cn(
+                              "flex flex-col items-center justify-center gap-2 p-4 rounded-xl border transition-all group",
+                              canApplyTransition
+                                ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/30 cursor-pointer"
+                                : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
+                            )}
+                            onClick={() => {
+                              if (canApplyTransition) {
+                                onAddTransition?.(selectedLayerId!, nextImageLayer!.id, 'fade')
+                              }
+                            }}
+                            disabled={!canApplyTransition}
+                          >
+                            <svg viewBox="0 0 24 24" className="w-6 h-6 text-neutral-400 group-hover:text-purple-400" fill="none" stroke="currentColor" strokeWidth="1.5">
+                              <circle cx="12" cy="12" r="8" strokeDasharray="4 2" />
+                            </svg>
+                            <span className="text-[10px] font-medium text-neutral-400 group-hover:text-white">Fade</span>
+                          </button>
+                          
+                          <button
+                            className={cn(
+                              "flex flex-col items-center justify-center gap-2 p-4 rounded-xl border transition-all group",
+                              canApplyTransition
+                                ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/30 cursor-pointer"
+                                : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
+                            )}
+                            onClick={() => {
+                              if (canApplyTransition) {
+                                onAddTransition?.(selectedLayerId!, nextImageLayer!.id, 'slide')
+                              }
+                            }}
+                            disabled={!canApplyTransition}
+                          >
+                            <svg viewBox="0 0 24 24" className="w-6 h-6 text-neutral-400 group-hover:text-purple-400" fill="none" stroke="currentColor" strokeWidth="1.5">
+                              <path d="M5 12h14M12 5l7 7-7 7" />
+                            </svg>
+                            <span className="text-[10px] font-medium text-neutral-400 group-hover:text-white">Slide</span>
+                          </button>
+                          
+                          <button
+                            className={cn(
+                              "flex flex-col items-center justify-center gap-2 p-4 rounded-xl border transition-all group",
+                              canApplyTransition
+                                ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/30 cursor-pointer"
+                                : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
+                            )}
+                            onClick={() => {
+                              if (canApplyTransition) {
+                                onAddTransition?.(selectedLayerId!, nextImageLayer!.id, 'zoom')
+                              }
+                            }}
+                            disabled={!canApplyTransition}
+                          >
+                            <svg viewBox="0 0 24 24" className="w-6 h-6 text-neutral-400 group-hover:text-purple-400" fill="none" stroke="currentColor" strokeWidth="1.5">
+                              <circle cx="12" cy="12" r="3" />
+                              <circle cx="12" cy="12" r="8" />
+                            </svg>
+                            <span className="text-[10px] font-medium text-neutral-400 group-hover:text-white">Zoom</span>
+                          </button>
+                          
+                          <button
+                            className={cn(
+                              "flex flex-col items-center justify-center gap-2 p-4 rounded-xl border transition-all group",
+                              canApplyTransition
+                                ? "border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/30 cursor-pointer"
+                                : "border-white/5 bg-white/2 opacity-50 cursor-not-allowed"
+                            )}
+                            onClick={() => {
+                              if (canApplyTransition) {
+                                onAddTransition?.(selectedLayerId!, nextImageLayer!.id, 'blur')
+                              }
+                            }}
+                            disabled={!canApplyTransition}
+                          >
+                            <svg viewBox="0 0 24 24" className="w-6 h-6 text-neutral-400 group-hover:text-purple-400" fill="none" stroke="currentColor" strokeWidth="1.5">
+                              <circle cx="12" cy="12" r="6" strokeDasharray="2 1" />
+                              <circle cx="12" cy="12" r="9" strokeDasharray="3 2" opacity="0.5" />
+                            </svg>
+                            <span className="text-[10px] font-medium text-neutral-400 group-hover:text-white">Blur</span>
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
-            </div>
-          )}
+            )
+          })()}
 
           {/* Custom Tab Content */}
           {activeTab === 'custom' && (
