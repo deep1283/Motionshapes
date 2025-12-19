@@ -327,7 +327,9 @@ export const sampleLayerTracksUnified = (
   const layerBaseRotation = baseState.rotation  // Always use 0 from baseState, not layer.rotation
   const layerBaseOpacity = layer.opacity?.[0]?.value ?? baseState.opacity
   const layerBaseMaskScale = layer.maskScale?.[0]?.value ?? baseState.maskScale
-  const layerBaseColor = layer.color?.[0]?.value ?? baseState.color
+  // IMPORTANT: Use baseState.color (from layer.fillColor) as the authoritative base color
+  // Only fall back to layer.color track (animation keyframes) if baseState.color is not provided
+  const layerBaseColor = baseState.color ?? layer.color?.[0]?.value
   const layerBaseWidth = baseState.width
   const layerBaseHeight = baseState.height
 

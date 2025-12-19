@@ -387,9 +387,9 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     })),
     [templateClips]
   )
-  // Create per-layer base states map from actual layer state (position, rotation, scale from right panel)
+  // Create per-layer base states map from actual layer state (position, rotation, scale, color from right panel)
   const layerBaseStates = useMemo(() => {
-    const map: Record<string, { x: number; y: number; rotation?: number; scale?: number }> = {}
+    const map: Record<string, { x: number; y: number; rotation?: number; scale?: number; color?: number }> = {}
     layers.forEach(layer => {
       // Convert rotation from degrees (UI) to radians (animation system)
       const rotationDegrees = layer.rotation ?? 0
@@ -398,7 +398,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         x: layer.x, 
         y: layer.y,
         rotation: rotationRadians,  // Angle in radians for animation system
-        scale: layer.scale ?? 1     // Scale from right panel (if applicable)
+        scale: layer.scale ?? 1,    // Scale from right panel (if applicable)
+        color: layer.fillColor      // Color from right panel
       }
     })
     return map
@@ -2510,9 +2511,10 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
               }
             }
           } else if (g instanceof PIXI.Graphics) {
-            // For non-icon shapes, clear and redraw
+            // For non-icon shapes, clear and redraw with WHITE fill
+            // Color is applied via tint (consistent with initial shape creation)
             g.clear()
-            const fillColor = layer.fillColor ?? 0xffffff
+            const fillColor = 0xffffff // Always draw white, color comes from tint
             switch (layer.shapeKind) {
               case 'square':
                 g.rect(-newWidth / 2, -newHeight / 2, newWidth, newHeight)
@@ -2553,6 +2555,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
                 g.fill(fillColor)
                 break
             }
+            // Apply the actual color via tint
+            g.tint = layer.fillColor ?? 0xffffff
           }
         }
         
@@ -4349,7 +4353,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       // For shapes only (not images or SVGs which use containers), redraw the graphics
       if (layer.shapeKind && layer.type !== 'image' && layer.type !== 'svg' && !isIconShape) {
         g.clear()
-        const fillColor = layer.fillColor ?? 0xffffff
+        // Always fill white - color is applied via tint (consistent with initial creation)
         switch (layer.shapeKind) {
           case 'square':
             g.rect(-layer.width / 2, -layer.height / 2, layer.width, layer.height)
@@ -4397,7 +4401,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             g.ellipse(0, 0, layer.width / 2, layer.height / 2)
             break
         }
-        g.fill(fillColor)
+        g.fill(0xffffff) // White fill
+        g.tint = layer.fillColor ?? 0xffffff // Apply color via tint
       }
       
       // Update hit area
