@@ -74,7 +74,7 @@ export default function Home() {
           transition={{ duration: 0.5, delay: 0.2 }}
           className="mt-6 max-w-2xl text-center text-lg text-neutral-400 md:text-xl leading-relaxed font-light tracking-wide"
         >
-          Create stunning, Apple-quality product animations directly in your browser.
+          Create stunning product animations,logo animation directly in your browser.
           No heavy software, no steep learning curve. Just pure flow.
         </motion.p>
 
