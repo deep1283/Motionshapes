@@ -576,6 +576,7 @@ interface DashboardLayoutProps {
   canUndo?: boolean
   canRedo?: boolean
   onUndo?: () => void
+  onPushSnapshot?: () => void
   onUpdateLayerPosition?: (id: string, x: number, y: number) => void
   onUpdateLayerRotation?: (id: string, rotation: number) => void
   onUpdateLayerSize?: (id: string, width: number, height: number) => void
@@ -687,6 +688,7 @@ export default function DashboardLayout({
   canRedo,
   onUndo,
   onRedo,
+  onPushSnapshot,
   onUpdateLayerPosition,
   onUpdateLayerRotation,
   onUpdateLayerSize,
@@ -2214,6 +2216,8 @@ export default function DashboardLayout({
                           undefined, // start at current playhead
                           1000 // 1 second duration
                         )
+                        // Push snapshot after adding effect for undo/redo
+                        onPushSnapshot?.()
                       }}
                       icon={effect.icon}
                     />
@@ -2579,6 +2583,7 @@ export default function DashboardLayout({
                                 // Expand the panel
                                 setExpandedSections(prev => new Set(prev).add('resize'))
                                 if (newClipId) bringClipToFront(newClipId)
+                                onPushSnapshot?.()
                               }
                             }
                           }}
@@ -2621,6 +2626,7 @@ export default function DashboardLayout({
                                 // Expand the panel
                                 setExpandedSections(prev => new Set(prev).add('resize'))
                                 if (newClipId) bringClipToFront(newClipId)
+                                onPushSnapshot?.()
                               }
                             }}
                           >
@@ -2675,6 +2681,7 @@ export default function DashboardLayout({
                                 // Expand the panel
                                 setExpandedSections(prev => new Set(prev).add('rotate'))
                                 if (newClipId) bringClipToFront(newClipId)
+                                onPushSnapshot?.()
                               }
                             }
                           }}
@@ -2713,6 +2720,7 @@ export default function DashboardLayout({
                                 // Expand the panel
                                 setExpandedSections(prev => new Set(prev).add('rotate'))
                                 if (newClipId) bringClipToFront(newClipId)
+                                onPushSnapshot?.()
                               }
                             }}
                           >
@@ -2766,6 +2774,7 @@ export default function DashboardLayout({
                                 // Expand the panel
                                 setExpandedSections(prev => new Set(prev).add('color'))
                                 if (newClipId) bringClipToFront(newClipId)
+                                onPushSnapshot?.()
                               }
                             }
                           }}
@@ -2812,6 +2821,7 @@ export default function DashboardLayout({
                                 // Expand the panel
                                 setExpandedSections(prev => new Set(prev).add('color'))
                                 if (newClipId) bringClipToFront(newClipId)
+                                onPushSnapshot?.()
                               }
                             }}
                           >

@@ -219,12 +219,12 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     const clipsEnd = state.templateClips.reduce((max, c) => Math.max(max, (c.start ?? 0) + (c.duration ?? 0)), 0)
     const pathsEnd = getMaxPathEnd(state.tracks)
     const layersEnd = state.tracks.reduce((max, t) => Math.max(max, (t.startTime ?? 0) + (t.duration ?? 0)), 0)
+    const effectClipsEnd = state.effectClips.reduce((max, c) => Math.max(max, (c.start ?? 0) + (c.duration ?? 0)), 0)
     const clickMarkersEnd = state.clickMarkers.reduce((max, m) => Math.max(max, m.time), 0)
     
-    const hasLayers = state.tracks.length > 0
-    const hasClips = state.templateClips.length > 0 || tracksEnd > 0 || pathsEnd > 0 || hasLayers
-    cachedContentDuration = hasClips 
-      ? Math.max(100, tracksEnd, clipsEnd, pathsEnd, layersEnd, clickMarkersEnd)
+    const hasContent = state.tracks.length > 0 || state.templateClips.length > 0 || state.effectClips.length > 0
+    cachedContentDuration = hasContent 
+      ? Math.max(100, tracksEnd, clipsEnd, pathsEnd, layersEnd, effectClipsEnd, clickMarkersEnd)
       : Math.max(5000, clickMarkersEnd + 500)
   }
 
@@ -2798,15 +2798,32 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             return
         }
 
+        // Shift keyframes by clip start time
         const shift = <T,>(frames: TimelineKeyframe<T>[] | undefined) =>
           (frames ?? []).map((f) => ({
             ...f,
             time: start + (Number.isFinite(f.time) ? (f.time as number) : 0),
           }))
 
+        // Convert position offsets to absolute by adding clipBase position
+        // This matches the logic in addTemplateClip's mergedPosition
+        const shiftPositionWithBase = (frames: TimelineKeyframe<Vec2>[] | undefined) => {
+          const clipBasePos = clipBase.position ?? basePos
+          return (frames ?? []).map((f) => ({
+            ...f,
+            time: start + (Number.isFinite(f.time) ? (f.time as number) : 0),
+            // Add clip base position to offset to get absolute position
+            value: {
+              x: clipBasePos.x + (f.value?.x ?? 0),
+              y: clipBasePos.y + (f.value?.y ?? 0),
+            },
+          }))
+        }
+
         track = {
           ...track,
-          position: addFrames(track.position, shift(built.position)),
+          // Use shiftPositionWithBase for position (converts offset to absolute)
+          position: addFrames(track.position, shiftPositionWithBase(built.position)),
           scale: addFrames(track.scale, shift(built.scale)),
           rotation: addFrames(track.rotation, shift(built.rotation)),
           opacity: addFrames(track.opacity, shift(built.opacity)),
@@ -2819,8 +2836,18 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       const ensureZero = <T,>(arr: TimelineKeyframe<T>[], value: T) =>
         arr.some((f) => f.time === 0) ? arr : [{ time: 0, value }, ...arr]
 
+      // Calculate track's visibility range from all clips for this layer
+      // startTime = earliest clip start, endTime = latest clip end
+      const clipStartTimes = sorted.map(c => c.start ?? 0)
+      const clipEndTimes = sorted.map(c => (c.start ?? 0) + (c.duration ?? 0))
+      const trackStartTime = Math.min(...clipStartTimes)
+      const trackEndTime = Math.max(...clipEndTimes)
+      const trackDuration = trackEndTime - trackStartTime
+
       track = {
         ...track,
+        startTime: trackStartTime,
+        duration: trackDuration,
         position: sortFrames(ensureZero(track.position ?? [], basePos)),
         scale: sortFrames(ensureZero(track.scale ?? [], baseScale)),
         rotation: sortFrames(ensureZero(track.rotation ?? [], baseRot)),
@@ -2907,9 +2934,22 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     updateLayer,
     
     // Undo/Redo: Get snapshotable state
+    // IMPORTANT: Deep copy arrays to prevent reference mutation affecting older snapshots
     getSnapshot: () => ({
-      templateClips: state.templateClips,
-      effectClips: state.effectClips,
+      templateClips: state.templateClips.map(clip => ({
+        ...clip,
+        parameters: clip.parameters ? { ...clip.parameters } : undefined
+      })),
+      effectClips: state.effectClips.map(effect => ({
+        ...effect,
+        params: { ...effect.params }
+      })),
+      // Capture track visibility timing (layer bars)
+      trackTimings: state.tracks.map(track => ({
+        layerId: track.layerId,
+        startTime: track.startTime ?? 0,
+        duration: track.duration ?? 3000,
+      })),
       templateSpeed: state.templateSpeed,
       rollDistance: state.rollDistance,
       jumpHeight: state.jumpHeight,
@@ -2924,7 +2964,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       pulseSpeed: state.pulseSpeed,
       spinSpeed: state.spinSpeed,
       spinDirection: state.spinDirection,
-      clickMarkers: state.clickMarkers,
+      clickMarkers: state.clickMarkers.map(marker => ({ ...marker })),
     }),
     
     // Undo/Redo: Restore from snapshot
@@ -2947,6 +2987,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       spinDirection: 1 | -1
       layers: { id: string; x: number; y: number; scale: number; rotation?: number; opacity?: number }[]
       clickMarkers: typeof state.clickMarkers
+      trackTimings: Array<{ layerId: string; startTime: number; duration: number }>
     }>) => {
       const layerBaseMap: Record<string, { position?: Vec2; scale?: number; rotation?: number; opacity?: number }> = {}
       snapshot.layers?.forEach((layer) => {
@@ -2959,7 +3000,20 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       })
 
       const clips = snapshot.templateClips ?? state.templateClips
-      const { tracks, duration } = buildTracksFromClips(clips, layerBaseMap)
+      const { tracks: rebuiltTracks, duration } = buildTracksFromClips(clips, layerBaseMap)
+      
+      // Apply saved track visibility timing from snapshot (overrides recalculated timing)
+      const tracksWithTiming = rebuiltTracks.map(track => {
+        const savedTiming = snapshot.trackTimings?.find(t => t.layerId === track.layerId)
+        if (savedTiming) {
+          return {
+            ...track,
+            startTime: savedTiming.startTime,
+            duration: savedTiming.duration,
+          }
+        }
+        return track
+      })
 
       setState((prev) => ({
         ...prev,
@@ -2980,7 +3034,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         spinSpeed: snapshot.spinSpeed ?? prev.spinSpeed,
         spinDirection: snapshot.spinDirection ?? prev.spinDirection,
         clickMarkers: snapshot.clickMarkers ?? prev.clickMarkers,
-        tracks,
+        tracks: tracksWithTiming,
         duration,
         currentTime: clampTime(prev.currentTime, duration),
       }))

@@ -184,6 +184,13 @@ export interface HistorySnapshot {
   spinSpeed: number
   spinDirection: 1 | -1
   
+  // Track visibility timing (layer bars) - preserved separately from clips
+  trackTimings?: Array<{
+    layerId: string
+    startTime: number
+    duration: number
+  }>
+  
   // Dashboard state
   layers: Layer[]
   layerOrder: string[]

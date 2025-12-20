@@ -1009,17 +1009,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   // BACKGROUND RENDERING EFFECT
   // Renders solid/gradient/image backgrounds using PIXI
   useEffect(() => {
-    console.log('[BG] Effect triggered:', { 
-      appReady: !!appRef.current, 
-      isReady, 
-      bgGraphicsReady: !!bgGraphicsRef.current,
-      background: _background,
-      viewportWidth, 
-      viewportHeight 
-    })
-    
     if (!appRef.current || !isReady || !bgGraphicsRef.current) {
-      console.log('[BG] Early return - refs not ready')
       return
     }
     
@@ -1029,7 +1019,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     
     // Ensure bgContainer is attached to stage
     if (bgContainer && !bgContainer.parent) {
-      console.log('[BG] Adding bgContainer to stage')
       bgContainer.zIndex = -1000
       app.stage.addChildAt(bgContainer, 0) // Add at index 0 (bottom)
     }
@@ -1057,8 +1046,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     
     const bgX = (workspaceWidth - width) / 2
     const bgY = (workspaceHeight - height) / 2
-    
-    console.log('[BG] Drawing background:', { mode: _background?.mode, width, height, bgX, bgY, workspaceWidth, workspaceHeight })
     
     // Clear existing background
     bgGraphics.clear()
@@ -1093,7 +1080,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     
     if (!_background || _background.mode === 'transparent') {
       // Transparent - no background needed
-      console.log('[BG] Transparent mode - no background')
       app.render()
       return
     }
@@ -1101,7 +1087,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     if (_background.mode === 'solid') {
       // Solid color background
       const color = parseInt(_background.solid.replace('#', ''), 16)
-      console.log('[BG] Drawing solid:', { color: color.toString(16), rect: [bgX, bgY, width, height] })
       
       // Draw background at viewport position
       bgGraphics.rect(bgX, bgY, width, height)
@@ -1392,9 +1377,14 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     renderLayers.forEach((layer, idx) => {
       const { id } = layer
       const state = timelineData[id]
-      if (!state) return
+      if (!state) {
+        return
+      }
       const g = graphicsByIdRef.current[id]
-      if (!g) return
+      if (!g) {
+        return
+      }
+      
       // Set zIndex: top of timeline (idx=0) = back (low z), bottom (high idx) = front (high z)
       g.zIndex = idx
       if (appRef.current?.stage && appRef.current.stage.sortableChildren !== true) {
@@ -1717,7 +1707,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         // No need to adjust handles - transitions are brief and handles hidden during playback
       }
       
-      g.alpha = hasOpacityAnim ? finalOpacity : (isVisibleInTime ? (finalOpacity < 1 ? finalOpacity : 1) : 0)
+      const finalAlpha = hasOpacityAnim ? finalOpacity : (isVisibleInTime ? (finalOpacity < 1 ? finalOpacity : 1) : 0)
+      g.alpha = finalAlpha
 
       // Sync rotation
       // For rotation: state.rotation from unified sampling ALREADY includes base rotation

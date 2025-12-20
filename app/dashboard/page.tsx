@@ -191,10 +191,15 @@ function DashboardContent() {
   const [canRedo, setCanRedo] = useState(false)
 
   // Helper to create snapshot
+  // IMPORTANT: Deep copy all arrays and objects to prevent reference mutation
   const createSnapshot = useCallback((): HistorySnapshot => {
     return {
       ...timeline.getSnapshot(),
-      layers: [...layers],
+      // Deep copy layers including nested effects array
+      layers: layers.map(layer => ({
+        ...layer,
+        effects: layer.effects?.map(e => ({ ...e, params: { ...e.params } })) ?? [],
+      })),
       layerOrder: [...layerOrder],
       background: { ...background },
     }
@@ -202,10 +207,24 @@ function DashboardContent() {
 
   // Helper to push snapshot
   const pushSnapshot = useCallback(() => {
-    historyManagerRef.current.pushSnapshot(createSnapshot())
+    const snapshot = createSnapshot()
+    historyManagerRef.current.pushSnapshot(snapshot)
     setCanUndo(historyManagerRef.current.canUndo())
     setCanRedo(historyManagerRef.current.canRedo())
   }, [createSnapshot])
+
+  // Push snapshot with explicitly provided layers (bypasses stale closure issue)
+  const pushSnapshotImmediate = useCallback((newLayers: Layer[], newLayerOrder: string[]) => {
+    const snapshot: HistorySnapshot = {
+      ...timeline.getSnapshot(),
+      layers: newLayers.map(layer => ({ ...layer })),
+      layerOrder: [...newLayerOrder],
+      background: { ...background },
+    }
+    historyManagerRef.current.pushSnapshot(snapshot)
+    setCanUndo(historyManagerRef.current.canUndo())
+    setCanRedo(historyManagerRef.current.canRedo())
+  }, [timeline, background])
 
   // Debounced version for parameters
   const debouncedPushSnapshot = useMemo(
@@ -241,11 +260,21 @@ function DashboardContent() {
     setLayerOrder(snapshot.layerOrder)
     setBackground(snapshot.background)
     
-    // Set selectedTemplate to first clip's template to trigger canvas render
-    if (snapshot.templateClips && snapshot.templateClips.length > 0) {
-      const firstClip = snapshot.templateClips[0]
-      setSelectedTemplate(firstClip.template)
-      setSelectedClipId(firstClip.id)
+    // Get layer IDs that exist in the restored snapshot
+    const validLayerIds = new Set(snapshot.layers.map(l => l.id))
+    
+    // Clear selection if the currently selected layer no longer exists
+    if (selectedLayerId && !validLayerIds.has(selectedLayerId)) {
+      setSelectedLayerId('')
+    }
+    
+    // Clear selected clip if it no longer exists in the snapshot
+    if (selectedClipId) {
+      const clipExists = snapshot.templateClips?.some(c => c.id === selectedClipId)
+      if (!clipExists) {
+        setSelectedClipId('')
+        setSelectedTemplate('')
+      }
     }
     
     // Force canvas refresh by re-setting current time
@@ -257,7 +286,7 @@ function DashboardContent() {
     
     setCanUndo(historyManagerRef.current.canUndo())
     setCanRedo(historyManagerRef.current.canRedo())
-  }, [timeline])
+  }, [timeline, selectedLayerId, selectedClipId])
 
   // Redo handler
   const handleRedo = useCallback(() => {
@@ -285,11 +314,21 @@ function DashboardContent() {
     setLayerOrder(snapshot.layerOrder)
     setBackground(snapshot.background)
     
-    // Set selectedTemplate to first clip's template to trigger canvas render
-    if (snapshot.templateClips && snapshot.templateClips.length > 0) {
-      const firstClip = snapshot.templateClips[0]
-      setSelectedTemplate(firstClip.template)
-      setSelectedClipId(firstClip.id)
+    // Get layer IDs that exist in the restored snapshot
+    const validLayerIds = new Set(snapshot.layers.map(l => l.id))
+    
+    // Clear selection if the currently selected layer no longer exists
+    if (selectedLayerId && !validLayerIds.has(selectedLayerId)) {
+      setSelectedLayerId('')
+    }
+    
+    // Clear selected clip if it no longer exists in the snapshot
+    if (selectedClipId) {
+      const clipExists = snapshot.templateClips?.some(c => c.id === selectedClipId)
+      if (!clipExists) {
+        setSelectedClipId('')
+        setSelectedTemplate('')
+      }
     }
     
     // Force canvas refresh by re-setting current time
@@ -301,7 +340,7 @@ function DashboardContent() {
     
     setCanUndo(historyManagerRef.current.canUndo())
     setCanRedo(historyManagerRef.current.canRedo())
-  }, [timeline])
+  }, [timeline, selectedLayerId, selectedClipId])
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -560,7 +599,6 @@ function DashboardContent() {
     timeline.setCurrentTime(startAt)
     // Don't auto-play so user can adjust controls first
     // timeline.setPlaying(true)
-    pushSnapshot()
   }, [
     selectedTemplate,
     selectedLayerId,
@@ -741,9 +779,18 @@ function DashboardContent() {
       fillColor: 0xffffff,
       rotation: 0,
     }
-    setLayers((prev) => [...prev, newLayer])
+    
+    // Build the new state arrays explicitly (don't rely on React state update)
+    const newLayers = [...layers, newLayer]
+    const newLayerOrder = [...layerOrder, newLayer.id]
+    
+    setLayers(newLayers)
     setSelectedLayerId(newLayer.id)
-    pushSnapshot()
+    setLayerOrder(newLayerOrder)
+    
+    // Push snapshot with explicit new state (bypasses stale closure)
+    pushSnapshotImmediate(newLayers, newLayerOrder)
+    
     timeline.ensureTrack(newLayer.id, {
       position: { x: newLayer.x, y: newLayer.y },
       scale: newLayer.scale,
@@ -751,7 +798,6 @@ function DashboardContent() {
       opacity: 1,
     })
     lastLayerBaseRef.current[newLayer.id] = { x: newLayer.x, y: newLayer.y, scale: newLayer.scale }
-    setLayerOrder((prev) => [...prev, newLayer.id]) // newest on top
     setSelectedTemplate('') // prevent auto-applying the last template to the new shape
     setTemplateVersion((v) => v + 1)
     
@@ -2018,6 +2064,7 @@ function DashboardContent() {
         onSelectEffect={handleSelectEffect}
         onUpdateEffect={handleUpdateEffect}
         onToggleEffect={handleToggleEffect}
+        onPushSnapshot={pushSnapshot}
         layerEffects={layers.find(l => l.id === selectedLayerId)?.effects}
         onAddClickMarker={(layerId) => {
           if (layerId) {
