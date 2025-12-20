@@ -4850,7 +4850,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           // Stop when we reach the jump clip (if it exists in the list)
           // Note: if we are just previewing (no clip yet), we might iterate all.
           // But usually layerClips includes the clip if it exists.
-          if (clip.template === 'jump' && clip.id === selectedClipId) break
+          if (jumpClip && clip.id === jumpClip.id) break
           // If we are just selecting 'jump' template but haven't added it, 
           // we might want to stop at playhead? The loop iterates all clips.
           // Let's assume for new jump, it comes after everything? 

@@ -20,6 +20,8 @@ interface ExportModalProps {
   onShowHandles?: () => void
   // Returns viewport bounds in canvas coordinates for cropping
   getViewportBounds?: () => { x: number; y: number; width: number; height: number }
+  // Default filename from project name
+  defaultFilename?: string
 }
 
 export function ExportModal({
@@ -36,6 +38,7 @@ export function ExportModal({
   onHideHandles,
   onShowHandles,
   getViewportBounds,
+  defaultFilename = 'motionshapes',
 }: ExportModalProps) {
   const [quality, setQuality] = useState<ExportQuality>('standard')
   const [fps, setFps] = useState<ExportFPS>(30)
@@ -44,7 +47,7 @@ export function ExportModal({
   const [currentFrame, setCurrentFrame] = useState(0)
   const [totalFrames, setTotalFrames] = useState(0)
   const [exportPhase, setExportPhase] = useState<'capturing' | 'encoding' | 'converting'>('capturing')
-  const [filename, setFilename] = useState('motionshapes')
+  const [filename, setFilename] = useState(defaultFilename)
   const [format, setFormat] = useState<'webm' | 'mp4'>('webm')
 
   // Reset state when modal opens
@@ -53,7 +56,7 @@ export function ExportModal({
       setProgress(0)
       setCurrentFrame(0)
       setIsExporting(false)
-      setFilename('motionshapes')
+      setFilename(defaultFilename)
       setFormat('webm')
     }
   }, [isOpen])

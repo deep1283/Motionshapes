@@ -5019,6 +5019,7 @@ export default function DashboardLayout({
       <ExportModal
         isOpen={showExportModal}
         onClose={() => setShowExportModal(false)}
+        defaultFilename={projectName.replace(/[^a-zA-Z0-9_-]/g, '') || 'motionshapes'}
         canvasRef={exportCanvasRef?.current ?? null}
         duration={contentDuration}
         canvasWidth={canvasWidth}
