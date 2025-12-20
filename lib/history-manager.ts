@@ -151,6 +151,23 @@ export interface HistorySnapshot {
   // Timeline state
   templateClips: TemplateClip[]
   
+  // Effect clips (glow, blur, confetti, etc.)
+  effectClips: Array<{
+    id: string
+    layerId: string
+    effectType: 'glow' | 'dropShadow' | 'blur' | 'glitch' | 'pixelate' | 'sparkles' | 'confetti'
+    start: number
+    duration: number
+    params: {
+      glowColor?: number
+      glowIntensity?: number
+      glowDistance?: number
+      blurStrength?: number
+      particleCount?: number
+      particleSpeed?: number
+    }
+  }>
+  
   // Animation parameters (global defaults)
   templateSpeed: number
   rollDistance: number

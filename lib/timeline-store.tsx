@@ -2909,6 +2909,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     // Undo/Redo: Get snapshotable state
     getSnapshot: () => ({
       templateClips: state.templateClips,
+      effectClips: state.effectClips,
       templateSpeed: state.templateSpeed,
       rollDistance: state.rollDistance,
       jumpHeight: state.jumpHeight,
@@ -2929,6 +2930,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     // Undo/Redo: Restore from snapshot
     restoreSnapshot: (snapshot: Partial<{
       templateClips: typeof state.templateClips
+      effectClips: typeof state.effectClips
       templateSpeed: number
       rollDistance: number
       jumpHeight: number
@@ -2962,6 +2964,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
       setState((prev) => ({
         ...prev,
         templateClips: clips,
+        effectClips: snapshot.effectClips ?? prev.effectClips,
         templateSpeed: snapshot.templateSpeed ?? prev.templateSpeed,
         rollDistance: snapshot.rollDistance ?? prev.rollDistance,
         jumpHeight: snapshot.jumpHeight ?? prev.jumpHeight,
