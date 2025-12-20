@@ -1539,7 +1539,7 @@ export default function DashboardLayout({
           {/* Mobile: Hamburger Button (Label for Checkbox) */}
           <label 
             htmlFor="mobile-menu-toggle" 
-            className="md:hidden p-2 -ml-2 text-neutral-400 hover:text-white cursor-pointer active:scale-95 transition-transform"
+            className="md:hidden p-2 -ml-2 text-neutral-400 hover:text-white cursor-pointer active:scale-95 transition-transform relative z-[80]"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
               <path d="M3 12h18M3 6h18M3 18h18" strokeLinecap="round" strokeLinejoin="round"/>
@@ -1550,25 +1550,25 @@ export default function DashboardLayout({
              <ChevronLeft className="h-4 w-4" />
           </Button>
           
-          <div className="flex items-center">
+          <div className="hidden md:flex items-center">
             <img src="/resources/wordmark.png" alt="MotionShapes" className="h-6 w-auto" />
           </div>
         </div>
 
         {/* Center - Editable Project Name */}
         {/* Center - Editable Project Name */}
-        <div className="hidden md:flex items-center justify-center absolute left-1/2 -translate-x-1/2">
+        <div className="flex items-center justify-center absolute left-10 md:left-1/2 md:-translate-x-1/2 max-w-[100px] md:max-w-[300px]">
           <input
             type="text"
             value={projectName}
             onChange={(e) => onProjectNameChange?.(e.target.value)}
-            className="bg-transparent text-center text-sm text-neutral-200 font-medium border border-transparent hover:border-white/10 focus:border-violet-500/50 outline-none focus:ring-4 focus:ring-violet-500/10 rounded-full px-4 py-1.5 hover:bg-white/5 focus:bg-white/5 transition-all duration-200 max-w-[300px] placeholder:text-neutral-600"
+            className="bg-transparent text-center text-xs md:text-sm text-neutral-200 font-medium border border-transparent hover:border-white/10 focus:border-violet-500/50 outline-none focus:ring-4 focus:ring-violet-500/10 rounded-full px-2 py-1 md:px-4 md:py-1.5 hover:bg-white/5 focus:bg-white/5 transition-all duration-200 w-full placeholder:text-neutral-600 truncate"
             placeholder="Untitled Project"
           />
         </div>
         
         {/* Right Side - Actions */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 md:gap-3">
             {/* Hidden file input for image import */}
             <input
               ref={fileInputRef}
@@ -1588,34 +1588,34 @@ export default function DashboardLayout({
                 onClick={() => setShowResetConfirm(true)}
                 variant="ghost"
                 size="sm"
-                className="hidden md:flex h-8 w-8 text-neutral-400 hover:text-red-400 hover:bg-red-500/10 text-xs rounded-full border border-transparent hover:border-red-500/20 transition-all duration-200"
+                className="flex h-7 w-7 md:h-8 md:w-8 text-neutral-400 hover:text-red-400 hover:bg-red-500/10 text-xs rounded-full border border-transparent hover:border-red-500/20 transition-all duration-200"
                 title="Reset Project"
             >
-                <RefreshCw className="h-3.5 w-3.5" />
+                <RefreshCw className="h-3 w-3 md:h-3.5 md:w-3.5" />
             </Button>
             <Button 
                 onClick={() => fileInputRef.current?.click()}
                 variant="ghost"
                 size="sm"
-                className="hidden md:flex h-8 gap-2 text-neutral-400 hover:text-white hover:bg-white/5 text-xs rounded-full border border-transparent hover:border-white/10 transition-all duration-200"
+                className="flex h-7 w-7 md:h-8 md:w-auto md:px-3 gap-2 text-neutral-400 hover:text-white hover:bg-white/5 text-xs rounded-full border border-transparent hover:border-white/10 transition-all duration-200"
             >
                 <Upload className="h-3.5 w-3.5" />
-                <span>Import</span>
+                <span className="hidden md:inline">Import</span>
             </Button>
             <Button 
                 onClick={() => setShowExportModal(true)}
                 variant="ghost"
                 size="sm"
-                className="hidden md:flex h-8 gap-2 bg-white text-black hover:bg-neutral-200 hover:text-black text-xs rounded-full font-medium transition-all duration-200 shadow-sm shadow-white/5 border border-transparent"
+                className="flex h-7 w-7 md:h-8 md:w-auto md:px-3 gap-2 bg-white text-black hover:bg-neutral-200 hover:text-black text-xs rounded-full font-medium transition-all duration-200 shadow-sm shadow-white/5 border border-transparent"
             >
                 <Download className="h-3.5 w-3.5" />
-                <span>Export</span>
+                <span className="hidden md:inline">Export</span>
             </Button>
 
             {/* Mobile: Settings Toggle (Label for Checkbox) */}
             <label 
               htmlFor="mobile-settings-toggle" 
-              className="md:hidden p-2 text-neutral-400 hover:text-white cursor-pointer active:scale-95 transition-transform"
+              className="md:hidden p-2 text-neutral-400 hover:text-white cursor-pointer active:scale-95 transition-transform relative z-[80]"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
                 <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" strokeLinejoin="round"/>
@@ -1627,15 +1627,15 @@ export default function DashboardLayout({
 
       
       {/* Mobile Drawer Backdrops */}
-      <label htmlFor="mobile-menu-toggle" className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40 hidden peer-checked/menu:block transition-opacity opacity-0 peer-checked/menu:opacity-100" />
-      <label htmlFor="mobile-settings-toggle" className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40 hidden peer-checked/settings:block transition-opacity opacity-0 peer-checked/settings:opacity-100" />
+      <label htmlFor="mobile-menu-toggle" className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] hidden peer-checked/menu:block transition-opacity opacity-0 peer-checked/menu:opacity-100" />
+      <label htmlFor="mobile-settings-toggle" className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] hidden peer-checked/settings:block transition-opacity opacity-0 peer-checked/settings:opacity-100" />
 
       <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-h-0 relative">
         {/* CSS-Only Checkbox Hack Triggers - Moved here to be siblings of peers */}
         <input type="checkbox" id="mobile-menu-toggle" className="peer/menu hidden" />
         <input type="checkbox" id="mobile-settings-toggle" className="peer/settings hidden" />
         {/* Left Sidebar Wrapper - Mobile: Off-screen Drawer (Left) | Desktop: Fixed (Left) */}
-        <div className="fixed md:relative inset-y-0 left-0 z-50 w-[280px] md:w-auto h-full bg-[#0a0a0a] flex flex-col border-r border-white/5 transition-transform duration-300 -translate-x-full md:translate-x-0 peer-checked/menu:translate-x-0 order-last md:order-first shadow-2xl md:shadow-none">
+        <div className="fixed md:relative inset-y-0 left-0 z-[70] w-[280px] md:w-auto h-full bg-[#0a0a0a] flex flex-col border-r border-white/5 transition-transform duration-300 -translate-x-full md:translate-x-0 peer-checked/menu:translate-x-0 order-last md:order-first shadow-2xl md:shadow-none">
         <aside 
             ref={sidebarRef}
             style={{ width: sidebarWidth }}
@@ -2998,7 +2998,7 @@ export default function DashboardLayout({
                        onUpdateLayerPosition?.(selectedLayerId, 0.5, 0.5)
                      }
                    }}
-                   className="absolute top-4 right-4 z-30 flex items-center gap-2 px-4 py-2 bg-neutral-900/80 backdrop-blur-md border border-white/10 hover:border-purple-500/50 hover:shadow-[0_0_20px_-5px_rgba(168,85,247,0.3)] text-neutral-200 hover:text-white text-xs font-medium rounded-full shadow-2xl group"
+                   className="absolute top-14 md:top-4 right-4 z-30 flex items-center gap-2 px-4 py-2 bg-neutral-900/80 backdrop-blur-md border border-white/10 hover:border-purple-500/50 hover:shadow-[0_0_20px_-5px_rgba(168,85,247,0.3)] text-neutral-200 hover:text-white text-xs font-medium rounded-full shadow-2xl group"
                  >
                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5 text-neutral-400 group-hover:text-purple-400 transition-colors">
                      <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -3018,7 +3018,7 @@ export default function DashboardLayout({
                    exit={{ opacity: 0, x: 20 }}
                    transition={{ duration: 0.3, ease: "easeOut" }}
                    onClick={() => onSmoothPath?.()}
-                   className="absolute top-16 right-4 z-30 flex items-center gap-2 px-4 py-2 bg-green-600/90 backdrop-blur-md border border-green-400/30 hover:border-green-400/60 hover:shadow-[0_0_20px_-5px_rgba(34,197,94,0.4)] text-white text-xs font-medium rounded-full shadow-2xl group"
+                   className="absolute top-28 md:top-16 right-4 z-30 flex items-center gap-2 px-4 py-2 bg-green-600/90 backdrop-blur-md border border-green-400/30 hover:border-green-400/60 hover:shadow-[0_0_20px_-5px_rgba(34,197,94,0.4)] text-white text-xs font-medium rounded-full shadow-2xl group"
                  >
                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
                      <path d="M4 20C8 12 12 8 20 4" strokeLinecap="round" />
@@ -3182,7 +3182,7 @@ export default function DashboardLayout({
 
 
         {/* RIGHT PROPERTIES PANEL - Mobile: Off-screen Drawer (Right) | Desktop: Fixed (Right) */}
-      <div className="fixed md:relative inset-y-0 right-0 z-50 w-[280px] md:w-80 h-full bg-[#0a0a0a]/95 backdrop-blur-xl flex flex-col border-l border-white/5 transition-transform duration-300 translate-x-full md:translate-x-0 peer-checked/settings:translate-x-0 order-last shadow-2xl md:shadow-none">
+      <div className="fixed md:relative inset-y-0 right-0 z-[70] w-[280px] md:w-80 h-full bg-[#0a0a0a]/95 backdrop-blur-xl flex flex-col border-l border-white/5 transition-transform duration-300 translate-x-full md:translate-x-0 peer-checked/settings:translate-x-0 order-last shadow-2xl md:shadow-none">
         <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6 space-y-6 md:space-y-8">
         <aside 
             ref={rightSidebarRef}
