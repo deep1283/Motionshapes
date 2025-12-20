@@ -2150,9 +2150,8 @@ function DashboardContent() {
   }, [layers, selectedLayerId, timeline, pushSnapshot])
 
   const handleDeleteLayer = useCallback((layerId: string) => {
-    // Remove all clips for this layer
-    const layerClips = templateClips.filter(c => c.layerId === layerId)
-    layerClips.forEach(clip => timeline.removeTemplateClip(clip.id))
+    // Remove track and all clips for this layer (includes track removal)
+    timeline.removeTrack(layerId)
     
     // Remove layer from state
     setLayers(prev => prev.filter(l => l.id !== layerId))
@@ -2169,7 +2168,7 @@ function DashboardContent() {
     setIsDeleteDialogOpen(false)
     setDeleteTarget(null)
     pushSnapshot()
-  }, [templateClips, timeline])
+  }, [timeline, pushSnapshot])
 
   // Keyboard shortcuts
   useEffect(() => {

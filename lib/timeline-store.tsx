@@ -302,6 +302,20 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     return newTrack
   }
 
+  // Remove a track when a layer is deleted
+  const removeTrack = (layerId: string) => {
+    setState((prev) => {
+      const newTracks = prev.tracks.filter(t => t.layerId !== layerId)
+      // Also remove any template clips for this layer
+      const newClips = prev.templateClips.filter(c => c.layerId !== layerId)
+      return {
+        ...prev,
+        tracks: newTracks,
+        templateClips: newClips,
+      }
+    })
+  }
+
   const setKeyframe = <T,>(
     layerId: string,
     key: keyof Pick<LayerTracks, 'position' | 'scale' | 'rotation' | 'opacity'>,
@@ -2896,6 +2910,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     // Get the real-time playhead position (60fps during playback, for PixiJS)
     getPlayheadTime: () => state.isPlaying ? internalCurrentTime : state.currentTime,
     ensureTrack,
+    removeTrack,
     updateTemplateClip,
     selectClip,
     addTemplateClip,

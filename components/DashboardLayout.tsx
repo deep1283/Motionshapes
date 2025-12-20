@@ -227,7 +227,7 @@ const ResizeClipItem = ({
               </select>
             </div>
             
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between mt-2">
               <span className="text-[10px] text-neutral-400">Anchor</span>
               <select value={anchor}
                 onChange={e => {
