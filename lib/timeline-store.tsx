@@ -2669,8 +2669,23 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
 
       sorted.forEach((clip, index) => {
 
-        // Skip path templates as they're handled separately
-        if (clip.template === 'path') return
+        // Handle path templates - add them to track.paths
+        if (clip.template === 'path' && clip.parameters?.pathPoints) {
+          const start = Number.isFinite(clip.start) ? (clip.start as number) : 0
+          const duration = Number.isFinite(clip.duration) ? (clip.duration as number) : 0
+          
+          track.paths = [
+            ...(track.paths ?? []),
+            {
+              id: clip.id,
+              startTime: start,
+              duration: duration,
+              points: clip.parameters.pathPoints,
+              easing: (clip.parameters?.pathEasing as any) || 'linear'
+            }
+          ]
+          return // Skip rest of processing for path clips
+        }
         
         const start = Number.isFinite(clip.start) ? (clip.start as number) : 0
         const duration = Number.isFinite(clip.duration) ? (clip.duration as number) : 0

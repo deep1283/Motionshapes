@@ -72,6 +72,7 @@ export default function DashboardPage() {
 function DashboardContent() {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(true)
+  const [hasLoadedProject, setHasLoadedProject] = useState(false) // Prevents saves until restoration complete
   const [userId, setUserId] = useState<string | null>(null)
   const [projectId, setProjectId] = useState<string | null>(null)
   const [projectName, setProjectName] = useState('Untitled Project')
@@ -211,7 +212,26 @@ function DashboardContent() {
         
         // Restore timeline
         if (existingProject.timeline_snapshot && typeof existingProject.timeline_snapshot === 'object') {
-          timeline.restoreSnapshot(existingProject.timeline_snapshot as Parameters<typeof timeline.restoreSnapshot>[0])
+          const snapshot = existingProject.timeline_snapshot as Parameters<typeof timeline.restoreSnapshot>[0]
+          // Debug: Check if path clips have pathPoints
+          console.log('[DEBUG] Restoring timeline snapshot:', {
+            templateClipsCount: snapshot.templateClips?.length,
+            pathClips: snapshot.templateClips?.filter((c: any) => c.template === 'path').map((c: any) => ({
+              id: c.id,
+              hasPathPoints: !!c.parameters?.pathPoints,
+              pathPointsLength: c.parameters?.pathPoints?.length,
+              firstPoint: c.parameters?.pathPoints?.[0],
+              lastPoint: c.parameters?.pathPoints?.[c.parameters?.pathPoints?.length - 1],
+            })),
+          })
+          timeline.restoreSnapshot(snapshot)
+          
+          // Verify restoration worked
+          const restoredState = timeline.getState()
+          console.log('[DEBUG] After restoreSnapshot - templateClips:', {
+            count: restoredState.templateClips?.length,
+            pathClips: restoredState.templateClips?.filter(c => c.template === 'path').length,
+          })
         }
         
         // Restore background
@@ -224,6 +244,8 @@ function DashboardContent() {
       }
       
       setIsLoading(false)
+      // Enable auto-save now that project loading is complete
+      setHasLoadedProject(true)
     }
 
     checkUserAndLoadProject()
@@ -279,7 +301,7 @@ function DashboardContent() {
   // Auto-save to Supabase (silent, every 30 seconds)
   const lastSavedRef = useRef<string>('')
   useEffect(() => {
-    if (!userId || isLoading) return
+    if (!userId || isLoading || !hasLoadedProject) return
     
     const saveInterval = setInterval(async () => {
       // Create a hash of current state to detect changes
@@ -311,11 +333,11 @@ function DashboardContent() {
     }, 30000) // Every 30 seconds
     
     return () => clearInterval(saveInterval)
-  }, [userId, projectId, layers, layerOrder, timeline, background, isLoading])
+  }, [userId, projectId, layers, layerOrder, timeline, background, isLoading, hasLoadedProject, projectName])
 
   // Save on significant actions (debounced)
   const triggerAutoSave = useCallback(() => {
-    if (!userId || isLoading) return
+    if (!userId || isLoading || !hasLoadedProject) return
     
     // Debounce saves to avoid too many DB calls
     const currentState = JSON.stringify({
@@ -327,21 +349,38 @@ function DashboardContent() {
     
     if (currentState === lastSavedRef.current) return
     
+    const snapshotToSave = timeline.getSnapshot()
+    
+    // Debug: Log what we're saving
+    console.log('[DEBUG] Saving timeline snapshot:', {
+      templateClipsCount: snapshotToSave.templateClips?.length,
+      pathClips: snapshotToSave.templateClips?.filter((c: any) => c.template === 'path').map((c: any) => ({
+        id: c.id,
+        hasPathPoints: !!c.parameters?.pathPoints,
+        pathPointsLength: c.parameters?.pathPoints?.length,
+        firstPoint: c.parameters?.pathPoints?.[0],
+        lastPoint: c.parameters?.pathPoints?.[c.parameters?.pathPoints?.length - 1],
+      })),
+    })
+    
     saveProjectToSupabase(projectId, userId, {
       name: projectName,
       layers: layers as unknown[],
       layer_order: layerOrder,
-      timeline_snapshot: timeline.getSnapshot(),
+      timeline_snapshot: snapshotToSave,
       background_color: background.solid,
     }).then(result => {
       if (result) {
+        console.log('[DEBUG] Save successful:', result.id)
         if (!projectId && result.id) {
           setProjectId(result.id)
         }
         lastSavedRef.current = currentState
+      } else {
+        console.log('[DEBUG] Save failed!')
       }
     })
-  }, [userId, projectId, layers, layerOrder, timeline, background, isLoading])
+  }, [userId, projectId, layers, layerOrder, timeline, background, isLoading, projectName])
 
   // Debounced auto-save (triggered on changes)
   const debouncedAutoSave = useMemo(
@@ -349,11 +388,11 @@ function DashboardContent() {
     [triggerAutoSave]
   )
 
-  // Trigger save on state changes
+  // Trigger save on state changes (including timeline clip changes)
   useEffect(() => {
     if (!userId || isLoading || layers.length === 0) return
     debouncedAutoSave()
-  }, [layers, layerOrder, debouncedAutoSave, userId, isLoading])
+  }, [layers, layerOrder, templateClips, debouncedAutoSave, userId, isLoading])
   // Undo handler
   const handleUndo = useCallback(() => {
     const snapshot = historyManagerRef.current.undo()
@@ -463,6 +502,48 @@ function DashboardContent() {
     setCanUndo(historyManagerRef.current.canUndo())
     setCanRedo(historyManagerRef.current.canRedo())
   }, [timeline, selectedLayerId, selectedClipId])
+
+  // Reset handler - clears all state and Supabase project
+  const handleReset = useCallback(async () => {
+    // Clear all local state
+    setLayers([])
+    setLayerOrder([])
+    setSelectedLayerId('')
+    setSelectedClipId('')
+    setSelectedTemplate('')
+    setProjectName('Untitled Project')
+    setBackground({
+      mode: 'transparent',
+      solid: '#000000',
+      from: '#6366f1',
+      to: '#a855f7',
+      opacity: 1,
+      gradientType: 'linear',
+      gradientPosition: 50,
+    })
+    
+    // Clear timeline
+    timeline.clear()
+    
+    // Clear history
+    historyManagerRef.current.clear()
+    setCanUndo(false)
+    setCanRedo(false)
+    
+    // Force canvas refresh
+    setTemplateVersion(v => v + 1)
+    
+    // Save empty state to Supabase
+    if (projectId && userId) {
+      await saveProjectToSupabase(projectId, userId, {
+        name: 'Untitled Project',
+        layers: [],
+        layer_order: [],
+        timeline_snapshot: {},
+        background_color: '#000000',
+      })
+    }
+  }, [projectId, userId, timeline])
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -2173,6 +2254,7 @@ function DashboardContent() {
         onBackgroundChange={setBackground}
         projectName={projectName}
         onProjectNameChange={setProjectName}
+        onReset={handleReset}
         templateSpeed={templateSpeed}
         rollDistance={rollDistance}
         jumpHeight={jumpHeight}

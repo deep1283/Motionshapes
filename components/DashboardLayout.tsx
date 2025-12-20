@@ -43,7 +43,8 @@ import {
   ChevronRight,
   Trash2,
   Image as ImageIcon,
-  X
+  X,
+  RefreshCw
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
@@ -53,6 +54,7 @@ import { TemplatePreview } from '@/components/TemplatePreview'
 import TimelinePanel from '@/components/TimelinePanel'
 import FontPicker from '@/components/FontPicker'
 import { ExploreShapesModal } from '@/components/ExploreShapesModal'
+import ConfirmDialog from '@/components/ConfirmDialog'
 import { ExportModal } from '@/components/ExportModal'
 import { useTimeline, useTimelineActions } from '@/lib/timeline-store'
 
@@ -631,6 +633,8 @@ interface DashboardLayoutProps {
   // Project name
   projectName?: string
   onProjectNameChange?: (name: string) => void
+  // Reset project
+  onReset?: () => void
 }
 
 export default function DashboardLayout({ 
@@ -744,6 +748,7 @@ export default function DashboardLayout({
   exportRestoreFromExportRef,
   projectName = 'Untitled Project',
   onProjectNameChange,
+  onReset,
 }: DashboardLayoutProps) {
   const router = useRouter()
   const supabase = createClient()
@@ -779,6 +784,7 @@ export default function DashboardLayout({
   
   // Export modal state
   const [showExportModal, setShowExportModal] = useState(false)
+  const [showResetConfirm, setShowResetConfirm] = useState(false)
   
   // Custom animation state - Set allows multiple panels to be expanded simultaneously
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set())
@@ -1578,6 +1584,15 @@ export default function DashboardLayout({
                 e.target.value = ''
               }}
             />
+            <Button 
+                onClick={() => setShowResetConfirm(true)}
+                variant="ghost"
+                size="sm"
+                className="hidden md:flex h-8 w-8 text-neutral-400 hover:text-red-400 hover:bg-red-500/10 text-xs rounded-full border border-transparent hover:border-red-500/20 transition-all duration-200"
+                title="Reset Project"
+            >
+                <RefreshCw className="h-3.5 w-3.5" />
+            </Button>
             <Button 
                 onClick={() => fileInputRef.current?.click()}
                 variant="ghost"
@@ -5015,6 +5030,22 @@ export default function DashboardLayout({
         )}
       </AnimatePresence>
       
+      
+      {/* Reset Confirmation Modal */}
+      <ConfirmDialog
+        isOpen={showResetConfirm}
+        title="Reset Project"
+        message="This will delete all shapes, clips, and start fresh. This action cannot be undone."
+        confirmText="Reset"
+        cancelText="Cancel"
+        variant="danger"
+        onConfirm={() => {
+          setShowResetConfirm(false)
+          onReset?.()
+        }}
+        onCancel={() => setShowResetConfirm(false)}
+      />
+
       {/* Export Modal */}
       <ExportModal
         isOpen={showExportModal}
