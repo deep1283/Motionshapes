@@ -3182,18 +3182,21 @@ export default function DashboardLayout({
 
 
         {/* RIGHT PROPERTIES PANEL - Mobile: Off-screen Drawer (Right) | Desktop: Fixed (Right) */}
-      <div className="fixed md:relative inset-y-0 right-0 z-[70] w-[280px] md:w-80 h-full bg-[#0a0a0a]/95 backdrop-blur-xl flex flex-col border-l border-white/5 transition-transform duration-300 translate-x-full md:translate-x-0 peer-checked/settings:translate-x-0 order-last shadow-2xl md:shadow-none">
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6 space-y-6 md:space-y-8">
+      {/* Right Sidebar Wrapper */}
+      <div className="fixed md:relative inset-y-0 right-0 z-[70] w-[280px] md:w-auto h-full bg-[#0a0a0a] flex flex-col border-l border-white/5 transition-transform duration-300 translate-x-full md:translate-x-0 peer-checked/settings:translate-x-0 order-last shadow-2xl md:shadow-none">
+        
+        {/* Resize Handle - Positioned on the left edge */}
+        <div
+            className="absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-violet-500/50 active:bg-violet-500/50 transition-colors z-50 -translate-x-1/2"
+            onMouseDown={startRightSidebarResize}
+        />
+
         <aside 
             ref={rightSidebarRef}
             style={{ width: rightSidebarWidth }}
-            className="relative border-l border-white/5 bg-[#0a0a0a] p-4 flex flex-col gap-4 overflow-y-auto overscroll-contain shrink-0 min-h-0 max-h-screen pb-[150vh] scroll-smooth"
+            className="relative w-full h-full flex flex-col gap-6 overflow-y-auto overscroll-contain p-4 min-h-0"
         >
-          {/* Resize Handle */}
-          <div
-            className="absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-purple-500/50 active:bg-purple-500/50 transition-colors z-50"
-            onMouseDown={startRightSidebarResize}
-          />
+
 
           {/* Background Settings */}
           <div className="mb-6 space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">
@@ -3211,10 +3214,10 @@ export default function DashboardLayout({
             {!isBackgroundPanelCollapsed && (
               <>
             {/* Mode buttons - Segmented Control Look */}
-            <div className="flex bg-neutral-900 rounded-lg p-1 border border-white/5">
+            <div className="grid grid-cols-4 bg-neutral-900 rounded-lg p-1 border border-white/5 gap-0.5">
               <button
                 className={cn(
-                  "flex-1 py-1.5 px-2 text-[10px] font-medium rounded-md transition-all",
+                  "flex items-center justify-center py-1.5 px-0.5 text-[10px] font-medium rounded-md transition-all",
                   background.mode === 'transparent' 
                     ? "bg-white/10 text-white shadow-sm" 
                     : "text-neutral-500 hover:text-neutral-300 hover:bg-white/5"
@@ -3225,7 +3228,7 @@ export default function DashboardLayout({
               </button>
               <button
                 className={cn(
-                  "flex-1 py-1.5 px-2 text-[10px] font-medium rounded-md transition-all",
+                  "flex items-center justify-center py-1.5 px-0.5 text-[10px] font-medium rounded-md transition-all",
                   background.mode === 'solid' 
                     ? "bg-white/10 text-white shadow-sm" 
                     : "text-neutral-500 hover:text-neutral-300 hover:bg-white/5"
@@ -3236,7 +3239,7 @@ export default function DashboardLayout({
               </button>
               <button
                 className={cn(
-                  "flex-1 py-1.5 px-2 text-[10px] font-medium rounded-md transition-all",
+                  "flex items-center justify-center py-1.5 px-0.5 text-[10px] font-medium rounded-md transition-all",
                   background.mode === 'gradient' 
                     ? "bg-white/10 text-white shadow-sm" 
                     : "text-neutral-500 hover:text-neutral-300 hover:bg-white/5"
@@ -3247,7 +3250,7 @@ export default function DashboardLayout({
               </button>
               <button
                 className={cn(
-                  "flex-1 py-1.5 px-2 text-[10px] font-medium rounded-md transition-all",
+                  "flex items-center justify-center py-1.5 px-0.5 text-[10px] font-medium rounded-md transition-all",
                   background.mode === 'image' 
                     ? "bg-white/10 text-white shadow-sm" 
                     : "text-neutral-500 hover:text-neutral-300 hover:bg-white/5"
@@ -4914,10 +4917,9 @@ export default function DashboardLayout({
         </aside>
       </div>
       </div>
-      </div>
 
       {/* Bottom Timeline - Absolute Overlay */}
-      <div className="absolute bottom-0 left-0 right-0 z-50">
+      <div className="absolute bottom-0 left-0 right-0 z-[90]">
         <TimelinePanel
           layers={layers}
           layerOrder={layerOrder}
