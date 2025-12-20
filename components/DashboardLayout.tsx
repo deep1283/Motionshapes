@@ -138,6 +138,7 @@ const ResizeClipItem = ({
                     setWidthFrom(String(v))
                     updateParam('resizeFromWidth', v)
                   }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
                   className="w-20 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-400 text-right focus:outline-none focus:border-violet-500/50"
                 />
               </div>
@@ -150,6 +151,7 @@ const ResizeClipItem = ({
                     setHeightFrom(String(v))
                     updateParam('resizeFromHeight', v)
                   }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
                   className="w-20 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-400 text-right focus:outline-none focus:border-violet-500/50"
                 />
               </div>
@@ -169,6 +171,7 @@ const ResizeClipItem = ({
                     setWidthTo(String(v))
                     updateParam('resizeToWidth', v)
                   }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
                   className="w-20 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200 text-right focus:outline-none focus:border-violet-500/50"
                 />
               </div>
@@ -181,6 +184,7 @@ const ResizeClipItem = ({
                     setHeightTo(String(v))
                     updateParam('resizeToHeight', v)
                   }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
                   className="w-20 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200 text-right focus:outline-none focus:border-violet-500/50"
                 />
               </div>
@@ -200,6 +204,7 @@ const ResizeClipItem = ({
                       timeline.updateTemplateClip(clip.layerId, clip.id, { duration: val * 1000 })
                     }
                   }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
                   className="w-full px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200 text-right pr-4 focus:outline-none focus:border-violet-500/50"
                 />
                 <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-neutral-500">s</span>
@@ -295,6 +300,7 @@ const RotateClipItem = ({
                   setAngleFrom(String(v))
                   updateParam('rotateFromAngle', v)
                 }}
+                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
                 className="w-full px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-400 text-right pr-4 focus:outline-none focus:border-violet-500/50"
               />
               <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-neutral-500">°</span>
@@ -310,6 +316,7 @@ const RotateClipItem = ({
                   setAngleTo(String(v))
                   updateParam('rotateToAngle', v)
                 }}
+                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
                 className="w-full px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200 text-right pr-4 focus:outline-none focus:border-violet-500/50"
               />
               <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-neutral-500">°</span>
@@ -327,6 +334,7 @@ const RotateClipItem = ({
                      timeline.updateTemplateClip(clip.layerId, clip.id, { duration: val * 1000 })
                    }
                 }}
+                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
                 className="w-full px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200 text-right pr-4 focus:outline-none focus:border-violet-500/50"
               />
               <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-neutral-500">s</span>
@@ -404,14 +412,20 @@ const ColorClipItem = ({
             <span className="text-[10px] text-neutral-500">From</span>
             <div className="flex items-center gap-2">
                <input type="color" value={colorFrom} onChange={e => handleColorChange('colorFrom', e)} className="w-6 h-6 rounded bg-transparent border-0 cursor-pointer" />
-               <input type="text" value={colorFrom} onChange={e => handleColorChange('colorFrom', e)} className="w-16 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-400 text-right focus:outline-none focus:border-violet-500/50" />
+               <input type="text" value={colorFrom} onChange={e => handleColorChange('colorFrom', e)} 
+                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                className="w-16 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-400 text-right focus:outline-none focus:border-violet-500/50" 
+              />
             </div>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-[10px] text-neutral-500">To</span>
             <div className="flex items-center gap-2">
                <input type="color" value={colorTo} onChange={e => handleColorChange('colorTo', e)} className="w-6 h-6 rounded bg-transparent border-0 cursor-pointer" />
-               <input type="text" value={colorTo} onChange={e => handleColorChange('colorTo', e)} className="w-16 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200 text-right focus:outline-none focus:border-violet-500/50" />
+               <input type="text" value={colorTo} onChange={e => handleColorChange('colorTo', e)} 
+                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                className="w-16 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200 text-right focus:outline-none focus:border-violet-500/50" 
+              />
             </div>
           </div>
           <div className="h-px bg-white/10" />
@@ -426,6 +440,7 @@ const ColorClipItem = ({
                      timeline.updateTemplateClip(clip.layerId, clip.id, { duration: val * 1000 })
                    }
                 }}
+                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
                 className="w-full px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200 text-right pr-4 focus:outline-none focus:border-violet-500/50"
               />
               <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-neutral-500">s</span>

@@ -857,9 +857,17 @@ function DashboardContent() {
           imageUrl,
         }
 
-        setLayers((prev) => [...prev, newLayer])
+        // Build the new state arrays explicitly (don't rely on React state update)
+        const newLayers = [...layers, newLayer]
+        const newLayerOrder = [...layerOrder, newLayer.id]
+
+        setLayers(newLayers)
         setSelectedLayerId(newLayer.id)
-        pushSnapshot()
+        setLayerOrder(newLayerOrder)
+        
+        // Push snapshot with explicit new state (bypasses stale closure)
+        pushSnapshotImmediate(newLayers, newLayerOrder)
+
         timeline.ensureTrack(newLayer.id, {
           position: { x: newLayer.x, y: newLayer.y },
           scale: newLayer.scale,
@@ -867,7 +875,6 @@ function DashboardContent() {
           opacity: 1,
         })
         lastLayerBaseRef.current[newLayer.id] = { x: newLayer.x, y: newLayer.y, scale: newLayer.scale }
-        setLayerOrder((prev) => [...prev, newLayer.id])
         setSelectedTemplate('')
         setTemplateVersion((v) => v + 1)
         
@@ -911,9 +918,16 @@ function DashboardContent() {
           imageUrl: data.imageUrl,
         }
         
-        setLayers((prev) => [...prev, newLayer])
-        setLayerOrder((prev) => [...prev, newLayer.id])
+        // Build the new state arrays explicitly (don't rely on React state update)
+        const newLayers = [...layers, newLayer]
+        const newLayerOrder = [...layerOrder, newLayer.id]
+
+        setLayers(newLayers)
+        setLayerOrder(newLayerOrder)
         setSelectedLayerId(newLayer.id)
+        
+        // Push snapshot with explicit new state (bypasses stale closure)
+        pushSnapshotImmediate(newLayers, newLayerOrder)
         
         const track = timeline.ensureTrack(newLayer.id, {
           position: { x: newLayer.x, y: newLayer.y },
@@ -957,13 +971,16 @@ function DashboardContent() {
       const data = await res.json()
       if (data.imageUrl) {
         // Update layer with new image
-        setLayers((prev) =>
-          prev.map((l) =>
-            l.id === layerId
-              ? { ...l, imageUrl: data.imageUrl }
-              : l
-          )
+        // Build new layers array
+        const newLayers = layers.map((l) =>
+          l.id === layerId
+            ? { ...l, imageUrl: data.imageUrl }
+            : l
         )
+        setLayers(newLayers)
+        
+        // Push snapshot with explicit new state
+        pushSnapshotImmediate(newLayers, layerOrder)
       }
     } catch (error) {
       console.error('AI Edit failed', error)
@@ -993,9 +1010,17 @@ function DashboardContent() {
       iconName, // Store icon name for reference
     }
 
-    setLayers((prev) => [...prev, newLayer])
+    // Build the new state arrays explicitly (don't rely on React state update)
+    const newLayers = [...layers, newLayer]
+    const newLayerOrder = [...layerOrder, newLayer.id]
+
+    setLayers(newLayers)
     setSelectedLayerId(newLayer.id)
-    pushSnapshot()
+    setLayerOrder(newLayerOrder)
+    
+    // Push snapshot with explicit new state (bypasses stale closure)
+    pushSnapshotImmediate(newLayers, newLayerOrder)
+
     timeline.ensureTrack(newLayer.id, {
       position: { x: newLayer.x, y: newLayer.y },
       scale: newLayer.scale,
@@ -1003,7 +1028,6 @@ function DashboardContent() {
       opacity: 1,
     })
     lastLayerBaseRef.current[newLayer.id] = { x: newLayer.x, y: newLayer.y, scale: newLayer.scale }
-    setLayerOrder((prev) => [...prev, newLayer.id])
     setSelectedTemplate('')
     setTemplateVersion((v) => v + 1)
     
@@ -1032,9 +1056,17 @@ function DashboardContent() {
       fontWeight: 600,
     }
 
-    setLayers((prev) => [...prev, newLayer])
+    // Build the new state arrays explicitly (don't rely on React state update)
+    const newLayers = [...layers, newLayer]
+    const newLayerOrder = [...layerOrder, newLayer.id]
+    
+    setLayers(newLayers)
     setSelectedLayerId(newLayer.id)
-    pushSnapshot()
+    setLayerOrder(newLayerOrder)
+    
+    // Push snapshot with explicit new state (bypasses stale closure)
+    pushSnapshotImmediate(newLayers, newLayerOrder)
+    
     timeline.ensureTrack(newLayer.id, {
       position: { x: newLayer.x, y: newLayer.y },
       scale: newLayer.scale,
@@ -1042,7 +1074,6 @@ function DashboardContent() {
       opacity: 1,
     })
     lastLayerBaseRef.current[newLayer.id] = { x: newLayer.x, y: newLayer.y, scale: newLayer.scale }
-    setLayerOrder((prev) => [...prev, newLayer.id])
     setSelectedTemplate('')
     setTemplateVersion((v) => v + 1)
     
@@ -1075,9 +1106,17 @@ function DashboardContent() {
       counterPrefix: '',
     }
 
-    setLayers((prev) => [...prev, newLayer])
+    // Build the new state arrays explicitly (don't rely on React state update)
+    const newLayers = [...layers, newLayer]
+    const newLayerOrder = [...layerOrder, newLayer.id]
+
+    setLayers(newLayers)
     setSelectedLayerId(newLayer.id)
-    pushSnapshot()
+    setLayerOrder(newLayerOrder)
+    
+    // Push snapshot with explicit new state (bypasses stale closure)
+    pushSnapshotImmediate(newLayers, newLayerOrder)
+
     // Create track with visibility bar - counter animation is driven by this bar's duration
     timeline.ensureTrack(newLayer.id, {
       position: { x: newLayer.x, y: newLayer.y },
@@ -1087,7 +1126,6 @@ function DashboardContent() {
     })
     // No addTemplateClip - counter animation uses the visibility bar duration directly
     lastLayerBaseRef.current[newLayer.id] = { x: newLayer.x, y: newLayer.y, scale: newLayer.scale }
-    setLayerOrder((prev) => [...prev, newLayer.id])
     setSelectedTemplate('')
     setTemplateVersion((v) => v + 1)
   }
