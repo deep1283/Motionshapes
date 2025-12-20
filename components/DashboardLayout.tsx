@@ -1539,11 +1539,8 @@ export default function DashboardLayout({
              <ChevronLeft className="h-4 w-4" />
           </Button>
           
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-white/10 to-white/5 border border-white/5 shadow-inner">
-                <Layout className="h-4 w-4 text-white" />
-            </div>
-            <span className="font-semibold tracking-tight text-sm text-neutral-200">MotionShapes</span>
+          <div className="flex items-center">
+            <img src="/resources/wordmark.png" alt="MotionShapes" className="h-6 w-auto" />
           </div>
         </div>
 
