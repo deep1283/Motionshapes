@@ -628,6 +628,9 @@ interface DashboardLayoutProps {
   exportRestoreStagePositionRef?: React.MutableRefObject<(() => void) | null>
   exportResizeForExportRef?: React.MutableRefObject<((width: number, height: number) => void) | null>
   exportRestoreFromExportRef?: React.MutableRefObject<(() => void) | null>
+  // Project name
+  projectName?: string
+  onProjectNameChange?: (name: string) => void
 }
 
 export default function DashboardLayout({ 
@@ -739,6 +742,8 @@ export default function DashboardLayout({
   exportRestoreStagePositionRef,
   exportResizeForExportRef,
   exportRestoreFromExportRef,
+  projectName = 'Untitled Project',
+  onProjectNameChange,
 }: DashboardLayoutProps) {
   const router = useRouter()
   const supabase = createClient()
@@ -1535,7 +1540,7 @@ export default function DashboardLayout({
             </svg>
           </label>
 
-          <Button variant="ghost" size="icon" className="hidden md:flex h-8 w-8 text-neutral-400 hover:text-white hover:bg-white/5" onClick={() => router.push('/')}>
+          <Button variant="ghost" size="icon" className="hidden md:flex h-8 w-8 text-neutral-400 hover:text-white hover:bg-white/5" onClick={handleLogout} title="Logout">
              <ChevronLeft className="h-4 w-4" />
           </Button>
           
@@ -1544,99 +1549,20 @@ export default function DashboardLayout({
           </div>
         </div>
 
-        {/* Center Navigation Tabs */}
-        <div className="hidden md:flex items-center justify-evenly w-[400px] lg:w-[500px] mx-auto bg-white/5 p-1 rounded-lg border border-white/5">
-            <button
-              onClick={() => setActiveTab('templates')}
-              className={cn(
-                "flex-1 border-b-2 py-3 text-[11px] font-medium transition-colors",
-                activeTab === 'templates'
-                  ? "border-violet-500 text-violet-400"
-                  : "border-transparent text-neutral-400 hover:text-neutral-200"
-              )}
-            >
-              Templates
-            </button>
-            <button
-              onClick={() => setActiveTab('animations')}
-              className={cn(
-                "flex-1 border-b-2 py-3 text-[11px] font-medium transition-colors",
-                activeTab === 'animations'
-                  ? "border-violet-500 text-violet-400"
-                  : "border-transparent text-neutral-400 hover:text-neutral-200"
-              )}
-            >
-              Animations
-            </button>
-            <button
-              onClick={() => setActiveTab('effects')}
-              className={cn(
-                "flex-1 border-b-2 py-3 text-[11px] font-medium transition-colors",
-                activeTab === 'effects'
-                  ? "border-violet-500 text-violet-400"
-                  : "border-transparent text-neutral-400 hover:text-neutral-200"
-              )}
-            >
-              Effects
-            </button>
-            <button
-              onClick={() => setActiveTab('shapes')}
-              className={cn(
-                "flex-1 border-b-2 py-3 text-[11px] font-medium transition-colors",
-                activeTab === 'shapes'
-                  ? "border-violet-500 text-violet-400"
-                  : "border-transparent text-neutral-400 hover:text-neutral-200"
-              )}
-            >
-              Shapes
-            </button>
-            <button
-              onClick={() => setActiveTab('transitions')}
-              className={cn(
-                "flex-1 border-b-2 py-3 text-[11px] font-medium transition-colors",
-                activeTab === 'transitions'
-                  ? "border-violet-500 text-violet-400"
-                  : "border-transparent text-neutral-400 hover:text-neutral-200"
-              )}
-            >
-              Transitions
-            </button>
-            <button
-              onClick={() => setActiveTab('custom')}
-              className={cn(
-                "flex-1 border-b-2 py-3 text-[11px] font-medium transition-colors",
-                activeTab === 'custom'
-                  ? "border-violet-500 text-violet-400"
-                  : "border-transparent text-neutral-400 hover:text-neutral-200"
-              )}
-            >
-              Custom
-            </button>
+        {/* Center - Editable Project Name */}
+        {/* Center - Editable Project Name */}
+        <div className="hidden md:flex items-center justify-center absolute left-1/2 -translate-x-1/2">
+          <input
+            type="text"
+            value={projectName}
+            onChange={(e) => onProjectNameChange?.(e.target.value)}
+            className="bg-transparent text-center text-sm text-neutral-200 font-medium border border-transparent hover:border-white/10 focus:border-violet-500/50 outline-none focus:ring-4 focus:ring-violet-500/10 rounded-full px-4 py-1.5 hover:bg-white/5 focus:bg-white/5 transition-all duration-200 max-w-[300px] placeholder:text-neutral-600"
+            placeholder="Untitled Project"
+          />
         </div>
         
+        {/* Right Side - Actions */}
         <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1 mr-2 border-r border-white/10 pr-3">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-neutral-400 hover:text-white hover:bg-white/5 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-neutral-400"
-                onClick={onUndo}
-                disabled={!canUndo}
-                title="Undo (Cmd+Z)"
-              >
-                <Undo className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-neutral-400 hover:text-white hover:bg-white/5 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-neutral-400"
-                onClick={onRedo}
-                disabled={!canRedo}
-                title="Redo (Cmd+Shift+Z)"
-              >
-                <Redo className="h-4 w-4" />
-              </Button>
-            </div>
             {/* Hidden file input for image import */}
             <input
               ref={fileInputRef}
@@ -1656,29 +1582,21 @@ export default function DashboardLayout({
                 onClick={() => fileInputRef.current?.click()}
                 variant="ghost"
                 size="sm"
-                className="h-8 gap-2 text-neutral-400 hover:text-white hover:bg-white/5 text-xs"
+                className="hidden md:flex h-8 gap-2 text-neutral-400 hover:text-white hover:bg-white/5 text-xs rounded-full border border-transparent hover:border-white/10 transition-all duration-200"
             >
                 <Upload className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Import</span>
+                <span>Import</span>
             </Button>
             <Button 
                 onClick={() => setShowExportModal(true)}
                 variant="ghost"
                 size="sm"
-                className="h-8 gap-2 text-neutral-400 hover:text-white hover:bg-white/5 text-xs"
+                className="hidden md:flex h-8 gap-2 bg-white text-black hover:bg-neutral-200 hover:text-black text-xs rounded-full font-medium transition-all duration-200 shadow-sm shadow-white/5 border border-transparent"
             >
                 <Download className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Export</span>
+                <span>Export</span>
             </Button>
-            <Button 
-                onClick={handleLogout}
-                variant="ghost"
-                size="sm"
-                className="h-8 gap-2 text-neutral-400 hover:text-white hover:bg-white/5 text-xs"
-            >
-                <LogOut className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Logout</span>
-            </Button>
+
             {/* Mobile: Settings Toggle (Label for Checkbox) */}
             <label 
               htmlFor="mobile-settings-toggle" 
@@ -1691,23 +1609,7 @@ export default function DashboardLayout({
         </div>
       </header>
       
-      {/* Mobile Sub-Header Navigation Tabs - Lower Layer */}
-      <div className="flex md:hidden items-center w-full h-12 border-b border-white/5 bg-[#0a0a0a]/80 backdrop-blur-xl shrink-0 overflow-x-auto no-scrollbar z-40 px-4 gap-4">
-            {['templates', 'animations', 'effects', 'shapes', 'transitions', 'custom'].map((tab) => (
-               <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab as typeof activeTab)}
-                  className={cn(
-                    "whitespace-nowrap px-3 py-1.5 text-xs font-medium rounded-full transition-colors capitalize shrink-0",
-                    activeTab === tab
-                      ? "bg-violet-500/20 text-violet-300 border border-violet-500/50"
-                      : "text-neutral-400 hover:text-white"
-                  )}
-               >
-                 {tab}
-               </button>
-            ))}
-      </div>
+
       
       {/* Mobile Drawer Backdrops */}
       <label htmlFor="mobile-menu-toggle" className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40 hidden peer-checked/menu:block transition-opacity opacity-0 peer-checked/menu:opacity-100" />
@@ -2909,6 +2811,26 @@ export default function DashboardLayout({
 
         {/* MAIN CONTENT AREA */}
         <div className="flex-1 flex flex-col relative min-w-0 h-[50vh] md:h-full order-1 md:order-none z-0">
+          
+          {/* Floating Navigation Tabs */}
+          <div className="absolute top-1 left-1/2 -translate-x-1/2 z-40 flex items-center justify-center max-w-[calc(100%-32px)]">
+            <div className="flex items-center gap-1 p-1 rounded-full bg-[#0a0a0a]/90 backdrop-blur-xl border border-white/10 shadow-2xl shadow-black/50 ring-1 ring-white/5 overflow-x-auto no-scrollbar max-w-full">
+              {['templates', 'animations', 'effects', 'shapes', 'transitions', 'custom'].map((tab) => (
+                <button
+                   key={tab}
+                   onClick={() => setActiveTab(tab as typeof activeTab)}
+                   className={cn(
+                     "whitespace-nowrap px-4 py-1.5 text-[11px] font-medium rounded-full transition-all duration-200 capitalize shrink-0 leading-none",
+                     activeTab === tab
+                       ? "bg-violet-500 text-white shadow-sm shadow-violet-500/20"
+                       : "text-neutral-400 hover:text-white hover:bg-white/5"
+                   )}
+                >
+                  {tab}
+                </button>
+             ))}
+            </div>
+          </div>
           
 
 

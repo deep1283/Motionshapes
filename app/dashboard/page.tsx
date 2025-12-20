@@ -13,6 +13,7 @@ import ConfirmDialog from '@/components/ConfirmDialog'
 import { HistoryManager, type HistorySnapshot } from '@/lib/history-manager'
 import { debounce } from '@/lib/utils'
 import { chaikinSmooth, calculatePathLength } from '@/lib/path-smoothing'
+import { loadActiveProject, saveProject as saveProjectToSupabase } from '@/lib/supabase-projects'
 
 // Dynamically import MotionCanvas to avoid SSR issues with Pixi.js
 const MotionCanvas = dynamic(() => import('@/components/MotionCanvas'), { 
@@ -71,6 +72,9 @@ export default function DashboardPage() {
 function DashboardContent() {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(true)
+  const [userId, setUserId] = useState<string | null>(null)
+  const [projectId, setProjectId] = useState<string | null>(null)
+  const [projectName, setProjectName] = useState('Untitled Project')
   const [selectedTemplate, setSelectedTemplate] = useState('')
   const [templateVersion, setTemplateVersion] = useState(0)
   const [layers, setLayers] = useState<Layer[]>([])
@@ -171,19 +175,59 @@ function DashboardContent() {
     }
   }, [selectedClipId, templateClips])
   useEffect(() => {
-    const checkUser = async () => {
+    const checkUserAndLoadProject = async () => {
       const supabase = createClient()
       const { data: { session } } = await supabase.auth.getSession()
 
       if (!session) {
         router.push('/')
-      } else {
-        setIsLoading(false)
+        return
       }
+      
+      // Store user ID for later saves
+      setUserId(session.user.id)
+      
+      // Try to load existing project
+      const existingProject = await loadActiveProject(session.user.id)
+      
+      if (existingProject) {
+        // Restore project state
+        setProjectId(existingProject.id ?? null)
+        
+        // Restore project name
+        if (existingProject.name) {
+          setProjectName(existingProject.name)
+        }
+        
+        // Restore layers
+        if (existingProject.layers && Array.isArray(existingProject.layers)) {
+          setLayers(existingProject.layers as Layer[])
+        }
+        
+        // Restore layer order
+        if (existingProject.layer_order && Array.isArray(existingProject.layer_order)) {
+          setLayerOrder(existingProject.layer_order as string[])
+        }
+        
+        // Restore timeline
+        if (existingProject.timeline_snapshot && typeof existingProject.timeline_snapshot === 'object') {
+          timeline.restoreSnapshot(existingProject.timeline_snapshot as Parameters<typeof timeline.restoreSnapshot>[0])
+        }
+        
+        // Restore background
+        if (existingProject.background_color) {
+          setBackground(prev => ({ ...prev, solid: existingProject.background_color ?? prev.solid }))
+        }
+        
+        // Trigger re-render
+        setTemplateVersion(v => v + 1)
+      }
+      
+      setIsLoading(false)
     }
 
-    checkUser()
-  }, [router])
+    checkUserAndLoadProject()
+  }, [router, timeline])
 
   // History Manager
   const historyManagerRef = useRef(new HistoryManager())
@@ -232,6 +276,84 @@ function DashboardContent() {
     [pushSnapshot]
   )
 
+  // Auto-save to Supabase (silent, every 30 seconds)
+  const lastSavedRef = useRef<string>('')
+  useEffect(() => {
+    if (!userId || isLoading) return
+    
+    const saveInterval = setInterval(async () => {
+      // Create a hash of current state to detect changes
+      const currentState = JSON.stringify({
+        layers,
+        layerOrder,
+        timeline: timeline.getSnapshot(),
+        background,
+      })
+      
+      // Only save if something changed
+      if (currentState === lastSavedRef.current) return
+      
+      const result = await saveProjectToSupabase(projectId, userId, {
+        name: projectName,
+        layers: layers as unknown[],
+        layer_order: layerOrder,
+        timeline_snapshot: timeline.getSnapshot(),
+        background_color: background.solid,
+      })
+      
+      if (result) {
+        // Update project ID if this was a new project
+        if (!projectId && result.id) {
+          setProjectId(result.id)
+        }
+        lastSavedRef.current = currentState
+      }
+    }, 30000) // Every 30 seconds
+    
+    return () => clearInterval(saveInterval)
+  }, [userId, projectId, layers, layerOrder, timeline, background, isLoading])
+
+  // Save on significant actions (debounced)
+  const triggerAutoSave = useCallback(() => {
+    if (!userId || isLoading) return
+    
+    // Debounce saves to avoid too many DB calls
+    const currentState = JSON.stringify({
+      layers,
+      layerOrder,
+      timeline: timeline.getSnapshot(),
+      background,
+    })
+    
+    if (currentState === lastSavedRef.current) return
+    
+    saveProjectToSupabase(projectId, userId, {
+      name: projectName,
+      layers: layers as unknown[],
+      layer_order: layerOrder,
+      timeline_snapshot: timeline.getSnapshot(),
+      background_color: background.solid,
+    }).then(result => {
+      if (result) {
+        if (!projectId && result.id) {
+          setProjectId(result.id)
+        }
+        lastSavedRef.current = currentState
+      }
+    })
+  }, [userId, projectId, layers, layerOrder, timeline, background, isLoading])
+
+  // Debounced auto-save (triggered on changes)
+  const debouncedAutoSave = useMemo(
+    () => debounce(triggerAutoSave, 5000),
+    [triggerAutoSave]
+  )
+
+  // Trigger save on state changes
+  useEffect(() => {
+    if (!userId || isLoading || layers.length === 0) return
+    debouncedAutoSave()
+  }, [layers, layerOrder, debouncedAutoSave, userId, isLoading])
   // Undo handler
   const handleUndo = useCallback(() => {
     const snapshot = historyManagerRef.current.undo()
@@ -2049,6 +2171,8 @@ function DashboardContent() {
         pathPointCount={pathPoints.length}
         background={background}
         onBackgroundChange={setBackground}
+        projectName={projectName}
+        onProjectNameChange={setProjectName}
         templateSpeed={templateSpeed}
         rollDistance={rollDistance}
         jumpHeight={jumpHeight}

@@ -1,5 +1,7 @@
 'use client'
 
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { motion } from 'framer-motion'
 import { ArrowRight, Play, Layers, Zap, MousePointer2 } from 'lucide-react'
@@ -8,6 +10,25 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 
 export default function Home() {
+  const router = useRouter()
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true)
+
+  // Redirect logged-in users directly to dashboard
+  useEffect(() => {
+    const checkAuth = async () => {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (session) {
+        router.push('/dashboard')
+      } else {
+        setIsCheckingAuth(false)
+      }
+    }
+    
+    checkAuth()
+  }, [router])
+
   const handleLogin = async () => {
     const supabase = createClient()
     await supabase.auth.signInWithOAuth({
@@ -16,6 +37,15 @@ export default function Home() {
         redirectTo: `${window.location.origin}/dashboard`,
       },
     })
+  }
+
+  // Show nothing while checking auth (prevents flash of home page)
+  if (isCheckingAuth) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-950">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+      </div>
+    )
   }
 
   return (
