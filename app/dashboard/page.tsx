@@ -1319,6 +1319,9 @@ function DashboardContent() {
         
         // Push snapshot with explicit new state
         pushSnapshotImmediate(newLayers, layerOrder)
+        
+        // Trigger canvas re-render
+        setTemplateVersion((v) => v + 1)
       }
     } catch (error) {
       console.error('AI Edit failed', error)

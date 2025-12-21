@@ -784,6 +784,8 @@ export default function DashboardLayout({
   }, [templateClips, timelineTracks, effectClips, clickMarkers])
   const [showBackgroundPanel, setShowBackgroundPanel] = useState(false)
   const [isBackgroundPanelCollapsed, setIsBackgroundPanelCollapsed] = useState(false)
+  const [bgPrompt, setBgPrompt] = useState('')
+  const [bgGenerating, setBgGenerating] = useState(false)
   const [isTransformPanelCollapsed, setIsTransformPanelCollapsed] = useState(false)
   const [activeTab, setActiveTab] = useState<'templates' | 'shapes' | 'effects' | 'animations' | 'transitions' | 'custom'>('shapes')
   const [animationType, setAnimationType] = useState<'in' | 'out' | 'custom'>('in')
@@ -2237,7 +2239,7 @@ export default function DashboardLayout({
                   Shapes
                 </h2>
                 
-                {/* Generate/Modify Image Button - Context Sensitive */}
+                {/* AI Generate/Modify Image - DISABLED for cost savings
                 {(() => {
                   const selectedLayer = layers.find(l => l.id === selectedLayerId)
                   const isImageSelected = selectedLayer?.type === 'image' && !!(selectedLayer as any)?.imageUrl
@@ -2267,6 +2269,7 @@ export default function DashboardLayout({
                     </div>
                   )
                 })()}
+                */}
 
                 {/* Explore Shapes Button */}
                 <div className="mb-4 px-2">
@@ -3540,6 +3543,75 @@ export default function DashboardLayout({
                       <span className="text-[10px] text-neutral-500">Click to upload image</span>
                     </div>
                   )}
+                </div>
+
+                {/* AI Background Generation */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-px bg-white/10" />
+                    <span className="text-[9px] text-neutral-500 uppercase tracking-wider">or generate with AI</span>
+                    <div className="flex-1 h-px bg-white/10" />
+                  </div>
+                  <input
+                    type="text"
+                    value={bgPrompt}
+                    onChange={(e) => setBgPrompt(e.target.value)}
+                    placeholder="Describe your background..."
+                    className="w-full px-3 py-2 text-xs bg-neutral-900 border border-white/10 rounded-lg text-white placeholder:text-neutral-500 focus:outline-none focus:border-purple-500/50"
+                  />
+                  <button
+                    disabled={!bgPrompt.trim() || bgGenerating}
+                    onClick={async () => {
+                      if (!bgPrompt.trim()) return
+                      setBgGenerating(true)
+                      try {
+                        // Only include baseImage if it's a valid data URL
+                        const isValidBaseImage = background.image && background.image.startsWith('data:image/')
+                        const res = await fetch('/api/gemini/generate-image', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ 
+                            prompt: bgPrompt,
+                            baseImage: isValidBaseImage ? background.image : undefined
+                          })
+                        })
+                        const data = await res.json()
+                        if (!res.ok) {
+                          console.error('Gemini API error:', data)
+                          throw new Error(data.error || 'Generation failed')
+                        }
+                        if (data.imageUrl) {
+                          // imageUrl is already a complete data URL from the API
+                          updateBackground({ image: data.imageUrl })
+                          setBgPrompt('') // Clear prompt on success
+                        }
+                      } catch (err) {
+                        console.error('AI background generation failed:', err)
+                        alert(`Failed to generate background: ${err instanceof Error ? err.message : 'Unknown error'}`)
+                      } finally {
+                        setBgGenerating(false)
+                      }
+                    }}
+                    className={cn(
+                      "w-full py-2 px-3 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-2",
+                      bgGenerating 
+                        ? "bg-purple-500/30 text-purple-300 cursor-wait"
+                        : bgPrompt.trim()
+                          ? "bg-purple-500 hover:bg-purple-400 text-white"
+                          : "bg-neutral-800 text-neutral-500 cursor-not-allowed"
+                    )}
+                  >
+                    {bgGenerating ? (
+                      <>
+                        <span className="animate-spin">⏳</span>
+                        Generating...
+                      </>
+                    ) : background.image ? (
+                      <>✨ Modify Background</>
+                    ) : (
+                      <>✨ Generate Background</>
+                    )}
+                  </button>
                 </div>
 
                 {/* Image mode selector */}
