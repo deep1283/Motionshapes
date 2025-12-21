@@ -1020,9 +1020,9 @@ export default function DashboardLayout({
 
   const [canvasY, setCanvasY] = useState(() => {
     if (typeof window === 'undefined') return 0
-    // Fixed viewport on mobile - always center
+    // Fixed viewport on mobile - shift up to reduce gap from floating tabs
     const isMobile = window.innerWidth < 768
-    if (isMobile) return 0
+    if (isMobile) return -50
     const saved = localStorage.getItem('canvasY')
     return saved ? parseInt(saved) : 0
   })
@@ -1681,7 +1681,7 @@ export default function DashboardLayout({
       <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-h-0 relative">
         {/* Left Sidebar Wrapper - Mobile: Off-screen Drawer (Left) | Desktop: Fixed (Left) */}
         <div className={cn(
-          "fixed md:relative inset-y-0 left-0 z-[70] w-[280px] md:w-auto h-full bg-[#0a0a0a] flex flex-col border-r border-white/5 transition-transform duration-300 order-last md:order-first shadow-2xl md:shadow-none",
+          "fixed md:relative top-12 md:top-0 bottom-0 left-0 z-[70] w-[280px] md:w-auto md:flex-shrink-0 h-[calc(100vh-3rem)] md:h-full bg-[#0a0a0a] flex flex-col border-r border-white/5 transition-transform duration-300 order-last md:order-first shadow-2xl md:shadow-none",
           isMobileLeftOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         )}>
         <aside 
@@ -3130,7 +3130,7 @@ export default function DashboardLayout({
                {/* Canvas Label */}
                <div
                  data-canvas-label
-                 className="absolute -top-10 left-0 flex flex-col cursor-pointer select-none pointer-events-auto z-20"
+                 className="hidden md:flex absolute -top-10 left-0 flex-col cursor-pointer select-none pointer-events-auto z-20"
                  onClick={handleLabelClick}
                  onPointerDown={handleLabelPointerDown}
                >
@@ -3142,7 +3142,7 @@ export default function DashboardLayout({
                </div>
                
                {/* Aspect Ratio Presets - Right side */}
-               <div className="absolute -top-7 right-0 flex items-center gap-1 select-none pointer-events-auto z-20">
+               <div className="hidden md:flex absolute -top-7 right-0 items-center gap-1 select-none pointer-events-auto z-20">
                  {[
                    { label: '9:16', width: 270, height: 480 },
                    { label: '16:9', width: 640, height: 360 },
@@ -3250,7 +3250,7 @@ export default function DashboardLayout({
         <aside 
             ref={rightSidebarRef}
             style={{ width: rightSidebarWidth }}
-            className="relative w-full h-full flex flex-col gap-6 overflow-y-auto overscroll-contain p-4 min-h-0"
+            className="relative w-full h-full flex flex-col gap-6 overflow-y-auto overscroll-contain p-4 pb-96 min-h-0"
         >
 
 
