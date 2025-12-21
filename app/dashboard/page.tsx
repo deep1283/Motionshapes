@@ -635,6 +635,13 @@ function DashboardContent() {
       return
     }
     
+    // Templates tab items are now handled by handleTemplateSelect directly
+    // Skip this useEffect for them to avoid duplicate clip creation
+    const templatesTabItems = ['roll', 'jump', 'pop', 'shake', 'pulse', 'spin']
+    if (templatesTabItems.includes(selectedTemplate)) {
+      return
+    }
+    
     // Don't apply template if no layer is selected
     if (!selectedLayerId) {
       timeline.setPlaying(false)
@@ -862,12 +869,87 @@ function DashboardContent() {
   ])
 
   const handleTemplateSelect = (templateId: string) => {
-    setSelectedTemplate((prev) => (prev === templateId ? '' : templateId))
-    setSelectedClipId('')
+    // Templates tab items: roll, jump, pop, shake, pulse, spin
+    const templatesTabItems = ['roll', 'jump', 'pop', 'shake', 'pulse', 'spin']
+    
+    // If no layer selected, just toggle selection state (old behavior)
+    if (!selectedLayerId || !templatesTabItems.includes(templateId)) {
+      setSelectedTemplate((prev) => (prev === templateId ? '' : templateId))
+      setSelectedClipId('')
+      timeline.setPlaying(false)
+      timeline.setCurrentTime(0)
+      setTemplateVersion((v) => v + 1)
+      return
+    }
+    
+    // Get layer data
+    const layer = layers.find(l => l.id === selectedLayerId)
+    if (!layer) return
+    
+    // Calculate start time: after all existing clips on this layer
+    const layerClips = templateClips.filter(c => c.layerId === selectedLayerId)
+    const lastEnd = layerClips.length 
+      ? Math.max(...layerClips.map(c => (c.start ?? 0) + (c.duration ?? 0)))
+      : 0
+    
+    // Get default duration based on template type
+    let duration = 1000
+    if (templateId === 'roll') {
+      duration = rollDurationForDistance(rollDistance, templateSpeed)
+    } else if (templateId === 'jump') {
+      duration = jumpDurationForHeight(jumpHeight, jumpVelocity)
+    } else if (templateId === 'pop') {
+      duration = Math.round(1000 / Math.max(0.1, popSpeed))
+    } else if (templateId === 'shake') {
+      duration = 500
+    } else if (templateId === 'pulse') {
+      duration = 1000
+    } else if (templateId === 'spin') {
+      duration = 1000
+    }
+    
+    // Build parameters based on template type
+    const parameters: Record<string, any> = { templateSpeed }
+    if (templateId === 'roll') {
+      parameters.rollDistance = rollDistance
+      parameters.rollRotation = rollRotation
+    } else if (templateId === 'jump') {
+      parameters.jumpHeight = jumpHeight
+      parameters.jumpVelocity = jumpVelocity
+    } else if (templateId === 'pop') {
+      parameters.popScale = popScale
+      parameters.popSpeed = popSpeed
+      parameters.popWobble = popWobble
+      parameters.popCollapse = popCollapse
+      parameters.popReappear = popReappear
+    } else if (templateId === 'shake') {
+      parameters.shakeDistance = shakeDistance
+    } else if (templateId === 'pulse') {
+      parameters.pulseScale = pulseScale
+      parameters.pulseSpeed = pulseSpeed
+    } else if (templateId === 'spin') {
+      parameters.spinSpeed = spinSpeed
+      parameters.spinDirection = spinDirection
+    }
+    
+    // Create the new clip
+    const clipId = timeline.addTemplateClip(
+      selectedLayerId,
+      templateId as any,
+      lastEnd,
+      duration,
+      parameters,
+      layer.scale ?? 1,
+      { position: { x: layer.x, y: layer.y }, scale: layer.scale ?? 1 }
+    )
+    
+    // Update UI state
+    setSelectedTemplate(templateId)
+    setSelectedClipId(clipId)
     timeline.setPlaying(false)
-    timeline.setCurrentTime(0)
-    // bump so MotionCanvas fully resets and replays animation even on same template click
+    timeline.setCurrentTime(lastEnd)
     setTemplateVersion((v) => v + 1)
+    pushSnapshot()
   }
 
   const handleTemplateComplete = () => {

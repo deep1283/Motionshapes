@@ -4711,8 +4711,12 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         const { width, height } = canvasBounds
         if (!width || !height) return null
         
-        // Get rollDistance from the clip if available
-        const rollClip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'roll')
+        // Get rollDistance from the selected clip if available, otherwise first roll clip
+        // Prioritize selectedClipId to show handles for the correct clip when multiple exist
+        const rollClip = selectedClipId 
+          ? templateClips.find(c => c.id === selectedClipId && c.template === 'roll') 
+            ?? templateClips.find(c => c.layerId === selectedLayerId && c.template === 'roll')
+          : templateClips.find(c => c.layerId === selectedLayerId && c.template === 'roll')
         const clipRollDistance = rollClip?.parameters?.rollDistance ?? rollDistance
         
         // Check for preceding Path clip to determine start position
@@ -4833,8 +4837,12 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         const { width, height } = canvasBounds
         if (!width || !height) return null
         
-        // Get jumpHeight from the clip if available
-        const jumpClip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'jump')
+        // Get jumpHeight from the selected clip if available, otherwise first jump clip
+        // Prioritize selectedClipId to show handles for the correct clip when multiple exist
+        const jumpClip = selectedClipId 
+          ? templateClips.find(c => c.id === selectedClipId && c.template === 'jump') 
+            ?? templateClips.find(c => c.layerId === selectedLayerId && c.template === 'jump')
+          : templateClips.find(c => c.layerId === selectedLayerId && c.template === 'jump')
         const clipJumpHeight = jumpClip?.parameters?.jumpHeight ?? jumpHeight
         
         // Calculate accumulated offset from Roll (if any exists before Jump)
