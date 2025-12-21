@@ -954,18 +954,24 @@ function DashboardContent() {
     pushSnapshot()
   }
 
+  // Mobile detection for smaller default shape sizes
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768
+  const mobileSize = { width: 40, height: 40 }
+  const desktopSize = { width: 100, height: 100 }
+  const defaultSize = isMobile ? mobileSize : desktopSize
+
   const shapeDefaults: Record<ShapeKind, { width: number; height: number }> = {
-    circle: { width: 100, height: 100 },
-    square: { width: 100, height: 100 },
-    heart: { width: 100, height: 100 },
-    star: { width: 100, height: 100 },
-    triangle: { width: 100, height: 100 },
-    pill: { width: 100, height: 100 },
-    like: { width: 100, height: 100 },
-    comment: { width: 100, height: 100 },
-    share: { width: 100, height: 100 },
-    cursor: { width: 100, height: 100 },
-    counter: { width: 200, height: 60 },
+    circle: defaultSize,
+    square: defaultSize,
+    heart: defaultSize,
+    star: defaultSize,
+    triangle: defaultSize,
+    pill: defaultSize,
+    like: defaultSize,
+    comment: defaultSize,
+    share: defaultSize,
+    cursor: defaultSize,
+    counter: isMobile ? { width: 80, height: 24 } : { width: 200, height: 60 },
   }
 
   const handleAddShape = (shapeKind: ShapeKind = 'circle') => {

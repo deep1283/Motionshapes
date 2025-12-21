@@ -989,8 +989,8 @@ export default function DashboardLayout({
     const isMobile = window.innerWidth < 768
     if (isMobile) {
       const saved = localStorage.getItem('canvasWidth')
-      // Default to 9:16 portrait (360x640) on mobile
-      return saved ? Math.max(MIN_CANVAS_WIDTH, parseInt(saved)) : 360
+      // Default to 9:16 portrait (180x320) on mobile
+      return saved ? Math.max(MIN_CANVAS_WIDTH, parseInt(saved)) : 180
     }
     const saved = localStorage.getItem('canvasWidth')
     return saved ? Math.max(MIN_CANVAS_WIDTH, parseInt(saved)) : DEFAULT_CANVAS_WIDTH
@@ -1002,8 +1002,8 @@ export default function DashboardLayout({
     const isMobile = window.innerWidth < 768
     if (isMobile) {
       const saved = localStorage.getItem('canvasHeight')
-      // Default to 9:16 portrait (360x640) on mobile
-      return saved ? Math.max(MIN_CANVAS_HEIGHT, parseInt(saved)) : 640
+      // Default to 9:16 portrait (180x320) on mobile
+      return saved ? Math.max(MIN_CANVAS_HEIGHT, parseInt(saved)) : 320
     }
     const saved = localStorage.getItem('canvasHeight')
     return saved ? Math.max(MIN_CANVAS_HEIGHT, parseInt(saved)) : DEFAULT_CANVAS_HEIGHT
