@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter, Roboto, Poppins, Montserrat, Space_Grotesk, DM_Sans } from "next/font/google";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -104,6 +105,7 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         {children}
+        <SpeedInsights />
       </body>
     </html>
   );
