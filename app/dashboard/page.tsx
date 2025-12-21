@@ -322,6 +322,8 @@ function DashboardContent() {
         layerOrder,
         timeline: timeline.getSnapshot(),
         background,
+        canvasWidth,
+        canvasHeight,
       })
       
       // Only save if something changed
@@ -348,7 +350,7 @@ function DashboardContent() {
     }, 30000) // Every 30 seconds
     
     return () => clearInterval(saveInterval)
-  }, [userId, projectId, layers, layerOrder, timeline, background, isLoading, hasLoadedProject, projectName])
+  }, [userId, projectId, layers, layerOrder, timeline, background, isLoading, hasLoadedProject, projectName, canvasWidth, canvasHeight])
 
   // Save on significant actions (debounced)
   const triggerAutoSave = useCallback(() => {
@@ -360,6 +362,8 @@ function DashboardContent() {
       layerOrder,
       timeline: timeline.getSnapshot(),
       background,
+      canvasWidth,
+      canvasHeight,
     })
     
     if (currentState === lastSavedRef.current) return
@@ -398,7 +402,7 @@ function DashboardContent() {
         console.log('[DEBUG] Save failed!')
       }
     })
-  }, [userId, projectId, layers, layerOrder, timeline, background, isLoading, projectName])
+  }, [userId, projectId, layers, layerOrder, timeline, background, isLoading, projectName, canvasWidth, canvasHeight])
 
   // Debounced auto-save (triggered on changes)
   const debouncedAutoSave = useMemo(
