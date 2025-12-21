@@ -888,6 +888,7 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
       {/* Resize Handle */}
       <div
         className="absolute -top-1.5 left-0 right-0 h-3 cursor-row-resize z-50 group flex items-center justify-center"
+        style={{ touchAction: 'none' }}
         onPointerDown={handleResizeStart}
       >
         <div className="w-full h-[2px] bg-transparent group-hover:bg-violet-500/50 group-active:bg-violet-500 transition-colors" />

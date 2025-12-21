@@ -985,24 +985,44 @@ export default function DashboardLayout({
 
   const [canvasWidth, setCanvasWidth] = useState(() => {
     if (typeof window === 'undefined') return DEFAULT_CANVAS_WIDTH
+    // Mobile detection: use 9:16 aspect ratio as default
+    const isMobile = window.innerWidth < 768
+    if (isMobile) {
+      const saved = localStorage.getItem('canvasWidth')
+      // Default to 9:16 portrait (360x640) on mobile
+      return saved ? Math.max(MIN_CANVAS_WIDTH, parseInt(saved)) : 360
+    }
     const saved = localStorage.getItem('canvasWidth')
     return saved ? Math.max(MIN_CANVAS_WIDTH, parseInt(saved)) : DEFAULT_CANVAS_WIDTH
   })
 
   const [canvasHeight, setCanvasHeight] = useState(() => {
     if (typeof window === 'undefined') return DEFAULT_CANVAS_HEIGHT
+    // Mobile detection: use 9:16 aspect ratio as default
+    const isMobile = window.innerWidth < 768
+    if (isMobile) {
+      const saved = localStorage.getItem('canvasHeight')
+      // Default to 9:16 portrait (360x640) on mobile
+      return saved ? Math.max(MIN_CANVAS_HEIGHT, parseInt(saved)) : 640
+    }
     const saved = localStorage.getItem('canvasHeight')
     return saved ? Math.max(MIN_CANVAS_HEIGHT, parseInt(saved)) : DEFAULT_CANVAS_HEIGHT
   })
 
   const [canvasX, setCanvasX] = useState(() => {
     if (typeof window === 'undefined') return 0
+    // Fixed viewport on mobile - always center
+    const isMobile = window.innerWidth < 768
+    if (isMobile) return 0
     const saved = localStorage.getItem('canvasX')
     return saved ? parseInt(saved) : 0
   })
 
   const [canvasY, setCanvasY] = useState(() => {
     if (typeof window === 'undefined') return 0
+    // Fixed viewport on mobile - always center
+    const isMobile = window.innerWidth < 768
+    if (isMobile) return 0
     const saved = localStorage.getItem('canvasY')
     return saved ? parseInt(saved) : 0
   })
@@ -1423,6 +1443,14 @@ export default function DashboardLayout({
     const target = e.target as HTMLElement
     if (target.tagName === 'CANVAS') {
       // Clicking on the PixiJS canvas - let MotionCanvas handle it
+      return
+    }
+    
+    // Disable canvas drag on mobile - keep viewport fixed
+    const isMobile = typeof window !== 'undefined' && window.innerWidth < 768
+    if (isMobile) {
+      // On mobile, just deselect if clicking outside canvas
+      setIsCanvasSelected(false)
       return
     }
     
