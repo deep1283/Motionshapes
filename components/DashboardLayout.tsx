@@ -786,6 +786,10 @@ export default function DashboardLayout({
   const [showExportModal, setShowExportModal] = useState(false)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   
+  // Mobile sidebar state (replaces CSS checkbox hack for better UX)
+  const [isMobileLeftOpen, setIsMobileLeftOpen] = useState(false)
+  const [isMobileRightOpen, setIsMobileRightOpen] = useState(false)
+  
   // Custom animation state - Set allows multiple panels to be expanded simultaneously
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set())
   // Clip order - most recently added/clicked clip ID appears first
@@ -1536,15 +1540,16 @@ export default function DashboardLayout({
       {/* Top Navbar */}
       <header className="flex h-14 items-center justify-between border-b border-white/5 bg-[#0a0a0a]/80 px-4 backdrop-blur-xl z-50 supports-[backdrop-filter]:bg-[#0a0a0a]/60 shrink-0">
         <div className="flex items-center gap-3">
-          {/* Mobile: Hamburger Button (Label for Checkbox) */}
-          <label 
-            htmlFor="mobile-menu-toggle" 
+          {/* Mobile: Hamburger Button (Left Sidebar Toggle) */}
+          <button 
+            onClick={() => setIsMobileLeftOpen(!isMobileLeftOpen)}
             className="md:hidden p-2 -ml-2 text-neutral-400 hover:text-white cursor-pointer active:scale-95 transition-transform relative z-[80]"
+            aria-label={isMobileLeftOpen ? "Close left sidebar" : "Open left sidebar"}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
               <path d="M3 12h18M3 6h18M3 18h18" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
-          </label>
+          </button>
 
           <Button variant="ghost" size="icon" className="hidden md:flex h-8 w-8 text-neutral-400 hover:text-white hover:bg-white/5" onClick={handleLogout} title="Logout">
              <ChevronLeft className="h-4 w-4" />
@@ -1588,54 +1593,69 @@ export default function DashboardLayout({
                 onClick={() => setShowResetConfirm(true)}
                 variant="ghost"
                 size="sm"
-                className="flex h-7 w-7 md:h-8 md:w-8 text-neutral-400 hover:text-red-400 hover:bg-red-500/10 text-xs rounded-full border border-transparent hover:border-red-500/20 transition-all duration-200"
+                className="flex h-9 w-9 md:h-8 md:w-8 text-neutral-400 hover:text-red-400 hover:bg-red-500/10 text-xs rounded-full border border-transparent hover:border-red-500/20 transition-all duration-200"
                 title="Reset Project"
             >
-                <RefreshCw className="h-3 w-3 md:h-3.5 md:w-3.5" />
+                <RefreshCw className="h-4 w-4 md:h-3.5 md:w-3.5" />
             </Button>
             <Button 
                 onClick={() => fileInputRef.current?.click()}
                 variant="ghost"
                 size="sm"
-                className="flex h-7 w-7 md:h-8 md:w-auto md:px-3 gap-2 text-neutral-400 hover:text-white hover:bg-white/5 text-xs rounded-full border border-transparent hover:border-white/10 transition-all duration-200"
+                className="flex h-9 w-9 md:h-8 md:w-auto md:px-3 gap-2 text-neutral-400 hover:text-white hover:bg-white/5 text-xs rounded-full border border-transparent hover:border-white/10 transition-all duration-200"
             >
-                <Upload className="h-3.5 w-3.5" />
+                <ChevronUp className="h-5 w-5 md:hidden" />
+                <Upload className="hidden md:block h-3.5 w-3.5" />
                 <span className="hidden md:inline">Import</span>
             </Button>
             <Button 
                 onClick={() => setShowExportModal(true)}
                 variant="ghost"
                 size="sm"
-                className="flex h-7 w-7 md:h-8 md:w-auto md:px-3 gap-2 bg-white text-black hover:bg-neutral-200 hover:text-black text-xs rounded-full font-medium transition-all duration-200 shadow-sm shadow-white/5 border border-transparent"
+                className="flex h-9 w-9 md:h-8 md:w-auto md:px-3 gap-2 bg-white text-black hover:bg-neutral-200 hover:text-black text-xs rounded-full font-medium transition-all duration-200 shadow-sm shadow-white/5 border border-transparent"
             >
-                <Download className="h-3.5 w-3.5" />
+                <ChevronDown className="h-5 w-5 md:hidden" />
+                <Download className="hidden md:block h-3.5 w-3.5" />
                 <span className="hidden md:inline">Export</span>
             </Button>
 
-            {/* Mobile: Settings Toggle (Label for Checkbox) */}
-            <label 
-              htmlFor="mobile-settings-toggle" 
+            {/* Mobile: Settings Toggle (Right Sidebar Toggle) */}
+            <button 
+              onClick={() => setIsMobileRightOpen(!isMobileRightOpen)}
               className="md:hidden p-2 text-neutral-400 hover:text-white cursor-pointer active:scale-95 transition-transform relative z-[80]"
+              aria-label={isMobileRightOpen ? "Close right sidebar" : "Open right sidebar"}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
                 <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
-            </label>
+            </button>
         </div>
       </header>
       
 
       
-      {/* Mobile Drawer Backdrops */}
-      <label htmlFor="mobile-menu-toggle" className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] hidden peer-checked/menu:block transition-opacity opacity-0 peer-checked/menu:opacity-100" />
-      <label htmlFor="mobile-settings-toggle" className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] hidden peer-checked/settings:block transition-opacity opacity-0 peer-checked/settings:opacity-100" />
+      {/* Mobile Drawer Backdrops - Click to close */}
+      {isMobileLeftOpen && (
+        <button 
+          onClick={() => setIsMobileLeftOpen(false)}
+          className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] transition-opacity"
+          aria-label="Close left sidebar"
+        />
+      )}
+      {isMobileRightOpen && (
+        <button 
+          onClick={() => setIsMobileRightOpen(false)}
+          className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] transition-opacity"
+          aria-label="Close right sidebar"
+        />
+      )}
 
       <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-h-0 relative">
-        {/* CSS-Only Checkbox Hack Triggers - Moved here to be siblings of peers */}
-        <input type="checkbox" id="mobile-menu-toggle" className="peer/menu hidden" />
-        <input type="checkbox" id="mobile-settings-toggle" className="peer/settings hidden" />
         {/* Left Sidebar Wrapper - Mobile: Off-screen Drawer (Left) | Desktop: Fixed (Left) */}
-        <div className="fixed md:relative inset-y-0 left-0 z-[70] w-[280px] md:w-auto h-full bg-[#0a0a0a] flex flex-col border-r border-white/5 transition-transform duration-300 -translate-x-full md:translate-x-0 peer-checked/menu:translate-x-0 order-last md:order-first shadow-2xl md:shadow-none">
+        <div className={cn(
+          "fixed md:relative inset-y-0 left-0 z-[70] w-[280px] md:w-auto h-full bg-[#0a0a0a] flex flex-col border-r border-white/5 transition-transform duration-300 order-last md:order-first shadow-2xl md:shadow-none",
+          isMobileLeftOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+        )}>
         <aside 
             ref={sidebarRef}
             style={{ width: sidebarWidth }}
@@ -3183,7 +3203,10 @@ export default function DashboardLayout({
 
         {/* RIGHT PROPERTIES PANEL - Mobile: Off-screen Drawer (Right) | Desktop: Fixed (Right) */}
       {/* Right Sidebar Wrapper */}
-      <div className="fixed md:relative inset-y-0 right-0 z-[70] w-[280px] md:w-auto h-full bg-[#0a0a0a] flex flex-col border-l border-white/5 transition-transform duration-300 translate-x-full md:translate-x-0 peer-checked/settings:translate-x-0 order-last shadow-2xl md:shadow-none">
+      <div className={cn(
+        "fixed md:relative inset-y-0 right-0 z-[70] w-[280px] md:w-auto h-full bg-[#0a0a0a] flex flex-col border-l border-white/5 transition-transform duration-300 order-last shadow-2xl md:shadow-none",
+        isMobileRightOpen ? "translate-x-0" : "translate-x-full md:translate-x-0"
+      )}>
         
         {/* Resize Handle - Positioned on the left edge */}
         <div
