@@ -2202,12 +2202,21 @@ export default function DashboardLayout({
                       isActive={isActive}
                       isEnabled={isEnabled}
                       onClick={() => {
-                        // Add effect clip to timeline instead of toggle
+                        // Add effect clip to timeline - always append after last clip
                         if (!selectedLayerId) return
+                        
+                        // Calculate start time after all existing clips on this layer
+                        const layerClips = templateClips.filter(c => c.layerId === selectedLayerId)
+                        const layerEffectClips = effectClips.filter(c => c.layerId === selectedLayerId)
+                        const allClips = [...layerClips, ...layerEffectClips]
+                        const lastEnd = allClips.length 
+                          ? Math.max(...allClips.map(c => (c.start ?? 0) + (c.duration ?? 0)))
+                          : 0
+                        
                         timeline.addEffectClip(
                           selectedLayerId,
                           effect.id as any, // Cast to effect type
-                          undefined, // start at current playhead
+                          lastEnd, // append after existing clips
                           1000 // 1 second duration
                         )
                         // Push snapshot after adding effect for undo/redo
