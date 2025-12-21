@@ -76,6 +76,8 @@ function DashboardContent() {
   const [userId, setUserId] = useState<string | null>(null)
   const [projectId, setProjectId] = useState<string | null>(null)
   const [projectName, setProjectName] = useState('Untitled Project')
+  const [canvasWidth, setCanvasWidth] = useState<number>(680)
+  const [canvasHeight, setCanvasHeight] = useState<number>(445)
   const [selectedTemplate, setSelectedTemplate] = useState('')
   const [templateVersion, setTemplateVersion] = useState(0)
   const [layers, setLayers] = useState<Layer[]>([])
@@ -234,9 +236,19 @@ function DashboardContent() {
           })
         }
         
-        // Restore background
-        if (existingProject.background_color) {
+        // Restore background (full object if available, fallback to color only)
+        if (existingProject.background_settings && typeof existingProject.background_settings === 'object') {
+          setBackground(existingProject.background_settings as typeof background)
+        } else if (existingProject.background_color) {
           setBackground(prev => ({ ...prev, solid: existingProject.background_color ?? prev.solid }))
+        }
+        
+        // Restore canvas dimensions
+        if (existingProject.canvas_width && existingProject.canvas_width > 0) {
+          setCanvasWidth(existingProject.canvas_width)
+        }
+        if (existingProject.canvas_height && existingProject.canvas_height > 0) {
+          setCanvasHeight(existingProject.canvas_height)
         }
         
         // Trigger re-render
@@ -321,6 +333,9 @@ function DashboardContent() {
         layer_order: layerOrder,
         timeline_snapshot: timeline.getSnapshot(),
         background_color: background.solid,
+        background_settings: background,
+        canvas_width: canvasWidth,
+        canvas_height: canvasHeight,
       })
       
       if (result) {
@@ -369,6 +384,9 @@ function DashboardContent() {
       layer_order: layerOrder,
       timeline_snapshot: snapshotToSave,
       background_color: background.solid,
+      background_settings: background,
+      canvas_width: canvasWidth,
+      canvas_height: canvasHeight,
     }).then(result => {
       if (result) {
         console.log('[DEBUG] Save successful:', result.id)
@@ -541,6 +559,9 @@ function DashboardContent() {
         layer_order: [],
         timeline_snapshot: {},
         background_color: '#000000',
+        background_settings: { type: 'none', solid: '#000000', gradient: { color1: '#000000', color2: '#ffffff', angle: 90 }, image: null },
+        canvas_width: 680,
+        canvas_height: 445,
       })
     }
   }, [projectId, userId, timeline])
@@ -2260,6 +2281,12 @@ function DashboardContent() {
         projectName={projectName}
         onProjectNameChange={setProjectName}
         onReset={handleReset}
+        initialCanvasWidth={canvasWidth}
+        initialCanvasHeight={canvasHeight}
+        onCanvasDimensionsChange={(w, h) => {
+          setCanvasWidth(w)
+          setCanvasHeight(h)
+        }}
         templateSpeed={templateSpeed}
         rollDistance={rollDistance}
         jumpHeight={jumpHeight}

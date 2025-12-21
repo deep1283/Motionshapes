@@ -18,6 +18,7 @@ export interface ProjectData {
   canvas_height?: number
   aspect_ratio?: string
   background_color?: string
+  background_settings?: unknown // Full background object (type, solid, gradient, image)
   created_at?: string
   updated_at?: string
 }

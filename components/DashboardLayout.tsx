@@ -635,6 +635,10 @@ interface DashboardLayoutProps {
   onProjectNameChange?: (name: string) => void
   // Reset project
   onReset?: () => void
+  // Canvas persistence
+  initialCanvasWidth?: number
+  initialCanvasHeight?: number
+  onCanvasDimensionsChange?: (width: number, height: number) => void
 }
 
 export default function DashboardLayout({ 
@@ -749,6 +753,9 @@ export default function DashboardLayout({
   projectName = 'Untitled Project',
   onProjectNameChange,
   onReset,
+  initialCanvasWidth,
+  initialCanvasHeight,
+  onCanvasDimensionsChange,
 }: DashboardLayoutProps) {
   const router = useRouter()
   const supabase = createClient()
@@ -984,6 +991,8 @@ export default function DashboardLayout({
   const MIN_CANVAS_HEIGHT = 225
 
   const [canvasWidth, setCanvasWidth] = useState(() => {
+    // Priority: props from Supabase > localStorage > defaults
+    if (initialCanvasWidth && initialCanvasWidth > 0) return initialCanvasWidth
     if (typeof window === 'undefined') return DEFAULT_CANVAS_WIDTH
     // Mobile detection: use 9:16 aspect ratio as default
     const isMobile = window.innerWidth < 768
@@ -997,6 +1006,8 @@ export default function DashboardLayout({
   })
 
   const [canvasHeight, setCanvasHeight] = useState(() => {
+    // Priority: props from Supabase > localStorage > defaults
+    if (initialCanvasHeight && initialCanvasHeight > 0) return initialCanvasHeight
     if (typeof window === 'undefined') return DEFAULT_CANVAS_HEIGHT
     // Mobile detection: use 9:16 aspect ratio as default
     const isMobile = window.innerWidth < 768
@@ -1026,6 +1037,11 @@ export default function DashboardLayout({
     const saved = localStorage.getItem('canvasY')
     return saved ? parseInt(saved) : 0
   })
+
+  // Notify parent when canvas dimensions change (for Supabase persistence)
+  useEffect(() => {
+    onCanvasDimensionsChange?.(canvasWidth, canvasHeight)
+  }, [canvasWidth, canvasHeight, onCanvasDimensionsChange])
 
   const [isResizingCanvas, setIsResizingCanvas] = useState(false)
   const [isMovingCanvas, setIsMovingCanvas] = useState(false)
@@ -1684,22 +1700,22 @@ export default function DashboardLayout({
           "fixed md:relative top-12 md:top-0 bottom-0 left-0 z-[70] w-[280px] md:w-auto md:flex-shrink-0 h-[calc(100vh-3rem)] md:h-full bg-[#0a0a0a] flex flex-col border-r border-white/5 transition-transform duration-300 order-last md:order-first shadow-2xl md:shadow-none",
           isMobileLeftOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         )}>
+        {/* Resize Handle - Outside scrollable area to span full height */}
+        <div
+          className="absolute right-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-purple-500/50 active:bg-purple-500/50 transition-colors z-50"
+          onMouseDown={startSidebarResize}
+        />
         <aside 
             ref={sidebarRef}
             style={{ width: sidebarWidth }}
             className="relative w-full h-full flex flex-col gap-6 overflow-y-auto overscroll-contain p-4 min-h-0"
         >
-          {/* Resize Handle */}
-          <div
-            className="absolute right-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-purple-500/50 active:bg-purple-500/50 transition-colors z-50"
-            onMouseDown={startSidebarResize}
-          />
           
 
 
           {/* Templates Tab Content */}
           {activeTab === 'templates' && (
-            <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+            <div className="flex-1 min-h-0 pr-1">
               <div className="flex flex-col gap-4 pb-[150vh]">
                 <div>
                   <h2 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-neutral-600 px-2">
@@ -1756,8 +1772,8 @@ export default function DashboardLayout({
 
           {/* Animations Tab Content */}
           {activeTab === 'animations' && (
-            <div className="flex-1 min-h-0 overflow-y-auto pr-1">
-              <div className="flex flex-col h-full pb-[150vh]">
+            <div className="flex-1 min-h-0 pr-1">
+              <div className="flex flex-col pb-[100vh]">
               {/* Sub-tabs for IN / OUT */}
               <div className="flex w-full bg-white/5 border-b border-white/5 mb-4">
                 <button
@@ -2160,7 +2176,7 @@ export default function DashboardLayout({
 
           {/* Effects Tab Content */}
           {activeTab === 'effects' && (
-            <div className="flex-1 min-h-0 overflow-y-auto pr-1 pb-[150vh]">
+            <div className="flex-1 min-h-0 pr-1 pb-[150vh]">
               <h2 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-neutral-600 px-2">
                 Effects
               </h2>
@@ -2206,7 +2222,7 @@ export default function DashboardLayout({
 
           {/* Shapes Tab Content */}
           {activeTab === 'shapes' && (
-            <div className="flex-1 min-h-0 overflow-y-auto pr-1 pb-96">
+            <div className="flex-1 min-h-0 pr-1 pb-[150vh]">
                 <h2 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-neutral-600 px-2">
                   Shapes
                 </h2>
@@ -2334,7 +2350,7 @@ export default function DashboardLayout({
             const nextImageIndex = nextImageLayer ? imageLayers.findIndex(l => l.id === nextImageLayer.id) : -1
             
             return (
-              <div className="flex-1 min-h-0 overflow-y-auto pr-1 pb-96">
+              <div className="flex-1 min-h-0 pr-1 pb-[150vh]">
                 <h2 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-neutral-600 px-2">
                   Image Transitions
                 </h2>
@@ -2482,7 +2498,7 @@ export default function DashboardLayout({
 
           {/* Custom Tab Content */}
           {activeTab === 'custom' && (
-            <div className="flex-1 min-h-0 overflow-y-auto pr-1 pb-96">
+            <div className="flex-1 min-h-0 pr-1 pb-[150vh]">
               <h2 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-neutral-600 px-2">
                 Custom Animation
               </h2>
@@ -3033,9 +3049,9 @@ export default function DashboardLayout({
              {/* Grid Background */}
              <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff03_1px,transparent_1px),linear-gradient(to_bottom,#ffffff03_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none" />
              
-             {/* Fit to Canvas Button - Floating in top-right */}
+             {/* Fit to Canvas Button - Floating in top-right (images only) */}
              <AnimatePresence>
-               {selectedLayerId && (
+               {selectedLayerId && layers.find(l => l.id === selectedLayerId)?.type === 'image' && (
                  <motion.button
                    initial={{ opacity: 0, y: -20 }}
                    animate={{ opacity: 1, y: 0 }}

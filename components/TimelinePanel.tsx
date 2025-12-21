@@ -956,7 +956,7 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
           </div>
 
           {/* Timeline Tracks */}
-          <div className="flex-1 overflow-y-auto min-h-0">
+          <div className="flex-1 overflow-y-auto min-h-0 pb-32">
             {layers.length === 0 && (
               <div className="flex items-center justify-center h-full text-[12px] text-neutral-500">
                 Add a shape to populate the timeline.
