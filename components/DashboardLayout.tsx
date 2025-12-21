@@ -1039,9 +1039,10 @@ export default function DashboardLayout({
   })
 
   // Notify parent when canvas dimensions change (for Supabase persistence)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     onCanvasDimensionsChange?.(canvasWidth, canvasHeight)
-  }, [canvasWidth, canvasHeight, onCanvasDimensionsChange])
+  }, [canvasWidth, canvasHeight]) // Intentionally omitting callback to prevent infinite loops
 
   const [isResizingCanvas, setIsResizingCanvas] = useState(false)
   const [isMovingCanvas, setIsMovingCanvas] = useState(false)

@@ -27,6 +27,7 @@ export interface ProjectData {
  * Load the user's active project (most recently updated)
  */
 export async function loadActiveProject(userId: string): Promise<ProjectData | null> {
+  console.log('[LOAD-DEBUG] Loading project for user:', userId)
   const supabase = createClient()
   
   const { data, error } = await supabase
@@ -38,14 +39,26 @@ export async function loadActiveProject(userId: string): Promise<ProjectData | n
     .limit(1)
     .single()
   
+  console.log('[LOAD-DEBUG] Supabase response:', { data, error })
+  
   if (error) {
     // No project found is not an error for us
     if (error.code === 'PGRST116') {
+      console.log('[LOAD-DEBUG] No active project found (PGRST116)')
       return null
     }
-    console.error('Error loading project:', error)
+    console.error('[LOAD-DEBUG] Error loading project:', error)
     return null
   }
+  
+  console.log('[LOAD-DEBUG] Loaded project:', {
+    id: data?.id,
+    name: data?.name,
+    layersCount: data?.layers?.length,
+    hasBackgroundSettings: !!data?.background_settings,
+    canvasWidth: data?.canvas_width,
+    canvasHeight: data?.canvas_height,
+  })
   
   return data as ProjectData
 }
