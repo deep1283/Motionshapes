@@ -2853,7 +2853,11 @@ export default function DashboardLayout({
               {['templates', 'animations', 'effects', 'shapes', 'transitions', 'custom'].map((tab) => (
                 <button
                    key={tab}
-                   onClick={() => setActiveTab(tab as typeof activeTab)}
+                   onClick={() => {
+                     setActiveTab(tab as typeof activeTab)
+                     // Auto-open left sidebar on mobile when clicking a tab
+                     setIsMobileLeftOpen(true)
+                   }}
                    className={cn(
                      "whitespace-nowrap px-4 py-1.5 text-[11px] font-medium rounded-full transition-all duration-200 capitalize shrink-0 leading-none",
                      activeTab === tab
@@ -3052,6 +3056,7 @@ export default function DashboardLayout({
               <div 
                 ref={canvasContainerRef}
                 className="absolute inset-0"
+                style={{ touchAction: 'none' }}
                 onPointerDown={handleBackgroundClick}
               >
                 {/* Background is now rendered via PIXI in MotionCanvas */}
