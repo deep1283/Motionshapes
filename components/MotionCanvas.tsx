@@ -1739,7 +1739,13 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       const baseRotationRad = ((layerData?.rotation ?? 0) * Math.PI) / 180
       // If animation exists, use state.rotation directly (it already includes base)
       // If no animation, use base rotation only
-      if (g) g.rotation = hasRotationAnim ? state.rotation : baseRotationRad
+      // EXCEPTION: Text layers with character animations (fade_in_char, bounce_in, etc.) don't animate rotation
+      // If hasRotationAnim is true but state.rotation is 0 and baseRotation is non-zero, use baseRotation
+      // This handles cases where other layers' animations incorrectly trigger hasRotationAnim for text
+      const shouldUseBaseRotation = 
+        !hasRotationAnim || 
+        (layerData?.type === 'text' && Math.abs(state.rotation) < 0.001 && Math.abs(baseRotationRad) > 0.001)
+      if (g) g.rotation = shouldUseBaseRotation ? baseRotationRad : state.rotation
       
       // Apply filters (Effects + Off-canvas Blur + Pan/Zoom Focus Blur)
       if (g) {
@@ -3317,6 +3323,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           const posY = layer.y <= 4 ? layer.y * screenHeight : layer.y
           container.x = posX
           container.y = posY
+          // Apply initial rotation from layer (convert degrees to radians)
+          container.rotation = ((layer.rotation ?? 0) * Math.PI) / 180
           container.zIndex = layerIndex
           container.eventMode = 'static'
           container.cursor = 'grab'
