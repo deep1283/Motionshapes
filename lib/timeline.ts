@@ -109,12 +109,52 @@ const applyEasing = (t: number, easing: Easing = 'linear') => {
       return 1 - (1 - t) * (1 - t)
     case 'easeInOutQuad':
       return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2
-    case 'easeInOutQuint':
-      // Exponential S-curve - very aggressive (Jitter-like)
-      // Uses power of 7 for extremely sharp acceleration in the middle
-      return t < 0.5 
-        ? 64 * t * t * t * t * t * t * t   // t^7 * 64
-        : 1 - Math.pow(-2 * t + 2, 7) / 2
+    case 'easeInOutQuint': {
+      // Custom smooth easing with 5 zones:
+      // 0-10%: slow (ease-in)
+      // 10-30%: medium-fast (accelerating)
+      // 30-80%: fast (linear-ish at peak speed)
+      // 80-90%: medium-fast (decelerating)
+      // 90-100%: slow (ease-out)
+      
+      // Zone boundaries (input time)
+      const z1 = 0.10  // end of slow start
+      const z2 = 0.30  // end of medium-fast start
+      const z3 = 0.80  // end of fast middle
+      const z4 = 0.90  // end of medium-fast end
+      
+      // Corresponding output progress at zone boundaries
+      // Slow zones cover less progress, fast zone covers more
+      const p1 = 0.03  // progress at 10% time (slow)
+      const p2 = 0.15  // progress at 30% time (medium)
+      const p3 = 0.85  // progress at 80% time (fast covers 70%)
+      const p4 = 0.97  // progress at 90% time (medium)
+      
+      // Smooth ease function for zone transitions
+      const smoothstep = (x: number) => x * x * (3 - 2 * x)
+      
+      if (t <= z1) {
+        // Zone 1: Slow start (0-10% → 0-3% progress)
+        const localT = t / z1
+        return p1 * smoothstep(localT)
+      } else if (t <= z2) {
+        // Zone 2: Medium-fast (10-30% → 3-15% progress)
+        const localT = (t - z1) / (z2 - z1)
+        return p1 + (p2 - p1) * smoothstep(localT)
+      } else if (t <= z3) {
+        // Zone 3: Fast middle (30-80% → 15-85% progress)
+        const localT = (t - z2) / (z3 - z2)
+        return p2 + (p3 - p2) * localT  // Linear in fast zone
+      } else if (t <= z4) {
+        // Zone 4: Medium-fast (80-90% → 85-97% progress)
+        const localT = (t - z3) / (z4 - z3)
+        return p3 + (p4 - p3) * smoothstep(localT)
+      } else {
+        // Zone 5: Slow end (90-100% → 97-100% progress)
+        const localT = (t - z4) / (1 - z4)
+        return p4 + (1 - p4) * smoothstep(localT)
+      }
+    }
     case 'easeOutBack': {
       const c1 = 1.70158
       const c3 = c1 + 1
