@@ -5,6 +5,7 @@ import Image from 'next/image'
 import type { SVGProps } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
+import { useToast } from '@/components/Toast'
 import {
   Layout,
   Settings,
@@ -765,6 +766,7 @@ export default function DashboardLayout({
   const clickMarkers = useTimeline((s) => s.clickMarkers)
   const timelineDuration = useTimeline((s) => s.duration)
   const timeline = useTimelineActions()
+  const { showToast } = useToast()
   
   // Helper to safely parse number input - defaults to 0 if empty or NaN
   const parseNum = (value: string, fallback: number = 0): number => {
@@ -3576,7 +3578,11 @@ export default function DashboardLayout({
                         })
                         const data = await res.json()
                         if (!res.ok) {
-                          console.error('Gemini API error:', data)
+                          // Handle rate limit specifically
+                          if (res.status === 429) {
+                            showToast(data.message || 'Rate limit exceeded. Try again later.', 'warning')
+                            return
+                          }
                           throw new Error(data.error || 'Generation failed')
                         }
                         if (data.imageUrl) {
@@ -3585,8 +3591,7 @@ export default function DashboardLayout({
                           setBgPrompt('') // Clear prompt on success
                         }
                       } catch (err) {
-                        console.error('AI background generation failed:', err)
-                        alert(`Failed to generate background: ${err instanceof Error ? err.message : 'Unknown error'}`)
+                        showToast(`Failed: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error')
                       } finally {
                         setBgGenerating(false)
                       }

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter, Roboto, Poppins, Montserrat, Space_Grotesk, DM_Sans } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { ToastProvider } from "@/components/Toast";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -104,7 +105,9 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} ${inter.variable} ${roboto.variable} ${poppins.variable} ${montserrat.variable} ${spaceGrotesk.variable} ${dmSans.variable} antialiased`}
         suppressHydrationWarning
       >
-        {children}
+        <ToastProvider>
+          {children}
+        </ToastProvider>
         <SpeedInsights />
       </body>
     </html>

@@ -1,7 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { checkAIGenerationLimit, getUserIdentifier } from '@/lib/rate-limiter'
+import { createClient } from '@/lib/supabase/server'
 
 export async function POST(request: NextRequest) {
   try {
+    // Get user ID from auth session
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    
+    // Get IP as fallback for anonymous users
+    const ip = request.headers.get('x-forwarded-for')?.split(',')[0] || 
+               request.headers.get('x-real-ip') || 
+               'unknown'
+    
+    // Check rate limit
+    const identifier = getUserIdentifier(user?.id, ip)
+    const rateLimit = await checkAIGenerationLimit(identifier)
+    
+    if (!rateLimit.success) {
+      return NextResponse.json(
+        { 
+          error: 'Rate limit exceeded',
+          message: `You've used all ${rateLimit.limit} AI generations for today. Try again tomorrow!`,
+          remaining: rateLimit.remaining,
+          resetAt: rateLimit.resetAt.toISOString(),
+        },
+        { 
+          status: 429,
+          headers: {
+            'X-RateLimit-Limit': String(rateLimit.limit),
+            'X-RateLimit-Remaining': String(rateLimit.remaining),
+            'X-RateLimit-Reset': rateLimit.resetAt.toISOString(),
+          }
+        }
+      )
+    }
+
     const { prompt, baseImage } = await request.json()
 
     if (!prompt || typeof prompt !== 'string') {

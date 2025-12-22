@@ -14,6 +14,7 @@ import { HistoryManager, type HistorySnapshot } from '@/lib/history-manager'
 import { debounce } from '@/lib/utils'
 import { chaikinSmooth, calculatePathLength } from '@/lib/path-smoothing'
 import { loadActiveProject, saveProject as saveProjectToSupabase } from '@/lib/supabase-projects'
+import { useToast } from '@/components/Toast'
 
 // Dynamically import MotionCanvas to avoid SSR issues with Pixi.js
 const MotionCanvas = dynamic(() => import('@/components/MotionCanvas'), { 
@@ -71,6 +72,7 @@ export default function DashboardPage() {
 
 function DashboardContent() {
   const router = useRouter()
+  const { showToast } = useToast()
   const [isLoading, setIsLoading] = useState(true)
   const [hasLoadedProject, setHasLoadedProject] = useState(false) // Prevents saves until restoration complete
   const [userId, setUserId] = useState<string | null>(null)
@@ -1098,14 +1100,14 @@ function DashboardContent() {
     // Validate file type
     const validTypes = ['image/png', 'image/jpeg', 'image/webp']
     if (!validTypes.includes(file.type)) {
-      alert('Please select a valid image file (PNG, JPG, or WebP)')
+      showToast('Please select a valid image file (PNG, JPG, or WebP)', 'warning')
       return
     }
 
     // Validate file size (<10MB)
     const maxSizeBytes = 10 * 1024 * 1024 // 10MB
     if (file.size >= maxSizeBytes) {
-      alert('Image must be less than 10MB')
+      showToast('Image must be less than 10MB', 'warning')
       return
     }
 
@@ -1183,11 +1185,15 @@ function DashboardContent() {
         body: JSON.stringify({ prompt })
       })
       
-      if (!res.ok) {
-        throw new Error(await res.text())
-      }
-      
       const data = await res.json()
+      
+      if (!res.ok) {
+        if (res.status === 429) {
+          showToast(data.message || 'Rate limit exceeded. Try again later.', 'warning')
+          return
+        }
+        throw new Error(data.error || 'Generation failed')
+      }
       
       if (data.imageUrl) {
         // Create new layer with generated image
@@ -1233,7 +1239,7 @@ function DashboardContent() {
       }
     } catch (error) {
       console.error('AI Generation failed', error)
-      alert('Failed to generate image. Please try again.')
+      showToast('Failed to generate image. Please try again.', 'error')
     }
   }
 
@@ -1251,11 +1257,16 @@ function DashboardContent() {
         })
       })
       
+      const data = await res.json()
+      
       if (!res.ok) {
-        throw new Error(await res.text())
+        if (res.status === 429) {
+          showToast(data.message || 'Rate limit exceeded. Try again later.', 'warning')
+          return
+        }
+        throw new Error(data.error || 'Edit failed')
       }
       
-      const data = await res.json()
       if (data.imageUrl) {
         // Update layer with new image
         // Build new layers array
@@ -1274,7 +1285,7 @@ function DashboardContent() {
       }
     } catch (error) {
       console.error('AI Edit failed', error)
-      alert('Failed to edit image. Please try again.')
+      showToast('Failed to edit image. Please try again.', 'error')
     }
   }
 

@@ -319,6 +319,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   const bgMaskRef = useRef<PIXI.Graphics | null>(null)
   const bgSpriteRef = useRef<PIXI.Sprite | null>(null)
   const bgTextureRef = useRef<PIXI.Texture | null>(null)
+  const bgImageUrlRef = useRef<string | null>(null) // Track loaded image URL to avoid reloading on resize
   const resizeStateRef = useRef<{
     layerId: string
     handle: 'tl' | 'tr' | 'br' | 'bl' | 't' | 'r' | 'b' | 'l'
@@ -1065,17 +1066,24 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       bgMaskRef.current.fill({ color: 0xffffff })
     }
     
-    // Remove old sprite if exists
-    if (bgSpriteRef.current && bgContainerRef.current) {
-      bgContainerRef.current.removeChild(bgSpriteRef.current)
-      bgSpriteRef.current.destroy()
-      bgSpriteRef.current = null
-    }
+    // Check if we're in image mode and URL hasn't changed
+    const currentImageUrl = _background?.mode === 'image' ? _background.image : null
+    const imageUrlChanged = currentImageUrl !== bgImageUrlRef.current
     
-    // Destroy old texture if exists
-    if (bgTextureRef.current) {
-      bgTextureRef.current.destroy(true)
-      bgTextureRef.current = null
+    // Only destroy old sprite if switching modes or image URL changed
+    if (imageUrlChanged || _background?.mode !== 'image') {
+      if (bgSpriteRef.current && bgContainerRef.current) {
+        bgContainerRef.current.removeChild(bgSpriteRef.current)
+        bgSpriteRef.current.destroy()
+        bgSpriteRef.current = null
+      }
+      
+      if (bgTextureRef.current) {
+        bgTextureRef.current.destroy(true)
+        bgTextureRef.current = null
+      }
+      
+      bgImageUrlRef.current = null
     }
     
     if (!_background || _background.mode === 'transparent') {
@@ -1170,7 +1178,51 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       const imageUrl = _background.image
       const imageMode = _background.imageMode || 'cover'
       
-      // Load the image
+      // Helper function to apply sizing to sprite
+      const applySpriteSize = (sprite: PIXI.Sprite, imgWidth: number, imgHeight: number) => {
+        const imgAspect = imgWidth / imgHeight
+        const viewportAspect = width / height
+        
+        // Reset position first
+        sprite.x = bgX
+        sprite.y = bgY
+        
+        if (imageMode === 'stretch') {
+          sprite.width = width
+          sprite.height = height
+        } else if (imageMode === 'contain') {
+          if (imgAspect > viewportAspect) {
+            sprite.width = width
+            sprite.height = width / imgAspect
+            sprite.y = bgY + (height - sprite.height) / 2
+          } else {
+            sprite.height = height
+            sprite.width = height * imgAspect
+            sprite.x = bgX + (width - sprite.width) / 2
+          }
+        } else {
+          // Cover
+          if (imgAspect > viewportAspect) {
+            sprite.height = height
+            sprite.width = height * imgAspect
+            sprite.x = bgX + (width - sprite.width) / 2
+          } else {
+            sprite.width = width
+            sprite.height = width / imgAspect
+            sprite.y = bgY + (height - sprite.height) / 2
+          }
+        }
+      }
+      
+      // If sprite already exists with same image, just update size/position
+      if (bgSpriteRef.current && bgTextureRef.current && bgImageUrlRef.current === imageUrl) {
+        const texture = bgTextureRef.current
+        applySpriteSize(bgSpriteRef.current, texture.width, texture.height)
+        app.render()
+        return
+      }
+      
+      // Load new image
       const img = new Image()
       img.crossOrigin = 'anonymous'
       
@@ -1184,48 +1236,14 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         // Create texture from image
         const texture = PIXI.Texture.from(img)
         bgTextureRef.current = texture
+        bgImageUrlRef.current = imageUrl
         
         // Create sprite
         const sprite = new PIXI.Sprite(texture)
         bgSpriteRef.current = sprite
         
-        // Position sprite at viewport origin (using captured bgX, bgY)
-        sprite.x = bgX
-        sprite.y = bgY
-        
-        // Apply sizing based on imageMode
-        const imgWidth = img.width
-        const imgHeight = img.height
-        const imgAspect = imgWidth / imgHeight
-        const viewportAspect = width / height
-        
-        if (imageMode === 'stretch') {
-          // Stretch to fill exactly
-          sprite.width = width
-          sprite.height = height
-        } else if (imageMode === 'contain') {
-          // Fit within viewport (letterboxing)
-          if (imgAspect > viewportAspect) {
-            sprite.width = width
-            sprite.height = width / imgAspect
-            sprite.y = bgY + (height - sprite.height) / 2
-          } else {
-            sprite.height = height
-            sprite.width = height * imgAspect
-            sprite.x = bgX + (width - sprite.width) / 2
-          }
-        } else {
-          // Cover - fill viewport (cropping)
-          if (imgAspect > viewportAspect) {
-            sprite.height = height
-            sprite.width = height * imgAspect
-            sprite.x = bgX + (width - sprite.width) / 2
-          } else {
-            sprite.width = width
-            sprite.height = width / imgAspect
-            sprite.y = bgY + (height - sprite.height) / 2
-          }
-        }
+        // Apply sizing
+        applySpriteSize(sprite, img.width, img.height)
         
         bgContainerRef.current.addChild(sprite)
         appRef.current.render()
