@@ -215,25 +215,9 @@ function DashboardContent() {
         // Restore timeline
         if (existingProject.timeline_snapshot && typeof existingProject.timeline_snapshot === 'object') {
           const snapshot = existingProject.timeline_snapshot as Parameters<typeof timeline.restoreSnapshot>[0]
-          // Debug: Check if path clips have pathPoints
-          console.log('[DEBUG] Restoring timeline snapshot:', {
-            templateClipsCount: snapshot.templateClips?.length,
-            pathClips: snapshot.templateClips?.filter((c: any) => c.template === 'path').map((c: any) => ({
-              id: c.id,
-              hasPathPoints: !!c.parameters?.pathPoints,
-              pathPointsLength: c.parameters?.pathPoints?.length,
-              firstPoint: c.parameters?.pathPoints?.[0],
-              lastPoint: c.parameters?.pathPoints?.[c.parameters?.pathPoints?.length - 1],
-            })),
-          })
           timeline.restoreSnapshot(snapshot)
           
-          // Verify restoration worked
-          const restoredState = timeline.getState()
-          console.log('[DEBUG] After restoreSnapshot - templateClips:', {
-            count: restoredState.templateClips?.length,
-            pathClips: restoredState.templateClips?.filter(c => c.template === 'path').length,
-          })
+
         }
         
         // Restore background (full object if available, fallback to color only)
@@ -372,18 +356,6 @@ function DashboardContent() {
     
     const snapshotToSave = timeline.getSnapshot()
     
-    // Debug: Log what we're saving
-    console.log('[DEBUG] Saving timeline snapshot:', {
-      templateClipsCount: snapshotToSave.templateClips?.length,
-      pathClips: snapshotToSave.templateClips?.filter((c: any) => c.template === 'path').map((c: any) => ({
-        id: c.id,
-        hasPathPoints: !!c.parameters?.pathPoints,
-        pathPointsLength: c.parameters?.pathPoints?.length,
-        firstPoint: c.parameters?.pathPoints?.[0],
-        lastPoint: c.parameters?.pathPoints?.[c.parameters?.pathPoints?.length - 1],
-      })),
-    })
-    
     saveProjectToSupabase(projectId, userId, {
       name: projectName,
       layers: layers as unknown[],
@@ -395,13 +367,10 @@ function DashboardContent() {
       canvas_height: canvasHeight,
     }).then(result => {
       if (result) {
-        console.log('[DEBUG] Save successful:', result.id)
         if (!projectId && result.id) {
           setProjectId(result.id)
         }
         lastSavedRef.current = currentState
-      } else {
-        console.log('[DEBUG] Save failed!')
       }
     })
   }, [userId, projectId, layers, layerOrder, timeline, background, isLoading, projectName, canvasWidth, canvasHeight])
@@ -2439,7 +2408,6 @@ function DashboardContent() {
           }
         }}
         onAddPanZoom={(layerId) => {
-          console.log('[PAGE] onAddPanZoom called for layer:', layerId)
           const layer = layers.find(l => l.id === layerId)
           if (!layer) return
           
@@ -2452,7 +2420,6 @@ function DashboardContent() {
             ? Math.max(...layerClips.map(c => (c.start ?? 0) + (c.duration ?? 0)))
             : now
           
-          console.log('[PAGE] Adding pan_zoom clip at', lastEnd, 'duration', duration)
           
           const clipId = timeline.addTemplateClip(
             layerId,
@@ -2470,7 +2437,6 @@ function DashboardContent() {
             { position: { x: layer.x, y: layer.y }, scale: layer.scale ?? 1 }
           )
           
-          console.log('[PAGE] Created pan_zoom clip with id:', clipId)
           setSelectedTemplate('pan_zoom')
           setSelectedClipId(clipId)
           timeline.setPlaying(false)
@@ -2478,7 +2444,6 @@ function DashboardContent() {
           pushSnapshot()
         }}
         onAddMaskCenter={(layerId) => {
-          console.log('[PAGE] onAddMaskCenter called for layer:', layerId)
           const layer = layers.find(l => l.id === layerId)
           if (!layer) return
           
@@ -2507,7 +2472,6 @@ function DashboardContent() {
           pushSnapshot()
         }}
         onAddMaskTop={(layerId) => {
-          console.log('[PAGE] onAddMaskTop called for layer:', layerId)
           const layer = layers.find(l => l.id === layerId)
           if (!layer) return
           
@@ -2808,7 +2772,6 @@ function DashboardContent() {
             
             if (!nextTrack) {
               // No next layer found - just return or alert
-              console.log('No layer found to transition to')
               return
             }
             

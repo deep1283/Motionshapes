@@ -1173,6 +1173,11 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       // Load the image
       const img = new Image()
       img.crossOrigin = 'anonymous'
+      
+      img.onerror = (err) => {
+        console.error('Background image failed to load:', imageUrl?.substring(0, 100), err)
+      }
+      
       img.onload = () => {
         if (!bgContainerRef.current || !appRef.current) return
         

@@ -2009,7 +2009,6 @@ export default function DashboardLayout({
                     <button
                       onClick={() => {
                         if (!selectedLayerId) return
-                        console.log('[UI] Pan Zoom button clicked, calling onAddPanZoom')
                         onAddPanZoom?.(selectedLayerId)
                       }}
                       disabled={!selectedLayerId}

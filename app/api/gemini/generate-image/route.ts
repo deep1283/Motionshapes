@@ -113,7 +113,6 @@ export async function POST(request: NextRequest) {
           }))
 
           finalImageUrl = `${process.env.CLOUDFLARE_R2_PUBLIC_URL}/${key}`
-          console.log('Image uploaded to R2:', finalImageUrl)
         }
       } catch (r2Error) {
         console.error('R2 upload failed, using base64 fallback:', r2Error)
