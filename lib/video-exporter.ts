@@ -247,6 +247,7 @@ export function estimateFileSize(
  */
 export async function convertToMP4(
   webmBlob: Blob,
+  fps: ExportFPS = 30,
   onProgress?: (progress: number) => void
 ): Promise<Blob> {
   // Dynamically import FFmpeg to avoid loading it until needed
@@ -287,13 +288,17 @@ export async function convertToMP4(
     // -preset ultrafast = fastest encoding (less compression but much faster)
     // -crf 23 = quality level (18-28, lower = better)
     // -pix_fmt yuv420p = ensure compatibility with all players
+    // Force input and output frame rate to preserve correct duration
+    // Without this, FFmpeg may misinterpret variable frame rate WebM files
     await ffmpeg.exec([
+      '-r', fps.toString(),       // Input frame rate
       '-i', 'input.webm',
       '-c:v', 'libx264',
-      '-preset', 'ultrafast', // Changed from 'fast' for speed
+      '-preset', 'ultrafast',
       '-crf', '23',
       '-pix_fmt', 'yuv420p',
-      '-movflags', '+faststart', // Optimize for web streaming
+      '-r', fps.toString(),       // Output frame rate
+      '-movflags', '+faststart',
       'output.mp4'
     ])
     

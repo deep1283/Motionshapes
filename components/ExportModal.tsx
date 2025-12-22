@@ -147,7 +147,7 @@ export function ExportModal({
       if (format === 'mp4') {
         setExportPhase('converting')
         setProgress(0)
-        finalBlob = await convertToMP4(blob, (prog) => {
+        finalBlob = await convertToMP4(blob, fps, (prog) => {
           setProgress(prog)
         })
       }
