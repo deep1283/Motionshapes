@@ -3128,7 +3128,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           
           // Create text style
           const textStyle = new PIXI.TextStyle({
-            fontFamily: layer.fontFamily || 'Inter',
+            fontFamily: [layer.fontFamily || 'Inter', 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'sans-serif'],
             fontSize: layer.fontSize || 48,
             fontWeight: String(layer.fontWeight || 600) as PIXI.TextStyleFontWeight,
             fill: 0xffffff, // Use white for tinting
@@ -3218,7 +3218,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
              
              // Create a measurement style WITHOUT wordWrap (critical for accurate width measurement)
              const measureStyle = new PIXI.TextStyle({
-               fontFamily: layer.fontFamily || 'Inter',
+               fontFamily: [layer.fontFamily || 'Inter', 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'sans-serif'],
                fontSize: layer.fontSize || 48,
                fontWeight: String(layer.fontWeight || 600) as PIXI.TextStyleFontWeight,
                fill: layer.fillColor ?? 0xffffff,

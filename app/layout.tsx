@@ -108,6 +108,8 @@ export default function RootLayout({
         <ToastProvider>
           {children}
         </ToastProvider>
+        {/* Preload emoji fonts to prevent flash when rendering emojis in canvas */}
+        <span className="emoji-preload" aria-hidden="true">🎄🎁😀</span>
         <SpeedInsights />
       </body>
     </html>

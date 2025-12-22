@@ -289,10 +289,11 @@ export async function convertToMP4(
     // -crf 23 = quality level (18-28, lower = better)
     // -pix_fmt yuv420p = ensure compatibility with all players
     // Force input and output frame rate to preserve correct duration
-    // Without this, FFmpeg may misinterpret variable frame rate WebM files
+    // Use scale filter to ensure even dimensions (required by H.264 yuv420p)
     await ffmpeg.exec([
       '-r', fps.toString(),       // Input frame rate
       '-i', 'input.webm',
+      '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',  // Round to even dimensions
       '-c:v', 'libx264',
       '-preset', 'ultrafast',
       '-crf', '23',
