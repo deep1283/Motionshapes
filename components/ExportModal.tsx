@@ -49,6 +49,7 @@ export function ExportModal({
   const [exportPhase, setExportPhase] = useState<'capturing' | 'encoding' | 'converting'>('capturing')
   const [filename, setFilename] = useState(defaultFilename)
   const [format, setFormat] = useState<'webm' | 'mp4'>('webm')
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false)
 
   // Reset state when modal opens
   useEffect(() => {
@@ -158,7 +159,14 @@ export function ExportModal({
       onSeek(0)
       onRender()
       
-      onClose()
+      // Show feedback modal after successful export
+      setShowFeedbackModal(true)
+      
+      // Auto-close feedback modal after 10 seconds
+      setTimeout(() => {
+        setShowFeedbackModal(false)
+        onClose()
+      }, 10000)
     } catch (error) {
       console.error('Export failed:', error)
       alert('Export failed. Please try again.')
@@ -422,6 +430,40 @@ export function ExportModal({
           </div>
         )}
       </div>
+
+      {/* Feedback Modal - appears after successful export */}
+      {showFeedbackModal && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60" onClick={() => { setShowFeedbackModal(false); onClose(); }} />
+          <div className="relative bg-neutral-900 border border-white/10 rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl">
+            <button
+              onClick={() => { setShowFeedbackModal(false); onClose(); }}
+              className="absolute top-4 right-4 text-neutral-400 hover:text-white transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            
+            <div className="text-center">
+              <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center">
+                <span className="text-2xl">✨</span>
+              </div>
+              <h3 className="text-lg font-semibold text-white mb-2">Export Complete!</h3>
+              <p className="text-neutral-400 text-sm mb-4">
+                Found a bug or have ideas? We'd love to hear from you!
+              </p>
+              <a
+                href="mailto:deepmishra1283@gmail.com?subject=MotionShapes Feedback&body=Hi Deep,%0A%0AI have some feedback about MotionShapes:%0A%0A"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white font-medium text-sm hover:from-purple-600 hover:to-pink-600 transition-all"
+                onClick={() => { setShowFeedbackModal(false); onClose(); }}
+              >
+                Send Feedback
+              </a>
+              <p className="text-neutral-400 text-xs mt-2">deepmishra1283@gmail.com</p>
+              <p className="text-neutral-500 text-xs mt-3">This popup will close in 10 seconds</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

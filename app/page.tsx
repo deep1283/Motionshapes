@@ -49,7 +49,7 @@ export default function Home() {
   }
 
   return (
-    <main className="relative flex min-h-screen w-full flex-col items-center overflow-hidden bg-gray-950 antialiased bg-grid-white/[0.02]">
+    <main className="relative flex min-h-screen w-full flex-col items-center bg-gray-950 antialiased bg-grid-white/[0.02]">
       {/* Video Background */}
       <div className="fixed inset-0 z-0">
         <video 
@@ -129,6 +129,14 @@ export default function Home() {
               Start Creating
               <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
             </span>
+          </Button>
+          
+          <Button
+            onClick={() => document.getElementById('founder-contact')?.scrollIntoView({ behavior: 'smooth' })}
+            variant="outline"
+            className="h-12 rounded-full border-white/20 bg-transparent px-6 text-base font-medium text-white hover:bg-white/10 hover:border-white/30 transition-all"
+          >
+            Contact Founder
           </Button>
         </motion.div>
 
@@ -289,9 +297,45 @@ export default function Home() {
         </motion.div>
       </div>
 
-      {/* Simple Footer */}
-      <footer className="w-full border-t border-white/5 bg-transparent py-8 text-center text-sm text-neutral-500 backdrop-blur-sm">
-        <p>&copy; {new Date().getFullYear()} MotionShapes. All rights reserved.</p>
+      {/* Footer with Founder Contact */}
+      <footer id="founder-contact" className="relative z-10 w-full border-t border-white/5 bg-neutral-950/80 py-12 backdrop-blur-sm">
+        <div className="mx-auto max-w-4xl px-4">
+          <div className="flex flex-col items-center gap-8 md:flex-row md:justify-between md:items-start">
+            {/* Brand */}
+            <div className="text-center md:text-left">
+              <h3 className="text-lg font-semibold text-white mb-2">MotionShapes</h3>
+              <p className="text-sm text-neutral-400">Professional motion design in your browser</p>
+            </div>
+            
+            {/* Founder Contact */}
+            <div className="text-center md:text-right">
+              <p className="text-xs uppercase tracking-wider text-neutral-500 mb-2">Founder</p>
+              <p className="text-sm font-medium text-white mb-1">Deep Mishra</p>
+              <div className="space-y-1 mb-3">
+                <a 
+                  href="mailto:deepmishra1283@gmail.com" 
+                  className="block text-sm text-neutral-400 hover:text-purple-400 transition-colors"
+                >
+                  📧 deepmishra1283@gmail.com
+                </a>
+                <a 
+                  href="tel:+916294655027" 
+                  className="block text-sm text-neutral-400 hover:text-purple-400 transition-colors"
+                >
+                  📱 +91 6294655027
+                </a>
+              </div>
+              <p className="text-xs text-neutral-500 max-w-[250px] md:ml-auto">
+                Have a suggestion, found an edge case, or want a new feature? Feel free to reach out — your feedback helps us improve.
+              </p>
+            </div>
+          </div>
+          
+          {/* Copyright */}
+          <div className="mt-8 pt-6 border-t border-white/5 text-center">
+            <p className="text-sm text-neutral-500">&copy; {new Date().getFullYear()} MotionShapes. All rights reserved.</p>
+          </div>
+        </div>
       </footer>
     </main>
   )
