@@ -5050,11 +5050,17 @@ export default function DashboardLayout({
                     <span className="text-[11px] font-semibold text-neutral-200">Easing</span>
                     <select
                       value={(() => {
-                        const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'path')
+                        // Use selectedClipId to find the specific clicked path clip
+                        const clip = selectedClipId 
+                          ? templateClips.find(c => c.id === selectedClipId && c.template === 'path')
+                          : templateClips.find(c => c.layerId === selectedLayerId && c.template === 'path')
                         return clip?.parameters?.pathEasing || 'linear'
                       })()}
                       onChange={(e) => {
-                        const clip = templateClips.find(c => c.layerId === selectedLayerId && c.template === 'path')
+                        // Use selectedClipId to update the specific clicked path clip
+                        const clip = selectedClipId 
+                          ? templateClips.find(c => c.id === selectedClipId && c.template === 'path')
+                          : templateClips.find(c => c.layerId === selectedLayerId && c.template === 'path')
                         if (clip && selectedLayerId) {
                           timeline.updateTemplateClip(selectedLayerId, clip.id, { parameters: { pathEasing: e.target.value as any } })
                         }

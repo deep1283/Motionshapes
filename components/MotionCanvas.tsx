@@ -4098,8 +4098,23 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
               const fadeOutCharClip = templateClips.find(c => c.layerId === layer.id && c.template === 'fade_out_char')
               
               if ((bounceInClip || bounceOutClip || scrambleClip || fadeInCharClip || fadeOutCharClip) && textWrapper?.parts) {
-                const stagger = 80 // ms per letter
-                const letterDuration = 1000 
+                const numParts = textWrapper.parts.length
+                // Calculate stagger and letterDuration based on clip duration
+                // Get the active clip duration for bounce animations
+                const bounceClip = bounceInClip || bounceOutClip
+                const bounceClipDuration = bounceClip?.duration ?? 1500
+                
+                // Reserve 20% of clip for the last character's animation duration
+                // The remaining 80% is spread across character stagger
+                const letterDurationRatio = 0.20
+                const letterDuration = bounceClipDuration * letterDurationRatio
+                
+                // Calculate stagger: total stagger time = clipDuration - letterDuration
+                // divided by (numParts - 1) to space out character starts
+                const stagger = numParts > 1 
+                  ? (bounceClipDuration - letterDuration) / (numParts - 1)
+                  : 0
+                
                 const c4 = (2 * Math.PI) / 3
                 
                 // Scramble character pool
