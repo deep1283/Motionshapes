@@ -81,8 +81,48 @@ export async function POST(request: NextRequest) {
       }, { status: 500 })
     }
 
+    // Upload to R2 if configured, otherwise return base64
+    let finalImageUrl = imageData
+    if (process.env.CLOUDFLARE_R2_ACCOUNT_ID && process.env.CLOUDFLARE_R2_ACCESS_KEY_ID) {
+      try {
+        const { S3Client, PutObjectCommand } = await import('@aws-sdk/client-s3')
+        
+        const r2Client = new S3Client({
+          region: 'auto',
+          endpoint: `https://${process.env.CLOUDFLARE_R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+          credentials: {
+            accessKeyId: process.env.CLOUDFLARE_R2_ACCESS_KEY_ID!,
+            secretAccessKey: process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
+          },
+        })
+
+        // Extract base64 data
+        const matches = imageData.match(/^data:(.+);base64,(.+)$/)
+        if (matches) {
+          const mimeType = matches[1]
+          const base64Data = matches[2]
+          const buffer = Buffer.from(base64Data, 'base64')
+          const extension = mimeType.split('/')[1] || 'png'
+          const key = `ai-generated/${Date.now()}-${Math.random().toString(36).substring(7)}.${extension}`
+
+          await r2Client.send(new PutObjectCommand({
+            Bucket: process.env.CLOUDFLARE_R2_BUCKET_NAME,
+            Key: key,
+            Body: buffer,
+            ContentType: mimeType,
+          }))
+
+          finalImageUrl = `${process.env.CLOUDFLARE_R2_PUBLIC_URL}/${key}`
+          console.log('Image uploaded to R2:', finalImageUrl)
+        }
+      } catch (r2Error) {
+        console.error('R2 upload failed, using base64 fallback:', r2Error)
+        // Keep using base64 as fallback
+      }
+    }
+
     return NextResponse.json({ 
-      imageUrl: imageData,
+      imageUrl: finalImageUrl,
       textResponse 
     })
 

@@ -313,15 +313,9 @@ function DashboardContent() {
   // Auto-save to Supabase (silent, every 30 seconds)
   const lastSavedRef = useRef<string>('')
   useEffect(() => {
-    console.log('[SAVE-DEBUG] useEffect triggered:', { userId, isLoading, hasLoadedProject })
-    if (!userId || isLoading || !hasLoadedProject) {
-      console.log('[SAVE-DEBUG] Skipping - guard failed:', { userId: !!userId, isLoading, hasLoadedProject })
-      return
-    }
+    if (!userId || isLoading || !hasLoadedProject) return
     
-    console.log('[SAVE-DEBUG] Setting up 30s interval')
     const saveInterval = setInterval(async () => {
-      console.log('[SAVE-DEBUG] Interval tick - checking for changes')
       // Create a hash of current state to detect changes
       const currentState = JSON.stringify({
         layers,
@@ -333,18 +327,7 @@ function DashboardContent() {
       })
       
       // Only save if something changed
-      if (currentState === lastSavedRef.current) {
-        console.log('[SAVE-DEBUG] No changes detected, skipping save')
-        return
-      }
-      
-      console.log('[SAVE-DEBUG] Changes detected, saving...', { 
-        projectId, 
-        userId, 
-        layersCount: layers.length,
-        canvasWidth,
-        canvasHeight 
-      })
+      if (currentState === lastSavedRef.current) return
       
       const result = await saveProjectToSupabase(projectId, userId, {
         name: projectName,
@@ -357,17 +340,14 @@ function DashboardContent() {
         canvas_height: canvasHeight,
       })
       
-      console.log('[SAVE-DEBUG] Save result:', result)
-      
       if (result) {
         // Update project ID if this was a new project
         if (!projectId && result.id) {
-          console.log('[SAVE-DEBUG] New project created with ID:', result.id)
           setProjectId(result.id)
         }
         lastSavedRef.current = currentState
       } else {
-        console.error('[SAVE-DEBUG] Save failed!')
+        console.error('Auto-save failed')
       }
     }, 30000) // Every 30 seconds
     
