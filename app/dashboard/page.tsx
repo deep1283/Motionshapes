@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
+import { useEffect, useState, useRef, useCallback, useMemo, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import DashboardLayout, { BackgroundSettings, Effect, EffectType } from '@/components/DashboardLayout'
@@ -66,7 +66,9 @@ interface Layer {
 export default function DashboardPage() {
   return (
     <TimelineProvider>
-      <DashboardContent />
+      <Suspense fallback={<div className="h-screen w-screen bg-neutral-900 flex items-center justify-center text-white">Loading...</div>}>
+        <DashboardContent />
+      </Suspense>
     </TimelineProvider>
   )
 }
