@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import DashboardLayout, { BackgroundSettings, Effect, EffectType } from '@/components/DashboardLayout'
 import dynamic from 'next/dynamic'
@@ -14,6 +14,7 @@ import { HistoryManager, type HistorySnapshot } from '@/lib/history-manager'
 import { debounce } from '@/lib/utils'
 import { chaikinSmooth, calculatePathLength } from '@/lib/path-smoothing'
 import { loadActiveProject, saveProject as saveProjectToSupabase } from '@/lib/supabase-projects'
+import { getMotionById } from '@/lib/library-api'
 import { useToast } from '@/components/Toast'
 
 // Dynamically import MotionCanvas to avoid SSR issues with Pixi.js
@@ -72,10 +73,13 @@ export default function DashboardPage() {
 
 function DashboardContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const motionId = searchParams.get('motion')
   const { showToast } = useToast()
   const [isLoading, setIsLoading] = useState(true)
   const [hasLoadedProject, setHasLoadedProject] = useState(false) // Prevents saves until restoration complete
   const [userId, setUserId] = useState<string | null>(null)
+  const [userEmail, setUserEmail] = useState<string | null>(null)
   const [projectId, setProjectId] = useState<string | null>(null)
   const [projectName, setProjectName] = useState('Untitled Project')
   const [canvasWidth, setCanvasWidth] = useState<number>(680)
@@ -184,16 +188,56 @@ function DashboardContent() {
       const supabase = createClient()
       const { data: { session } } = await supabase.auth.getSession()
 
-      if (!session) {
+      if (!session && !motionId) {
         router.push('/')
         return
       }
       
-      // Store user ID for later saves
-      setUserId(session.user.id)
+      if (session) {
+        setUserId(session.user.id)
+        setUserEmail(session.user.email ?? null)
+      } else if (motionId) {
+         // Guest mode with motion loaded
+         setUserId(null)
+         setUserEmail(null) 
+      }
       
-      // Try to load existing project
-      const existingProject = await loadActiveProject(session.user.id)
+      // If motion param exists, load that instead of user project
+      if (motionId) {
+         try {
+            const motion = await getMotionById(motionId)
+            const data = motion.data
+            
+            setProjectName(motion.name)
+            setLayers(data.layers || [])
+            setLayerOrder(data.layerOrder || [])
+            
+            if (data.timeline) {
+               timeline.restoreSnapshot(data.timeline)
+            }
+            
+            if (data.background) {
+               setBackground(data.background)
+            }
+            
+            if (data.canvasWidth) setCanvasWidth(data.canvasWidth)
+            if (data.canvasHeight) setCanvasHeight(data.canvasHeight)
+            
+            // Auto-play for preview?
+            setTimeout(() => timeline.setPlaying(true), 500)
+            
+         } catch (error) {
+            console.error('Failed to load motion:', error)
+            showToast('Failed to load motion', 'error')
+         }
+         
+         setIsLoading(false)
+         setHasLoadedProject(true)
+         return
+      }
+      
+      // Try to load existing project (only if logged in and no motion param)
+      const existingProject = await loadActiveProject(session!.user.id)
       
       if (existingProject) {
         // Restore project state
@@ -2847,6 +2891,7 @@ function DashboardContent() {
         exportRestoreStagePositionRef={exportRestoreStagePositionRef}
         exportResizeForExportRef={exportResizeForExportRef}
         exportRestoreFromExportRef={exportRestoreFromExportRef}
+        userEmail={userEmail}
       >
         <MotionCanvas 
           template={selectedTemplate} 

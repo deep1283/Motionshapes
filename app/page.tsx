@@ -4,10 +4,11 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { motion } from 'framer-motion'
-import { ArrowRight, Play, Layers, Zap, MousePointer2 } from 'lucide-react'
+import { ArrowRight, Play, Layers, Zap, MousePointer2, Grid } from 'lucide-react'
 import { Spotlight } from '@/components/ui/spotlight'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import Link from 'next/link'
 
 export default function Home() {
   const router = useRouter()
@@ -49,7 +50,7 @@ export default function Home() {
   }
 
   return (
-    <main className="relative flex min-h-screen w-full flex-col items-center bg-gray-950 antialiased bg-grid-white/[0.02]">
+    <main className="relative flex h-screen w-full flex-col items-center bg-gray-950 antialiased bg-grid-white/[0.02] overflow-y-auto overflow-x-hidden">
       {/* Video Background */}
       <div className="fixed inset-0 z-0">
         <video 
@@ -130,6 +131,16 @@ export default function Home() {
               <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
             </span>
           </Button>
+
+          <Link href="/library" target="_blank">
+            <Button
+              variant="outline"
+              className="h-12 rounded-full border-white/20 bg-transparent px-6 text-base font-medium text-white hover:bg-white/10 hover:border-white/30 transition-all flex items-center gap-2"
+            >
+              <Grid className="h-4 w-4" />
+              Library
+            </Button>
+          </Link>
           
           <Button
             onClick={() => document.getElementById('founder-contact')?.scrollIntoView({ behavior: 'smooth' })}

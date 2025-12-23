@@ -1526,7 +1526,9 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             g.clear()
             const pillRadius = Math.min(animatedWidth, animatedHeight) / 2
             g.roundRect(-animatedWidth / 2, -animatedHeight / 2, animatedWidth, animatedHeight, pillRadius)
-            g.fill(layerData?.fillColor ?? 0xffffff)
+            // Use white fill + tint approach to support color animation
+            g.fill(0xffffff)
+            g.tint = finalColor // Use animated color, not static layer color
             // Store dimensions to avoid unnecessary redraws
             ;(g as any).__lastPillDims = { w: animatedWidth, h: animatedHeight }
             // Store shape size for hit area
@@ -2774,7 +2776,9 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             graphics.ellipse(0, 0, width / 2, height / 2)
             break
         }
-        graphics.fill(fillColor)
+        // Always fill white and apply color via tint for consistency with resize handler
+        graphics.fill(0xffffff)
+        graphics.tint = fillColor
       }
       
       // Load SVG icon as texture and create sprite

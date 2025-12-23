@@ -57,6 +57,8 @@ import FontPicker from '@/components/FontPicker'
 import { ExploreShapesModal } from '@/components/ExploreShapesModal'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { ExportModal } from '@/components/ExportModal'
+import { SaveMotionModal } from '@/components/SaveMotionModal'
+import { saveMotion, uploadToCloudflare } from '@/lib/library-api'
 import { useTimeline, useTimelineActions } from '@/lib/timeline-store'
 
 const parseNum = (value: string, fallback: number = 0): number => {
@@ -598,6 +600,7 @@ interface DashboardLayoutProps {
   onUpdateLayerPosition?: (id: string, x: number, y: number) => void
   onUpdateLayerRotation?: (id: string, rotation: number) => void
   onUpdateLayerSize?: (id: string, width: number, height: number) => void
+  userEmail?: string | null
   onUpdateLayerText?: (id: string, text: string) => void
   onUpdateLayerFontSize?: (id: string, fontSize: number) => void
   onUpdateLayerColor?: (id: string, color: number) => void
@@ -757,9 +760,98 @@ export default function DashboardLayout({
   initialCanvasWidth,
   initialCanvasHeight,
   onCanvasDimensionsChange,
+  userEmail
 }: DashboardLayoutProps) {
   const router = useRouter()
   const supabase = createClient()
+  // showToast is already available from useToast hook if needed, but checking for dupes
+  // If showToast is duplicated, remove one.
+  // const { showToast } = useToast() <- REMOVED
+  
+  const [isSaveLibraryOpen, setIsSaveLibraryOpen] = useState(false)
+  const [isSavingLibrary, setIsSavingLibrary] = useState(false)
+
+  const handleSaveToLibrary = async (data: { name: string, category: string }) => {
+    setIsSavingLibrary(true)
+    try {
+       const canvas = exportCanvasRef?.current
+       if (!canvas) throw new Error('No canvas found')
+  
+       timeline.setPlaying(false)
+       timeline.setCurrentTime(0)
+       await new Promise(r => setTimeout(r, 500)) // Wait for render
+
+       // 1. Thumbnail
+       const thumbnailDataUrl = canvas.toDataURL('image/png', 0.8)
+       const thumbnailBlob = await (await fetch(thumbnailDataUrl)).blob()
+       const thumbnailKey = `thumbnails/${Date.now()}.png`
+       const thumbnailUrl = await uploadToCloudflare(thumbnailBlob, thumbnailKey)
+  
+       // 2. Video Preview (Simple recording of playback)
+       const stream = canvas.captureStream(30)
+       const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' })
+       const chunks: Blob[] = []
+       
+       recorder.ondataavailable = e => {
+         if (e.data.size > 0) chunks.push(e.data)
+       }
+       
+       const recordingPromise = new Promise<string>((resolve, reject) => {
+          recorder.onstop = async () => {
+             const blob = new Blob(chunks, { type: 'video/webm' })
+             const key = `previews/${Date.now()}.webm`
+             try {
+                const url = await uploadToCloudflare(blob, key)
+                resolve(url)
+             } catch(e) { reject(e) }
+          }
+       })
+  
+       recorder.start()
+       timeline.setPlaying(true)
+       
+       // Calculate total duration based on tracks AND template clips
+     const snapshot = timeline.getSnapshot()
+     const tracks = (snapshot as any).tracks || []
+     const clips = (snapshot as any).templateClips || []
+     const trackEndTimes = tracks.map((t: any) => (t.startTime||0) + (t.duration||0))
+     const clipEndTimes = clips.map((c: any) => (c.start||0) + (c.duration||0))
+     const totalDuration = Math.max(3000, ...trackEndTimes, ...clipEndTimes) // Min 3s
+       
+       await new Promise(r => setTimeout(r, totalDuration + 200)) 
+       
+       timeline.setPlaying(false)
+       recorder.stop()
+       const previewUrl = await recordingPromise
+  
+       // 3. Save Data
+       await saveMotion({
+         name: data.name,
+         category: data.category,
+         thumbnail_url: thumbnailUrl,
+         preview_url: previewUrl,
+         data: {
+            layers,
+            layerOrder,
+            timeline: snapshot,
+            background,
+            canvasWidth: initialCanvasWidth, // Use initialCanvasWidth from props
+            canvasHeight: initialCanvasHeight // Use initialCanvasHeight from props
+         },
+         status: 'approved',
+         is_featured: false
+       })
+       
+       showToast('Saved to Library', 'success')
+       setIsSaveLibraryOpen(false)     
+    } catch (error) {
+       console.error(error)
+       showToast('Failed to save to library', 'error')
+    } finally {
+       setIsSavingLibrary(false)
+       timeline.setPlaying(false)
+    }
+  }
   const templateClips = useTimeline((s) => s.templateClips)
   const effectClips = useTimeline((s) => s.effectClips)
   const timelineTracks = useTimeline((s) => s.tracks)
@@ -1667,6 +1759,18 @@ export default function DashboardLayout({
                 <Download className="hidden md:block h-3.5 w-3.5" />
                 <span className="hidden md:inline">Export</span>
             </Button>
+            
+            {userEmail === 'deepmishra1283@gmail.com' && (
+              <Button 
+                  onClick={() => setIsSaveLibraryOpen(true)}
+                  variant="ghost"
+                  size="sm"
+                  className="flex h-9 w-9 md:h-8 md:w-auto md:px-3 gap-2 bg-purple-600 text-white hover:bg-purple-700 text-xs rounded-full font-medium transition-all duration-200"
+              >
+                  <Upload className="h-3.5 w-3.5" />
+                  <span className="hidden md:inline">Save Motion</span>
+              </Button>
+            )}
 
             {/* Mobile: Settings Toggle (Right Sidebar Toggle) */}
             <button 
@@ -5253,6 +5357,14 @@ export default function DashboardLayout({
           
           return { x, y, width: physicalViewportWidth, height: physicalViewportHeight }
         }}
+      />
+
+      {/* Save Motion Modal */}
+      <SaveMotionModal
+        isOpen={isSaveLibraryOpen}
+        onClose={() => setIsSaveLibraryOpen(false)}
+        onSave={handleSaveToLibrary}
+        isSaving={isSavingLibrary}
       />
     </div>
   )
