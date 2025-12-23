@@ -171,15 +171,25 @@ function DashboardContent() {
     }
   }, [selectedTemplate, selectedLayerId, templateClips, selectedClipId])
 
-  // Sync path overlay when selectedClipId or templateClips changes (handles undo/redo)
+  // Sync path overlay when selectedClipId or templateClips changes (handles undo/redo and deletion)
   useEffect(() => {
     if (!selectedClipId) {
       return
     }
     const clip = templateClips.find(c => c.id === selectedClipId)
+    
     if (clip?.template === 'path' && clip?.parameters?.pathPoints) {
+      // Clip exists and has path - sync the points
       const pts = clip.parameters.pathPoints as Array<{ x: number; y: number }>
       setActivePathPoints(pts)
+      setPathVersion(v => v + 1)
+    } else if (!clip) {
+      // Selected clip was deleted - clear all path visualizations for this layer
+      setActivePathPoints([])
+      setPathPoints([])
+      setLinePoints([])
+      setCustomPathPoints([])
+      setSelectedClipId('')
       setPathVersion(v => v + 1)
     }
   }, [selectedClipId, templateClips])
@@ -2262,10 +2272,25 @@ function DashboardContent() {
   }
 
   const handleDeleteClip = useCallback((clipId: string) => {
-    const layer = layers.find((l) => l.id === selectedLayerId)
+    const clip = templateClips.find(c => c.id === clipId)
+    const layer = layers.find((l) => l.id === clip?.layerId)
+    
+    // For path clips, restore to the START of the path (pathPoints[0])
+    // For other clips, use current layer position
+    let restoreX = layer?.x ?? 0.5
+    let restoreY = layer?.y ?? 0.5
+    
+    if (clip?.template === 'path' && clip?.parameters?.pathPoints) {
+      const pathPoints = clip.parameters.pathPoints as Array<{ x: number; y: number }>
+      if (pathPoints.length > 0) {
+        restoreX = pathPoints[0].x
+        restoreY = pathPoints[0].y
+      }
+    }
+    
     const layerBase = layer
       ? {
-          position: { x: layer.x, y: layer.y },
+          position: { x: restoreX, y: restoreY },
           scale: layer.scale,
           rotation: (layer.rotation || 0) * (Math.PI / 180), // Use layer's rotation in radians
           opacity: 1,
@@ -2273,6 +2298,16 @@ function DashboardContent() {
       : undefined
 
     timeline.removeTemplateClip(clipId, layerBase)
+    
+    // Update layer position to restore position for path clips
+    if (layer && clip?.template === 'path') {
+      setLayers(prev => prev.map(l => 
+        l.id === layer.id ? { ...l, x: restoreX, y: restoreY } : l
+      ))
+      
+      // Reset playhead to 0 and force re-render to sync PIXI graphics with base state
+      timeline.setCurrentTime(0)
+    }
     
     // Force a re-render by updating a dummy state
     // This ensures the TimelinePanel picks up the new duration immediately
@@ -2289,7 +2324,7 @@ function DashboardContent() {
     
     // Defer snapshot to next tick to ensure timeline state updates first
     setTimeout(() => pushSnapshot(), 0)
-  }, [layers, selectedLayerId, timeline, pushSnapshot])
+  }, [layers, selectedLayerId, timeline, pushSnapshot, templateClips])
 
   const handleDeleteLayer = useCallback((layerId: string) => {
     // Remove track and all clips for this layer (includes track removal)
@@ -2332,9 +2367,22 @@ function DashboardContent() {
           const clip = templateClips.find(c => c.id === currentSelectedClipId)
           const layer = layers.find((l) => l.id === clip?.layerId)
           
+          // For path clips, restore to the START of the path (pathPoints[0])
+          // For other clips, use current layer position
+          let restoreX = layer?.x ?? 0.5
+          let restoreY = layer?.y ?? 0.5
+          
+          if (clip?.template === 'path' && clip?.parameters?.pathPoints) {
+            const pathPoints = clip.parameters.pathPoints as Array<{ x: number; y: number }>
+            if (pathPoints.length > 0) {
+              restoreX = pathPoints[0].x
+              restoreY = pathPoints[0].y
+            }
+          }
+          
           const layerBase = layer
             ? {
-                position: { x: layer.x, y: layer.y },
+                position: { x: restoreX, y: restoreY },
                 scale: layer.scale,
                 rotation: (layer.rotation || 0) * (Math.PI / 180), // Use layer's rotation in radians
                 opacity: 1,
@@ -2342,6 +2390,17 @@ function DashboardContent() {
             : undefined
 
           timeline.removeTemplateClip(currentSelectedClipId, layerBase)
+          
+          // Update layer position to restore position
+          if (layer && clip?.template === 'path') {
+            setLayers(prev => prev.map(l => 
+              l.id === layer.id ? { ...l, x: restoreX, y: restoreY } : l
+            ))
+            
+            // Reset playhead to 0 and force re-render to sync PIXI graphics with base state
+            timeline.setCurrentTime(0)
+          }
+          
           setSelectedClipId('')
           setSelectedTemplate('')
           timeline.selectClip?.(currentSelectedClipId)
@@ -2923,6 +2982,14 @@ function DashboardContent() {
           popReappear={popReappear}
           onCanvasBackgroundClick={handleDeselectShape}
           selectedClipId={selectedClipId}
+          onSelectClipId={(clipId) => {
+            setSelectedClipId(clipId)
+            // Also select the layer associated with this clip
+            const clip = templateClips.find(c => c.id === clipId)
+            if (clip) {
+              setSelectedLayerId(clip.layerId)
+            }
+          }}
           onUpdatePanZoomRegions={handleUpdatePanZoomRegions}
           selectedTemplate={selectedTemplate}
           rollDistance={rollDistance}

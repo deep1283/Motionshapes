@@ -12,35 +12,38 @@ import Link from 'next/link'
 
 export default function Home() {
   const router = useRouter()
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [isCheckingAuth, setIsCheckingAuth] = useState(true)
 
-  // Redirect logged-in users directly to dashboard
+  // Check auth status on mount (but don't auto-redirect)
   useEffect(() => {
     const checkAuth = async () => {
       const supabase = createClient()
       const { data: { session } } = await supabase.auth.getSession()
-      
-      if (session) {
-        router.push('/dashboard')
-      } else {
-        setIsCheckingAuth(false)
-      }
+      setIsLoggedIn(!!session)
+      setIsCheckingAuth(false)
     }
     
     checkAuth()
-  }, [router])
+  }, [])
 
-  const handleLogin = async () => {
-    const supabase = createClient()
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/dashboard`,
-      },
-    })
+  const handleStartCreating = async () => {
+    if (isLoggedIn) {
+      // Already logged in - go directly to dashboard
+      router.push('/dashboard')
+    } else {
+      // Not logged in - trigger login flow
+      const supabase = createClient()
+      await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/dashboard`,
+        },
+      })
+    }
   }
 
-  // Show nothing while checking auth (prevents flash of home page)
+  // Show loading spinner while checking auth
   if (isCheckingAuth) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-950">
@@ -119,7 +122,7 @@ export default function Home() {
 
 
           <Button
-            onClick={handleLogin}
+            onClick={handleStartCreating}
             style={{ transition: 'all 300ms ease-in-out' }}
             className="group relative h-12 w-48 overflow-hidden rounded-full bg-white px-8 text-base font-medium text-neutral-950 hover:w-64 hover:bg-neutral-200 hover:scale-105 active:scale-95"
           >

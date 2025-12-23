@@ -122,7 +122,7 @@ const ResizeClipItem = ({
           className="p-1 hover:bg-white/10 rounded group"
           onClick={(e) => {
             e.stopPropagation()
-            timeline.removeTemplateClip(clip.layerId, clip.id)
+            timeline.removeTemplateClip(clip.id)
           }}
         >
           <Trash2 className="w-3 h-3 text-neutral-500 group-hover:text-red-400 transition-colors" />
@@ -289,7 +289,7 @@ const RotateClipItem = ({
           <ChevronRight className={cn("w-3 h-3 text-violet-400 transition-transform", expanded && "rotate-90")} />
           <span className="text-[10px] uppercase text-violet-300 font-medium">Rotate {index + 1}</span>
         </div>
-        <button className="p-1 hover:bg-white/10 rounded group" onClick={(e) => { e.stopPropagation(); timeline.removeTemplateClip(clip.layerId, clip.id) }}>
+        <button className="p-1 hover:bg-white/10 rounded group" onClick={(e) => { e.stopPropagation(); timeline.removeTemplateClip(clip.id) }}>
           <Trash2 className="w-3 h-3 text-neutral-500 group-hover:text-red-400 transition-colors" />
         </button>
       </div>
@@ -407,7 +407,7 @@ const ColorClipItem = ({
           <ChevronRight className={cn("w-3 h-3 text-violet-400 transition-transform", expanded && "rotate-90")} />
           <span className="text-[10px] uppercase text-violet-300 font-medium">Color {index + 1}</span>
         </div>
-        <button className="p-1 hover:bg-white/10 rounded group" onClick={(e) => { e.stopPropagation(); timeline.removeTemplateClip(clip.layerId, clip.id) }}>
+        <button className="p-1 hover:bg-white/10 rounded group" onClick={(e) => { e.stopPropagation(); timeline.removeTemplateClip(clip.id) }}>
           <Trash2 className="w-3 h-3 text-neutral-500 group-hover:text-red-400 transition-colors" />
         </button>
       </div>
@@ -4581,19 +4581,20 @@ export default function DashboardLayout({
                         </button>
                       ))}
                       <input
-                        type="number"
-                        min={0}
-                        max={360}
-                        step={1}
-                        value={maskAngle}
-                        onChange={(e) => {
+                        type="text"
+                        inputMode="numeric"
+                        defaultValue={maskAngle}
+                        key={`mask-angle-${selectedClipId}-${maskAngle}`}
+                        onBlur={(e) => {
                           if (selectedLayerId) {
+                            const v = parseNum(e.target.value, 0) % 360
                             timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
-                              parameters: { ...maskClip.parameters, maskAngle: parseNum(e.target.value) % 360 }
+                              parameters: { ...maskClip.parameters, maskAngle: v }
                             })
                           }
                         }}
-                        className="w-12 bg-neutral-800 border border-white/10 rounded-md px-2 py-1 text-[11px] text-white text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                        className="w-12 bg-neutral-800 border border-white/10 rounded-md px-2 py-1 text-[11px] text-white text-center focus:outline-none focus:border-violet-500/50"
                       />
                     </div>
                   </div>

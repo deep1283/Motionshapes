@@ -90,6 +90,7 @@ interface MotionCanvasProps {
   onUpdateLayerSize?: (id: string, width: number, height: number) => void
   // Pan/Zoom region editing
   selectedClipId?: string
+  onSelectClipId?: (clipId: string) => void
   onUpdatePanZoomRegions?: (clipId: string, targetRegion: PanZoomRegion) => void
   // Roll visualization
   selectedTemplate?: string
@@ -269,7 +270,7 @@ function LineOverlay({
   )
 }
 
-export default function MotionCanvas({ template, templateVersion, layers = [], layerOrder = [], onUpdateLayerPosition, onUpdateLayerSize, onTemplateComplete, isDrawingPath = false, isDrawingLine = false, pathPoints = [], onAddPathPoint, onFinishPath, onFinishLine, onAddCustomPathPoint, onFinishCustomPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint, background: _background, viewportWidth = 640, viewportHeight = 360, offsetX = 0, offsetY = 0, popReappear = false, onCanvasBackgroundClick, selectedClipId, onUpdatePanZoomRegions, onCanvasReady, selectedTemplate, rollDistance = 0.3, onRollDistanceChange, jumpHeight = 0.2, onJumpHeightChange }: MotionCanvasProps) {
+export default function MotionCanvas({ template, templateVersion, layers = [], layerOrder = [], onUpdateLayerPosition, onUpdateLayerSize, onTemplateComplete, isDrawingPath = false, isDrawingLine = false, pathPoints = [], onAddPathPoint, onFinishPath, onFinishLine, onAddCustomPathPoint, onFinishCustomPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint, background: _background, viewportWidth = 640, viewportHeight = 360, offsetX = 0, offsetY = 0, popReappear = false, onCanvasBackgroundClick, selectedClipId, onSelectClipId, onUpdatePanZoomRegions, onCanvasReady, selectedTemplate, rollDistance = 0.3, onRollDistanceChange, jumpHeight = 0.2, onJumpHeightChange }: MotionCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<PIXI.Application | null>(null)
   const [isReady, setIsReady] = useState(false)
@@ -320,6 +321,11 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   const bgSpriteRef = useRef<PIXI.Sprite | null>(null)
   const bgTextureRef = useRef<PIXI.Texture | null>(null)
   const bgImageUrlRef = useRef<string | null>(null) // Track loaded image URL to avoid reloading on resize
+  // Track previous path clips to detect deletion and reset graphics position
+  const prevPathClipsRef = useRef<Array<{ id: string; layerId: string; pathPoints?: Array<{ x: number; y: number }> }>>([])
+  // Track active path animation callbacks by layer ID so we can stop them on deletion
+  const pathAnimationCallbacksRef = useRef<Record<string, (ticker: PIXI.Ticker) => void>>({})
+  
   const resizeStateRef = useRef<{
     layerId: string
     handle: 'tl' | 'tr' | 'br' | 'bl' | 't' | 'r' | 'b' | 'l'
@@ -377,6 +383,55 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   useEffect(() => {
     timelineTracksRef.current = timelineTracks
   }, [timelineTracks])
+  
+  // Detect when a path clip is deleted and immediately reset graphics position
+  useEffect(() => {
+    if (!containerRef.current || !appRef.current) return
+    
+    const currentPathClips = templateClips
+      .filter(c => c.template === 'path')
+      .map(c => ({
+        id: c.id,
+        layerId: c.layerId,
+        pathPoints: c.parameters?.pathPoints as Array<{ x: number; y: number }> | undefined
+      }))
+    
+    // Find deleted path clips (were in prev but not in current)
+    const prevIds = new Set(prevPathClipsRef.current.map(c => c.id))
+    const currentIds = new Set(currentPathClips.map(c => c.id))
+    
+    for (const prevClip of prevPathClipsRef.current) {
+      if (!currentIds.has(prevClip.id)) {
+        // This path clip was deleted
+        
+        // 1. Stop any running path animation ticker callback for this layer
+        const activeCallback = pathAnimationCallbacksRef.current[prevClip.layerId]
+        if (activeCallback && appRef.current) {
+          appRef.current.ticker.remove(activeCallback)
+          delete pathAnimationCallbacksRef.current[prevClip.layerId]
+        }
+        
+        // 2. Reset graphics position to pathPoints[0]
+        const g = graphicsByIdRef.current[prevClip.layerId]
+        if (g && prevClip.pathPoints && prevClip.pathPoints.length > 0) {
+          const bounds = containerRef.current.getBoundingClientRect()
+          const screenWidth = bounds.width || 1
+          const screenHeight = bounds.height || 1
+          
+          // Set graphics position to the start of the deleted path
+          const startPos = prevClip.pathPoints[0]
+          g.x = startPos.x * screenWidth
+          g.y = startPos.y * screenHeight
+          
+          appRef.current?.render()
+        }
+      }
+    }
+    
+    // Update ref for next comparison
+    prevPathClipsRef.current = currentPathClips
+  }, [templateClips])
+  
   // Convert template clips to ClipInfo for unified sampling
   const clipInfos: ClipInfo[] = useMemo(() => 
     templateClips.map(c => ({ 
@@ -3646,7 +3701,9 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         const shouldAnimateTemplate = selectedLayerId ? layer.id === selectedLayerId : true
 
         // animate this circle when a template is chosen
-        if (!isDrawingPath && !template && pathLayerId && layer.id === pathLayerId && activePathPoints.length >= 2) {
+        // DISABLED: This conflicts with timeline editing. When selecting an existing path clip, 
+        // we want the shape to stay at its timeline position, not snap to the path start.
+        if (false && !isDrawingPath && !template && pathLayerId && layer.id === pathLayerId && activePathPoints.length >= 2) {
           if (activePathPoints.length < 2) {
             return
           }
@@ -3686,9 +3743,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
                 g.x = a.x + (b.x - a.x) * segT
                 g.y = a.y + (b.y - a.y) * segT
                 g.alpha = 1
-                const nx = screenWidth > 0 ? g.x / screenWidth : 0
-                const ny = screenHeight > 0 ? g.y / screenHeight : 0
-                onUpdateLayerPosition?.(layer.id, nx, ny)
+                // NOTE: Do NOT call onUpdateLayerPosition here - animation should only move
+                // graphics visually, NOT permanently mutate layer.x/y state
                 app.render()
                 break
               }
@@ -3698,14 +3754,17 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
               const last = pts[pts.length - 1]
               g.x = last.x
               g.y = last.y
-              const nx = screenWidth > 0 ? g.x / screenWidth : 0
-              const ny = screenHeight > 0 ? g.y / screenHeight : 0
-              onUpdateLayerPosition?.(layer.id, nx, ny)
+              // NOTE: Do NOT call onUpdateLayerPosition here either - layer.x/y should
+              // remain at its base/rest position, animation position is computed from clips
               notifyComplete()
               onPathPlaybackComplete?.()
               app.ticker.remove(cb)
+              // Clean up from tracking ref
+              delete pathAnimationCallbacksRef.current[layer.id]
             }
           }
+          // Store callback so it can be stopped on clip deletion
+          pathAnimationCallbacksRef.current[layer.id] = cb
           app.ticker.add(cb)
           tickerCallbacks.push(cb)
         } else if (templateEnabled && shouldAnimateTemplate && template === 'roll') {
@@ -4644,6 +4703,12 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
                       e.stopPropagation()
                       e.preventDefault()
                       
+                      // Select the clip when clicking on the path point
+                      if (pathClip.id && onSelectClipId) {
+                        onSelectClipId(pathClip.id)
+                      }
+                      
+                      
                       const handleMove = (ev: PointerEvent) => {
                         const container = containerRef.current
                         if (!container) return
@@ -4657,7 +4722,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
                         if (clip && clip.parameters?.pathPoints) {
                           const newPoints = [...clip.parameters.pathPoints]
                           newPoints[0] = { x: clampedX, y: clampedY }
-                          onUpdateLayerPosition?.(clip.layerId, clampedX, clampedY)
+                          // NOTE: Do NOT call onUpdateLayerPosition here - each path is independent
+                          // Only update this path's pathPoints, not the layer's base position
                           timelineActions.updateTemplateClip(clip.layerId, clip.id, {
                             parameters: { pathPoints: newPoints }
                           })
@@ -4688,6 +4754,11 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
                       onPointerDown={(e) => {
                         e.stopPropagation()
                         e.preventDefault()
+                        
+                        // Select the clip when clicking on the path point
+                        if (pathClip.id && onSelectClipId) {
+                          onSelectClipId(pathClip.id)
+                        }
                         
                         const handleMove = (ev: PointerEvent) => {
                           const container = containerRef.current

@@ -2319,6 +2319,9 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         // Remove from clipKeyframes
         const { [clipId]: removed, ...remainingClipKeyframes } = track.clipKeyframes ?? {}
         
+        // Check if deleted clip is a path template - if so, clear the paths
+        const isPathClip = clipToRemove.template === 'path'
+        
         return {
           ...track,
           clipKeyframes: remainingClipKeyframes,
@@ -2326,8 +2329,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           scale: filterKeyframes(track.scale),
           rotation: filterKeyframes(track.rotation),
           opacity: filterKeyframes(track.opacity),
-          // Paths don't have clipId, keep them as is for now
-          paths: track.paths,
+          // Clear paths if deleting a path clip, otherwise keep them
+          paths: isPathClip ? [] : track.paths,
         }
       })
       
