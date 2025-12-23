@@ -779,16 +779,42 @@ export default function DashboardLayout({
   
        timeline.setPlaying(false)
        timeline.setCurrentTime(0)
+       exportHideHandlesRef?.current?.() // Hide handles for clean recording
        await new Promise(r => setTimeout(r, 500)) // Wait for render
 
-       // 1. Thumbnail
-       const thumbnailDataUrl = canvas.toDataURL('image/png', 0.8)
+       // Calculate viewport bounds (same logic as export)
+       const dpr = window.devicePixelRatio || 1
+       const physicalViewportWidth = canvasWidth * dpr
+       const physicalViewportHeight = canvasHeight * dpr
+       const physicalCanvasX = canvasX * dpr
+       const physicalCanvasY = canvasY * dpr
+       const workspaceWidth = canvas.width
+       const workspaceHeight = canvas.height
+       const vpX = (workspaceWidth - physicalViewportWidth) / 2 + physicalCanvasX
+       const vpY = (workspaceHeight - physicalViewportHeight) / 2 + physicalCanvasY
+
+       // 1. Thumbnail - crop to viewport
+       const thumbCanvas = document.createElement('canvas')
+       thumbCanvas.width = canvasWidth  // Logical pixels for output
+       thumbCanvas.height = canvasHeight
+       const thumbCtx = thumbCanvas.getContext('2d')!
+       thumbCtx.drawImage(
+         canvas,
+         vpX, vpY, physicalViewportWidth, physicalViewportHeight,  // Source (physical pixels)
+         0, 0, canvasWidth, canvasHeight  // Dest (logical pixels)
+       )
+       const thumbnailDataUrl = thumbCanvas.toDataURL('image/png', 0.8)
        const thumbnailBlob = await (await fetch(thumbnailDataUrl)).blob()
        const thumbnailKey = `thumbnails/${Date.now()}.png`
        const thumbnailUrl = await uploadToCloudflare(thumbnailBlob, thumbnailKey)
   
-       // 2. Video Preview (Simple recording of playback)
-       const stream = canvas.captureStream(30)
+       // 2. Video Preview - capture cropped viewport only
+       const previewCanvas = document.createElement('canvas')
+       previewCanvas.width = canvasWidth  // Logical pixels
+       previewCanvas.height = canvasHeight
+       const previewCtx = previewCanvas.getContext('2d')!
+       
+       const stream = previewCanvas.captureStream(30)
        const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' })
        const chunks: Blob[] = []
        
@@ -807,21 +833,36 @@ export default function DashboardLayout({
           }
        })
   
+       // Frame loop to copy cropped viewport to preview canvas
+       let isRecording = true
+       const drawFrame = () => {
+         if (!isRecording) return
+         previewCtx.drawImage(
+           canvas,
+           vpX, vpY, physicalViewportWidth, physicalViewportHeight,
+           0, 0, canvasWidth, canvasHeight
+         )
+         requestAnimationFrame(drawFrame)
+       }
+       
        recorder.start()
        timeline.setPlaying(true)
+       drawFrame()
        
        // Calculate total duration based on tracks AND template clips
-     const snapshot = timeline.getSnapshot()
-     const tracks = (snapshot as any).tracks || []
-     const clips = (snapshot as any).templateClips || []
-     const trackEndTimes = tracks.map((t: any) => (t.startTime||0) + (t.duration||0))
-     const clipEndTimes = clips.map((c: any) => (c.start||0) + (c.duration||0))
-     const totalDuration = Math.max(3000, ...trackEndTimes, ...clipEndTimes) // Min 3s
+       const snapshot = timeline.getSnapshot()
+       const tracks = (snapshot as any).tracks || []
+       const clips = (snapshot as any).templateClips || []
+       const trackEndTimes = tracks.map((t: any) => (t.startTime||0) + (t.duration||0))
+       const clipEndTimes = clips.map((c: any) => (c.start||0) + (c.duration||0))
+       const totalDuration = Math.max(3000, ...trackEndTimes, ...clipEndTimes) // Min 3s
        
        await new Promise(r => setTimeout(r, totalDuration + 200)) 
        
+       isRecording = false
        timeline.setPlaying(false)
        recorder.stop()
+       exportShowHandlesRef?.current?.() // Show handles again
        const previewUrl = await recordingPromise
   
        // 3. Save Data
