@@ -1527,6 +1527,42 @@ function DashboardContent() {
     timeline.ensureTrack(id)
   }
 
+  // Offset all animation clip positions when a text layer is moved
+  // This makes animations move with the text layer
+  const handleOffsetClipPositions = (layerId: string, deltaX: number, deltaY: number) => {
+    // Get all clips for this layer
+    const layerClips = templateClips.filter(c => c.layerId === layerId)
+    
+    for (const clip of layerClips) {
+      // Update layerBase.position if it exists
+      if (clip.parameters?.layerBase?.position) {
+        const newPosition = {
+          x: (clip.parameters.layerBase.position.x || 0) + deltaX,
+          y: (clip.parameters.layerBase.position.y || 0) + deltaY,
+        }
+        timeline.updateTemplateClip(layerId, clip.id, {
+          parameters: {
+            layerBase: {
+              ...clip.parameters.layerBase,
+              position: newPosition,
+            }
+          }
+        })
+      }
+      
+      // Also update pathPoints for path-based animations
+      if (clip.parameters?.pathPoints) {
+        const newPoints = clip.parameters.pathPoints.map((pt: { x: number; y: number }) => ({
+          x: pt.x + deltaX,
+          y: pt.y + deltaY,
+        }))
+        timeline.updateTemplateClip(layerId, clip.id, {
+          parameters: { pathPoints: newPoints }
+        })
+      }
+    }
+  }
+
   const handleUpdateLayerScale = (id: string, scale: number) => {
     setLayers((prev) =>
       prev.map((layer) =>
@@ -3017,6 +3053,7 @@ function DashboardContent() {
           onRollDistanceChange={handleRollDistanceChange}
           jumpHeight={jumpHeight}
           onJumpHeightChange={handleJumpHeightChange}
+          onOffsetClipPositions={handleOffsetClipPositions}
           onCanvasReady={(canvas, render, hideHandles, showHandles, resetStagePosition, restoreStagePosition, resizeForExport, restoreFromExport) => {
             exportCanvasRef.current = canvas
             exportRenderRef.current = render

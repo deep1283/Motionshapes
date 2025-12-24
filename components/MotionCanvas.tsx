@@ -110,6 +110,8 @@ interface MotionCanvasProps {
     resizeForExport: (width: number, height: number) => void,
     restoreFromExport: () => void
   ) => void
+  // Text layer animation offset - called when a text layer with clips is moved
+  onOffsetClipPositions?: (layerId: string, deltaX: number, deltaY: number) => void
 }
 
 const ICON_SHAPE_KINDS = ['like', 'comment', 'share', 'cursor'] as const
@@ -270,7 +272,7 @@ function LineOverlay({
   )
 }
 
-export default function MotionCanvas({ template, templateVersion, layers = [], layerOrder = [], onUpdateLayerPosition, onUpdateLayerSize, onTemplateComplete, isDrawingPath = false, isDrawingLine = false, pathPoints = [], onAddPathPoint, onFinishPath, onFinishLine, onAddCustomPathPoint, onFinishCustomPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint, background: _background, viewportWidth = 640, viewportHeight = 360, offsetX = 0, offsetY = 0, popReappear = false, onCanvasBackgroundClick, selectedClipId, onSelectClipId, onUpdatePanZoomRegions, onCanvasReady, selectedTemplate, rollDistance = 0.3, onRollDistanceChange, jumpHeight = 0.2, onJumpHeightChange }: MotionCanvasProps) {
+export default function MotionCanvas({ template, templateVersion, layers = [], layerOrder = [], onUpdateLayerPosition, onUpdateLayerSize, onTemplateComplete, isDrawingPath = false, isDrawingLine = false, pathPoints = [], onAddPathPoint, onFinishPath, onFinishLine, onAddCustomPathPoint, onFinishCustomPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint, background: _background, viewportWidth = 640, viewportHeight = 360, offsetX = 0, offsetY = 0, popReappear = false, onCanvasBackgroundClick, selectedClipId, onSelectClipId, onUpdatePanZoomRegions, onCanvasReady, selectedTemplate, rollDistance = 0.3, onRollDistanceChange, jumpHeight = 0.2, onJumpHeightChange, onOffsetClipPositions }: MotionCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<PIXI.Application | null>(null)
   const [isReady, setIsReady] = useState(false)
@@ -290,7 +292,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
 
 
   // ... (rest of component)
-  const dragRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null)
+  const dragRef = useRef<{ id: string; offsetX: number; offsetY: number; originalX?: number; originalY?: number; hasClips?: boolean } | null>(null)
   const graphicsByIdRef = useRef<Record<string, PIXI.Graphics>>({})
   // Export dimensions override - when set, updateGraphicsFromTimeline uses these instead of container bounds
   const exportDimensionsRef = useRef<{ width: number; height: number } | null>(null)
@@ -2738,6 +2740,17 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   }
 
   const clearDrag = () => {
+    // If this was an animated layer drag, offset all clip positions
+    if (dragRef.current?.hasClips && dragRef.current.originalX !== undefined && dragRef.current.originalY !== undefined) {
+      const layer = layers.find(l => l.id === dragRef.current?.id)
+      if (layer) {
+        const deltaX = layer.x - dragRef.current.originalX
+        const deltaY = layer.y - dragRef.current.originalY
+        if (deltaX !== 0 || deltaY !== 0) {
+          onOffsetClipPositions?.(layer.id, deltaX, deltaY)
+        }
+      }
+    }
     dragRef.current = null
     resizeStateRef.current = null
     stage.cursor = 'default'
@@ -3683,17 +3696,17 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           // Position handles correctly (they're in overlay, not on shape)
           syncHandlePositions(layer.id)
           
-          // Check if layer has any template clips - if so, disable dragging
+          // Track if layer has animation clips - we'll offset their positions on drag end
           const hasClips = templateClips.some(c => c.layerId === layer.id)
-          if (hasClips) {
-            // Don't initiate drag - shape is locked after templates applied
-            return
-          }
           
           dragRef.current = {
             id: layer.id,
             offsetX: pos.x - g.x,
             offsetY: pos.y - g.y,
+            // Store original normalized position for text layer clip offset on drag end
+            originalX: layer.x,
+            originalY: layer.y,
+            hasClips: hasClips,  // Track if this is an animated text layer
           }
           stage.cursor = 'grabbing'
         })
