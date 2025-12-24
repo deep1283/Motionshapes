@@ -2898,7 +2898,10 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       // Last in renderLayers (bottom of timeline) gets highest zIndex = rendered on top
       const totalLayers = renderLayers.length
       
-      renderLayers.forEach(async (layer, layerIndex) => {
+      // Use async IIFE to properly await all layer creation (including async SVG/image loading)
+      // Without this, forEach(async...) fires and forgets, causing timing issues
+      ;(async () => {
+        await Promise.all(renderLayers.map(async (layer, layerIndex) => {
         // Handle image layers
         if (layer.type === 'image' && layer.imageUrl) {
           try {
@@ -3914,24 +3917,23 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           }
           tickerCallbacks.push(cb)
         }
-      })
+      }))
 
-      tickerCallbacks.forEach((cb) => app.ticker.add(cb))
-      if (tickerCallbacks.length > 0) {
-        app.ticker.start()
-      }
+        // After all layers are loaded (including async SVG/images), run post-processing
+        tickerCallbacks.forEach((cb) => app.ticker.add(cb))
+        if (tickerCallbacks.length > 0) {
+          app.ticker.start()
+        }
 
-      
-      // Update graphics and render
-      Promise.all(renderLayers.map(async (layer, layerIndex) => {
+        // Update graphics with timeline positions and render
         await updateGraphicsFromTimeline()
-      })).then(() => {
+        
         // Sync handle positions for selected layer after all graphics are updated
         if (selectedLayerId && resizeHandlesRef.current[selectedLayerId]) {
           syncHandlePositions(selectedLayerId)
         }
         app.render()
-      })
+      })()
 
       return () => {
         tickerCallbacks.forEach((cb) => app.ticker.remove(cb))
