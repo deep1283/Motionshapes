@@ -9,8 +9,8 @@
  * Phase 2: Encode frames to video at constant rate
  */
 
-export type ExportQuality = 'standard' | 'high'
-export type ExportFPS = 24 | 30 | 60
+export type ExportQuality = 'standard' | 'high' | 'ultra'
+export type ExportFPS = 24 | 30 | 60  // 120fps removed - browser limitations
 
 // Background settings for export
 export interface ExportBackground {
@@ -45,10 +45,11 @@ interface ExportOptions {
   onRender: () => void // Function to force render
 }
 
-// Hidden bitrate values - users only see "Standard" and "High"
+// Hidden bitrate values for each quality tier
 const QUALITY_BITRATE: Record<ExportQuality, number> = {
-  standard: 5_000_000, // 5 Mbps
-  high: 10_000_000,    // 10 Mbps
+  standard: 5_000_000,  // 5 Mbps
+  high: 10_000_000,     // 10 Mbps
+  ultra: 25_000_000,    // 25 Mbps - best quality
 }
 
 /**
@@ -145,7 +146,7 @@ export async function exportToWebM(options: ExportOptions): Promise<Blob> {
   // PHASE 2: Encode frames to video
   // ============================================
   
-  // Create offscreen canvas for encoding at OUTPUT size (logical pixels)
+  // Create offscreen canvas for encoding
   const encodeCanvas = document.createElement('canvas')
   encodeCanvas.width = outputWidth
   encodeCanvas.height = outputHeight
@@ -248,7 +249,8 @@ export function estimateFileSize(
 export async function convertToMP4(
   webmBlob: Blob,
   fps: ExportFPS = 30,
-  onProgress?: (progress: number) => void
+  onProgress?: (progress: number) => void,
+  bitrate: number = 10_000_000  // Default 10 Mbps
 ): Promise<Blob> {
   // Dynamically import FFmpeg to avoid loading it until needed
   const { FFmpeg } = await import('@ffmpeg/ffmpeg')
@@ -283,20 +285,25 @@ export async function convertToMP4(
     
     onProgress?.(0.3) // 30% - Input written
     
+    // Convert bitrate to kbps for FFmpeg
+    const bitrateKbps = `${Math.round(bitrate / 1000)}k`
+    const maxrateKbps = `${Math.round(bitrate * 1.5 / 1000)}k`  // Allow 1.5x peak
+    const bufsizeKbps = `${Math.round(bitrate * 2 / 1000)}k`    // 2s buffer
+    
     // Convert WebM to MP4 using H.264 codec
     // -c:v libx264 = use H.264 video codec  
-    // -preset ultrafast = fastest encoding (less compression but much faster)
-    // -crf 23 = quality level (18-28, lower = better)
+    // -preset medium = balanced speed/compression
+    // -b:v = target bitrate, -maxrate/-bufsize = enforce consistent bitrate
     // -pix_fmt yuv420p = ensure compatibility with all players
-    // Force input and output frame rate to preserve correct duration
-    // Use scale filter to ensure even dimensions (required by H.264 yuv420p)
     await ffmpeg.exec([
       '-r', fps.toString(),       // Input frame rate
       '-i', 'input.webm',
       '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',  // Round to even dimensions
       '-c:v', 'libx264',
-      '-preset', 'ultrafast',
-      '-crf', '23',
+      '-preset', 'medium',
+      '-b:v', bitrateKbps,
+      '-maxrate', maxrateKbps,    // Max bitrate for peaks
+      '-bufsize', bufsizeKbps,    // Rate control buffer
       '-pix_fmt', 'yuv420p',
       '-r', fps.toString(),       // Output frame rate
       '-movflags', '+faststart',

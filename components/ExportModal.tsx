@@ -148,9 +148,11 @@ export function ExportModal({
       if (format === 'mp4') {
         setExportPhase('converting')
         setProgress(0)
+        // Bitrate based on quality setting
+        const bitrateMap = { standard: 5_000_000, high: 10_000_000, ultra: 25_000_000 }
         finalBlob = await convertToMP4(blob, fps, (prog) => {
           setProgress(prog)
-        })
+        }, bitrateMap[quality])
       }
 
       downloadBlob(finalBlob, `${filename.trim() || 'motionshapes'}.${format}`)
@@ -295,26 +297,41 @@ export function ExportModal({
                   <button
                     onClick={() => setQuality('standard')}
                     className={cn(
-                      "flex-1 py-3 px-4 rounded-xl text-sm font-medium transition-all",
+                      "flex-1 py-3 px-3 rounded-xl text-sm font-medium transition-all",
                       quality === 'standard'
                         ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
                         : "bg-neutral-800 text-neutral-400 border border-white/5 hover:bg-neutral-700"
                     )}
                   >
                     <div>Standard</div>
-                    <div className="text-xs opacity-60 mt-0.5">Smaller file</div>
+                    <div className="text-xs opacity-60 mt-0.5">Smaller</div>
                   </button>
                   <button
                     onClick={() => setQuality('high')}
                     className={cn(
-                      "flex-1 py-3 px-4 rounded-xl text-sm font-medium transition-all",
+                      "flex-1 py-3 px-3 rounded-xl text-sm font-medium transition-all",
                       quality === 'high'
                         ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
                         : "bg-neutral-800 text-neutral-400 border border-white/5 hover:bg-neutral-700"
                     )}
                   >
                     <div>High</div>
-                    <div className="text-xs opacity-60 mt-0.5">Best quality</div>
+                    <div className="text-xs opacity-60 mt-0.5">Better</div>
+                  </button>
+                  <button
+                    onClick={() => setQuality('ultra')}
+                    className={cn(
+                      "flex-1 py-3 px-3 rounded-xl text-sm font-medium transition-all",
+                      quality === 'ultra'
+                        ? "bg-gradient-to-r from-purple-500/30 to-pink-500/30 text-purple-200 border border-purple-400/40"
+                        : "bg-neutral-800 text-neutral-400 border border-white/5 hover:bg-neutral-700"
+                    )}
+                  >
+                    <div className="flex items-center gap-1 justify-center">
+                      Ultra
+                      <span className="text-[10px] px-1 py-0.5 bg-gradient-to-r from-purple-500 to-pink-500 rounded text-white font-semibold">PRO</span>
+                    </div>
+                    <div className="text-xs opacity-60 mt-0.5">Best</div>
                   </button>
                 </div>
               </div>

@@ -13,27 +13,33 @@ export async function POST(request: NextRequest) {
                request.headers.get('x-real-ip') || 
                'unknown'
     
-    // Check rate limit
-    const identifier = getUserIdentifier(user?.id, ip)
-    const rateLimit = await checkAIGenerationLimit(identifier)
+    // Admin emails bypass rate limiting
+    const adminEmails = (process.env.ADMIN_EMAILS || 'deepmishra1283@gmail.com').split(',').map(e => e.trim().toLowerCase())
+    const isAdmin = user?.email && adminEmails.includes(user.email.toLowerCase())
     
-    if (!rateLimit.success) {
-      return NextResponse.json(
-        { 
-          error: 'Rate limit exceeded',
-          message: `You've used all ${rateLimit.limit} AI generations for today. Try again tomorrow!`,
-          remaining: rateLimit.remaining,
-          resetAt: rateLimit.resetAt.toISOString(),
-        },
-        { 
-          status: 429,
-          headers: {
-            'X-RateLimit-Limit': String(rateLimit.limit),
-            'X-RateLimit-Remaining': String(rateLimit.remaining),
-            'X-RateLimit-Reset': rateLimit.resetAt.toISOString(),
+    // Check rate limit (skip for admins)
+    if (!isAdmin) {
+      const identifier = getUserIdentifier(user?.id, ip)
+      const rateLimit = await checkAIGenerationLimit(identifier)
+      
+      if (!rateLimit.success) {
+        return NextResponse.json(
+          { 
+            error: 'Rate limit exceeded',
+            message: `You've used all ${rateLimit.limit} AI generations for today. Try again tomorrow!`,
+            remaining: rateLimit.remaining,
+            resetAt: rateLimit.resetAt.toISOString(),
+          },
+          { 
+            status: 429,
+            headers: {
+              'X-RateLimit-Limit': String(rateLimit.limit),
+              'X-RateLimit-Remaining': String(rateLimit.remaining),
+              'X-RateLimit-Reset': rateLimit.resetAt.toISOString(),
+            }
           }
-        }
-      )
+        )
+      }
     }
 
     const { prompt, baseImage } = await request.json()
@@ -108,6 +114,8 @@ export async function POST(request: NextRequest) {
     }
 
     if (!imageData) {
+      console.error('Gemini response had no image. Full response:', JSON.stringify(data, null, 2))
+      console.error('Text response from Gemini:', textResponse)
       return NextResponse.json({ 
         error: 'No image generated', 
         textResponse,
