@@ -89,79 +89,79 @@ const rollPreset = (distance: number = BASE_ROLL_DISTANCE, speed: number = ROLL_
 
 export const GRAVITY = 9.8 // normalized units per second^2
 
-// Inverse of jumpPreset duration calculation
-// Given duration and velocity, calculate height
-export const jumpHeightForDuration = (duration: number, velocity: number = 1.5) => {
-  const timeUpSec = Math.max(0.15, duration / 2000) // t = T/2
-  const clampedVelocity = Math.max(0.2, velocity)
-  
-  // Check if the velocity is sufficient for this duration
-  // Max duration for velocity v0 is T = 2*v0/g
-  const maxDurationForVelocity = (2 * clampedVelocity / GRAVITY) * 1000
-  
-  if (duration <= maxDurationForVelocity) {
-    // Regime 1: Velocity is sufficient. Calculate height on the trajectory.
-    // h = v0*t - 0.5*g*t^2
-    const height = clampedVelocity * timeUpSec - 0.5 * GRAVITY * timeUpSec * timeUpSec
-    return Math.max(0.05, height)
-  } else {
-    // Regime 2: Velocity is insufficient. We must scale up.
-    // We assume the optimal trajectory where v0 scales to match duration.
-    // h = 1/8 * g * T^2 (where T is duration in seconds)
-    const durationSec = duration / 1000
-    const height = 0.125 * GRAVITY * durationSec * durationSec
-    return Math.max(0.05, height)
-  }
+// Linear height-duration relationship (like Roll)
+// height = constant × duration
+// Using a scaling factor so that 1000ms = 0.25 height (reasonable default)
+export const jumpHeightForDuration = (duration: number, _velocity: number = 1.5) => {
+  // Linear: height = duration / 4000
+  // 1000ms → 0.25 height
+  // 2000ms → 0.5 height
+  // 500ms → 0.125 height
+  const height = Math.max(100, duration) / 4000
+  return Math.max(0.02, Math.min(1.0, height)) // Clamp between 0.02 and 1.0
 }
 
 // Calculate duration from height (inverse of jumpHeightForDuration)
-// This is used when dragging the canvas endpoint to update clip duration
-export const jumpDurationForHeight = (height: number, velocity: number = 1.5): number => {
-  const clampedHeight = Math.max(0.05, height)
-  const clampedVelocity = Math.max(0.2, velocity)
-  
-  // Ensure chosen velocity can reach desired height: v0^2 / (2g) >= h
-  const minVelocityForHeight = Math.sqrt(2 * GRAVITY * clampedHeight)
-  const v0 = Math.max(clampedVelocity, minVelocityForHeight)
-  
-  // Time to reach specified height on the way up: h = v0*t - 0.5*g*t^2
-  // Solving: t = (v0 - sqrt(v0^2 - 2gh)) / g
-  const underRoot = Math.max(0, v0 * v0 - 2 * GRAVITY * clampedHeight)
-  const timeUpSec = (v0 - Math.sqrt(underRoot)) / GRAVITY
-  
-  // Total duration is 2x time up (up + down)
-  const duration = Math.max(300, timeUpSec * 2 * 1000)
-  return duration
+// Linear: duration = height × 4000
+export const jumpDurationForHeight = (height: number, _velocity: number = 1.5): number => {
+  const clampedHeight = Math.max(0.02, Math.min(1.0, height))
+  return clampedHeight * 4000
 }
 
-const jumpPreset = (height: number = 0.25, initialVelocity: number = 1.5): PresetResult => {
-  const clampedHeight = Math.max(0.05, height)
-  const clampedVelocity = Math.max(0.2, initialVelocity)
-  // ensure chosen velocity can reach desired height: v0^2 / (2g) >= h
-  const minVelocityForHeight = Math.sqrt(2 * GRAVITY * clampedHeight)
-  const v0 = Math.max(clampedVelocity, minVelocityForHeight)
-  // time to reach specified height on the way up: h = v0*t - 0.5*g*t^2 -> t = (v0 - sqrt(v0^2 - 2gh)) / g
-  const underRoot = Math.max(0, v0 * v0 - 2 * GRAVITY * clampedHeight)
-  const timeUpSec = (v0 - Math.sqrt(underRoot)) / GRAVITY
-  // Remove 2400ms clamp to allow longer jumps
-  const duration = Math.max(300, timeUpSec * 2 * 1000)
+const jumpPreset = (height: number = 0.25, initialVelocity: number = 1.5, targetDuration?: number): PresetResult => {
+  // If targetDuration is provided (from timeline), use it to space keyframes
+  // and calculate height from duration using linear formula.
+  // This ensures the animation always completes within the clip.
+  
+  let duration: number
+  let jumpHeight: number
+  
+  if (targetDuration !== undefined && targetDuration > 0) {
+    // Duration is set by the clip - use it directly
+    duration = targetDuration
+    // Calculate height linearly from duration (like Roll)
+    jumpHeight = jumpHeightForDuration(duration)
+  } else {
+    // No target duration - calculate duration from height
+    jumpHeight = Math.max(0.02, Math.min(1.0, height))
+    duration = jumpDurationForHeight(jumpHeight)
+  }
+  
   return {
-    duration,
+    duration: duration,
     position: [
       { time: 0, value: { x: 0, y: 0 } },
-      // vertical offset (normalized or pixels depending on base)
-      { time: duration * 0.5, value: { x: 0, y: -clampedHeight }, easing: 'easeOutQuad' },
-      { time: duration, value: { x: 0, y: 0 }, easing: 'easeInQuad' },
+      
+      // Main Jump (0 -> 70%)
+      { time: duration * 0.35, value: { x: 0, y: -jumpHeight }, easing: 'easeOutQuad' }, // Up
+      { time: duration * 0.7, value: { x: 0, y: 0 }, easing: 'easeInQuad' },   // Down
+      
+      // Rebounce (70% -> 100%)
+      // Rebounce height is ~25% of main height
+      { time: duration * 0.85, value: { x: 0, y: -jumpHeight * 0.25 }, easing: 'easeOutQuad' }, // Up
+      { time: duration * 1.0, value: { x: 0, y: 0 }, easing: 'easeInQuad' },    // Down
     ],
     scale: [
       { time: 0, value: 1 },
-      { time: duration * 0.2, value: 0.95, easing: 'easeOutQuad' },
-      { time: duration * 0.5, value: 1.05, easing: 'easeOutQuad' },
-      // landing squish
-      { time: duration * 0.85, value: 0.93, easing: 'easeInQuad' },
-      { time: duration, value: 1, easing: 'easeOutQuad' },
+      
+      // Launch Stretch
+      { time: duration * 0.05, value: 1.05, easing: 'easeOutQuad' },
+      
+      // Peak 1 (Normal)
+      { time: duration * 0.35, value: 1, easing: 'linear' },
+      
+      // Landing Squash 1 (at 70%)
+      { time: duration * 0.65, value: 1, easing: 'easeInQuad' },
+      { time: duration * 0.7, value: 0.85, easing: 'easeOutQuad' }, // MAX SQUASH
+      { time: duration * 0.75, value: 1.02, easing: 'easeOutQuad' }, // Rebound stretch
+      
+      // Peak 2
+      { time: duration * 0.85, value: 1, easing: 'linear' },
+      
+      // Landing 2 (Final)
+      { time: duration * 1.0, value: 1, easing: 'easeOutQuad' },
     ],
-    meta: { jumpHeight: height },
+    meta: { jumpHeight: jumpHeight },
   }
 }
 

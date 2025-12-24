@@ -2244,9 +2244,28 @@ function DashboardContent() {
   
   const handleClipDurationChange = (value: number) => {
     if (selectedClipId && selectedLayerId) {
-      timeline.updateTemplateClip(selectedLayerId, selectedClipId, {
-        duration: value
-      })
+      const updates: any = { duration: value }
+      
+      const clip = templateClips.find(c => c.id === selectedClipId)
+      if (clip && clip.template === 'jump') {
+        // Link duration to height: t = sqrt(2h/g) + ...
+        // We use the inverse helper: height = jumpHeightForDuration(t)
+        // Note: jumpPreset's duration is somewhat arbitrary now (based on 1000ms default),
+        // but jumpHeightForDuration gives a "suggested" height for a given time
+        // assuming standard gravity.
+        
+        // Actually, we should probably stick to the physics relationship:
+        // If user stretches time, height increases.
+        const newHeight = jumpHeightForDuration(value, jumpVelocity)
+        updates.parameters = {
+          ...(clip.parameters || {}),
+          jumpHeight: newHeight
+        }
+        // Also update local state for the slider
+        timeline.setJumpHeight(newHeight)
+      }
+      
+      timeline.updateTemplateClip(selectedLayerId, selectedClipId, updates)
       debouncedPushSnapshot()
     }
   }

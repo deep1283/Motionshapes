@@ -2746,7 +2746,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             built = PRESET_BUILDERS.roll(params?.rollDistance, params?.templateSpeed, params?.rollRotation ?? 2)
             break
           case 'jump':
-            built = PRESET_BUILDERS.jump(params?.jumpHeight, params?.jumpVelocity)
+            // Pass clip duration so animation always completes within the clip
+            built = PRESET_BUILDERS.jump(params?.jumpHeight, params?.jumpVelocity, duration)
             break
           case 'pop':
             built = PRESET_BUILDERS.pop(params?.popScale, params?.popWobble, params?.popSpeed, params?.popCollapse)

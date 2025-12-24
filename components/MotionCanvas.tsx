@@ -3790,15 +3790,71 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         } else if (templateEnabled && shouldAnimateTemplate && template === 'jump') {
           const startY = posY
           const amplitude = Math.min(screenHeight * 0.25, 220)
-          const durationMs = 1000
+          // Use fixed duration for preview, or derive from state if available
+          const durationMs = 1000 
           let elapsed = 0
+          
           const cb = (t?: PIXI.Ticker) => {
             const deltaMs = t?.deltaMS ?? 16.67
-            elapsed = Math.min(durationMs, elapsed + deltaMs)
-            const progress = elapsed / durationMs
-            const hop = Math.sin(progress * Math.PI) // smooth up and down
-            g.y = startY - hop * amplitude
-            g.scale.set(1 + hop * 0.05, 1 - hop * 0.05)
+            elapsed += deltaMs
+            
+            // Loop the preview
+            if (elapsed > durationMs + 500) {
+              elapsed = 0
+            }
+            
+            const progress = Math.min(1, elapsed / durationMs)
+            
+            // Match preset logic:
+            // 0-35-70: Main Jump
+            // 70-85-100: Rebounce
+            
+            let yOffset = 0
+            let scaleY = 1
+            let scaleX = 1
+            
+            // Custom easing helpers
+            const easeOutQuad = (t: number) => 1 - (1 - t) * (1 - t)
+            const easeInQuad = (t: number) => t * t
+            
+            if (progress <= 0.7) {
+               // Main Jump
+               const jumpProg = progress / 0.7
+               if (jumpProg <= 0.5) {
+                 // Up (0 -> 0.5 maps to 0 -> 1)
+                 const upP = easeOutQuad(jumpProg * 2)
+                 yOffset = -amplitude * upP
+                 // Stretch on launch
+                 if (jumpProg < 0.2) scaleY = 1 + 0.05 * easeOutQuad(jumpProg * 5)
+                 else scaleY = 1
+               } else {
+                 // Down (0.5 -> 1 maps to 1 -> 0)
+                 const downP = easeInQuad((jumpProg - 0.5) * 2)
+                 yOffset = -amplitude * (1 - downP)
+                 // Squash on land
+                 if (jumpProg > 0.8) scaleY = 1 - 0.15 * easeOutQuad((jumpProg - 0.8) * 5)
+               }
+            } else {
+               // Rebounce
+               const bounceProg = (progress - 0.7) / 0.3
+               const bounceAmp = amplitude * 0.25
+               if (bounceProg <= 0.5) {
+                 // Up
+                 const upP = easeOutQuad(bounceProg * 2)
+                 yOffset = -bounceAmp * upP
+                 // Rebound stretch
+                 if (bounceProg < 0.2) scaleY = 1 + 0.02 * easeOutQuad(bounceProg * 5)
+               } else {
+                 // Down
+                 const downP = easeInQuad((bounceProg - 0.5) * 2)
+                 yOffset = -bounceAmp * (1 - downP)
+               }
+            }
+            
+            g.y = startY + yOffset
+            g.scale.y = (layer.scale ?? 1) * scaleY
+            g.scale.x = (layer.scale ?? 1) * (1/scaleY) // Preserve volume approx
+
             if (progress >= 1) {
               onUpdateLayerPosition?.(layer.id, g.x, g.y)
               notifyComplete()
