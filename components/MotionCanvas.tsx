@@ -2755,12 +2755,18 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         
         // Update visual path offset immediately (no React re-render needed)
         // This makes the path move EXACTLY with the shape, no lag
+        const dx = (dragRef.current.accumulatedDeltaX || 0) * screenWidth
+        const dy = (dragRef.current.accumulatedDeltaY || 0) * screenHeight
+        const transformStr = `translate(${dx}, ${dy})`
+        
         const pathGroup = document.getElementById(`path-visual-${id}`)
-        if (pathGroup) {
-          const dx = (dragRef.current.accumulatedDeltaX || 0) * screenWidth
-          const dy = (dragRef.current.accumulatedDeltaY || 0) * screenHeight
-          pathGroup.setAttribute('transform', `translate(${dx}, ${dy})`)
-        }
+        if (pathGroup) pathGroup.setAttribute('transform', transformStr)
+          
+        const rollGroup = document.getElementById(`roll-visual-${id}`)
+        if (rollGroup) rollGroup.setAttribute('transform', transformStr)
+          
+        const jumpGroup = document.getElementById(`jump-visual-${id}`)
+        if (jumpGroup) jumpGroup.setAttribute('transform', transformStr)
       }
       
       // Update last position for next frame
@@ -2777,11 +2783,15 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     if (dragRef.current) {
       const { id, accumulatedDeltaX, accumulatedDeltaY } = dragRef.current
       
-      // Reset visual path offset (timeline update will take over now)
+      // Reset visual path offsets (timeline update will take over now)
       const pathGroup = document.getElementById(`path-visual-${id}`)
-      if (pathGroup) {
-        pathGroup.setAttribute('transform', '')
-      }
+      if (pathGroup) pathGroup.setAttribute('transform', '')
+        
+      const rollGroup = document.getElementById(`roll-visual-${id}`)
+      if (rollGroup) rollGroup.setAttribute('transform', '')
+        
+      const jumpGroup = document.getElementById(`jump-visual-${id}`)
+      if (jumpGroup) jumpGroup.setAttribute('transform', '')
       
       // Only offset if there was significant total movement
       const totalDeltaX = accumulatedDeltaX || 0
@@ -5006,62 +5016,64 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             style={{ zIndex: 26, pointerEvents: 'none' }}
           >
             <svg className="h-full w-full" style={{ pointerEvents: 'none' }}>
-              {/* Dashed line from center to end */}
-              <line
-                x1={centerX}
-                y1={centerY}
-                x2={endX}
-                y2={endY}
-                stroke="#a855f7"
-                strokeWidth={2}
-                strokeDasharray="6 4"
-                opacity={canDrag ? 0.8 : 0.5}
-              />
-              {/* Start point (small circle at shape center) */}
-              <circle
-                cx={centerX}
-                cy={centerY}
-                r={6}
-                fill="none"
-                stroke="#a855f7"
-                strokeWidth={2}
-                opacity={canDrag ? 1 : 0.5}
-              />
-              {/* End point (draggable circle when roll selected, otherwise just visual) */}
-              <circle
-                cx={endX}
-                cy={endY}
-                r={8}
-                fill={canDrag ? "#a855f7" : "#a855f780"}
-                stroke="#0f172a"
-                strokeWidth={2}
-                style={{ pointerEvents: canDrag ? 'auto' : 'none', cursor: canDrag ? 'ew-resize' : 'default' }}
-                onPointerDown={canDrag ? (e) => {
-                  e.stopPropagation()
-                  e.preventDefault()
-                  
-                  const handleMove = (ev: PointerEvent) => {
-                    const container = containerRef.current
-                    if (!container) return
-                    const bounds = container.getBoundingClientRect()
-                    const x = (ev.clientX - bounds.left - offsetX) / width
+              <g id={`roll-visual-${selectedLayerId}`}>
+                {/* Dashed line from center to end */}
+                <line
+                  x1={centerX}
+                  y1={centerY}
+                  x2={endX}
+                  y2={endY}
+                  stroke="#a855f7"
+                  strokeWidth={2}
+                  strokeDasharray="6 4"
+                  opacity={canDrag ? 0.8 : 0.5}
+                />
+                {/* Start point (small circle at shape center) */}
+                <circle
+                  cx={centerX}
+                  cy={centerY}
+                  r={6}
+                  fill="none"
+                  stroke="#a855f7"
+                  strokeWidth={2}
+                  opacity={canDrag ? 1 : 0.5}
+                />
+                {/* End point (draggable circle when roll selected, otherwise just visual) */}
+                <circle
+                  cx={endX}
+                  cy={endY}
+                  r={8}
+                  fill={canDrag ? "#a855f7" : "#a855f780"}
+                  stroke="#0f172a"
+                  strokeWidth={2}
+                  style={{ pointerEvents: canDrag ? 'auto' : 'none', cursor: canDrag ? 'ew-resize' : 'default' }}
+                  onPointerDown={canDrag ? (e) => {
+                    e.stopPropagation()
+                    e.preventDefault()
                     
-                    // Calculate new distance from start position (which might be offset by a path)
-                    const newDistance = Math.max(0.05, Math.min(1 - startX, x - startX))
-                    onRollDistanceChangeRef.current?.(newDistance)
-                  }
-                  
-                  const handleUp = () => {
-                    window.removeEventListener('pointermove', handleMove)
-                    window.removeEventListener('pointerup', handleUp)
-                    document.body.style.cursor = ''
-                  }
-                  
-                  document.body.style.cursor = 'ew-resize'
-                  window.addEventListener('pointermove', handleMove)
-                  window.addEventListener('pointerup', handleUp)
-                } : undefined}
-              />
+                    const handleMove = (ev: PointerEvent) => {
+                      const container = containerRef.current
+                      if (!container) return
+                      const bounds = container.getBoundingClientRect()
+                      const x = (ev.clientX - bounds.left - offsetX) / width
+                      
+                      // Calculate new distance from start position (which might be offset by a path)
+                      const newDistance = Math.max(0.05, Math.min(1 - startX, x - startX))
+                      onRollDistanceChangeRef.current?.(newDistance)
+                    }
+                    
+                    const handleUp = () => {
+                      window.removeEventListener('pointermove', handleMove)
+                      window.removeEventListener('pointerup', handleUp)
+                      document.body.style.cursor = ''
+                    }
+                    
+                    document.body.style.cursor = 'ew-resize'
+                    window.addEventListener('pointermove', handleMove)
+                    window.addEventListener('pointerup', handleUp)
+                  } : undefined}
+                />
+              </g>
             </svg>
           </div>
         )
@@ -5137,28 +5149,30 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             style={{ zIndex: 27, pointerEvents: 'none' }}
           >
             <svg className="h-full w-full" style={{ pointerEvents: 'none' }}>
-              {/* Dashed line from center upward */}
-              <line
-                x1={centerX}
-                y1={centerY}
-                x2={topX}
-                y2={topY}
-                stroke="#22c55e"
-                strokeWidth={2}
-                strokeDasharray="6 4"
-                opacity={canDrag ? 0.8 : 0.5}
-              />
-              {/* Start point (small circle at shape center) */}
-              <circle
-                cx={centerX}
-                cy={centerY}
-                r={6}
-                fill="none"
-                stroke="#22c55e"
-                strokeWidth={2}
-                opacity={canDrag ? 1 : 0.5}
-              />
-              {/* Top point (draggable circle when jump selected) */}
+              <g id={`jump-visual-${selectedLayerId}`}>
+                {/* Dashed line from center upward */}
+                <line
+                  x1={centerX}
+                  y1={centerY}
+                  x2={topX}
+                  y2={topY}
+                  stroke="#22c55e"
+                  strokeWidth={2}
+                  strokeDasharray="6 4"
+                  opacity={canDrag ? 0.8 : 0.5}
+                />
+                {/* Start point (small circle at shape center) */}
+                <circle
+                  cx={centerX}
+                  cy={centerY}
+                  r={6}
+                  fill="none"
+                  stroke="#22c55e"
+                  strokeWidth={2}
+                  opacity={canDrag ? 1 : 0.5}
+                />
+                {/* Top point (draggable circle when jump selected) */}
+                
               <circle
                 cx={topX}
                 cy={topY}
@@ -5194,6 +5208,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
                   window.addEventListener('pointerup', handleUp)
                 } : undefined}
               />
+              </g>
             </svg>
           </div>
         )
