@@ -58,7 +58,7 @@ function getDefaultFonts(): GoogleFont[] {
 export async function loadFont(fontFamily: string): Promise<boolean> {
   const linkId = `google-font-${fontFamily.replace(/\s+/g, '-').toLowerCase()}`
   
-  // Check if already loaded in DOM
+  // Check if CSS link already exists in DOM
   const existingLink = document.getElementById(linkId)
   
   if (!existingLink) {
@@ -70,7 +70,10 @@ export async function loadFont(fontFamily: string): Promise<boolean> {
     document.head.appendChild(link)
   }
   
-  // Wait for the font to actually load using the Font Loading API
+  // Wait for ALL fonts to be ready (more reliable than individual font check)
+  await document.fonts.ready
+  
+  // Also try to specifically load this font
   try {
     await document.fonts.load(`600 48px "${fontFamily}"`)
     return true

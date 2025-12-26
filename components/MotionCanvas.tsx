@@ -3273,6 +3273,12 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           // Use layer.width as the text box width (wordWrapWidth)
           const textBoxWidth = layer.width || 400
           
+          // Ensure custom font is loaded BEFORE creating text (fixes spacing issues with bounce_in)
+          const fontFamily = layer.fontFamily || 'Inter'
+          if (fontFamily !== 'Inter') {
+            await loadFont(fontFamily)
+          }
+          
           // Create text style
           const textStyle = new PIXI.TextStyle({
             fontFamily: [layer.fontFamily || 'Inter', 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'sans-serif'],

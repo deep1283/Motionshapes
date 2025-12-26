@@ -16,6 +16,7 @@ import { chaikinSmooth, calculatePathLength } from '@/lib/path-smoothing'
 import { loadActiveProject, saveProject as saveProjectToSupabase } from '@/lib/supabase-projects'
 import { getMotionById } from '@/lib/library-api'
 import { useToast } from '@/components/Toast'
+import { loadFont } from '@/lib/google-fonts'
 
 // Dynamically import MotionCanvas to avoid SSR issues with Pixi.js
 const MotionCanvas = dynamic(() => import('@/components/MotionCanvas'), { 
@@ -224,6 +225,10 @@ function DashboardContent() {
             setLayers(data.layers || [])
             setLayerOrder(data.layerOrder || [])
             
+            // PRELOAD FONTS: Start downloading fonts early (fire and forget - don't block)
+            const textLayers = (data.layers || []).filter((l: any) => l.type === 'text' && l.fontFamily && l.fontFamily !== 'Inter')
+            textLayers.forEach((l: any) => loadFont(l.fontFamily))
+            
             if (data.timeline) {
                timeline.restoreSnapshot(data.timeline)
             }
@@ -263,6 +268,10 @@ function DashboardContent() {
         // Restore layers
         if (existingProject.layers && Array.isArray(existingProject.layers)) {
           setLayers(existingProject.layers as Layer[])
+          
+          // PRELOAD FONTS: Start downloading fonts early (fire and forget - don't block)
+          const textLayers = existingProject.layers.filter((l: any) => l.type === 'text' && l.fontFamily && l.fontFamily !== 'Inter')
+          textLayers.forEach((l: any) => loadFont(l.fontFamily))
         }
         
         // Restore layer order
