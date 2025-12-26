@@ -3261,6 +3261,11 @@ export default function DashboardLayout({
                 className="absolute inset-0"
                 style={{ touchAction: 'none' }}
                 onPointerDown={handleBackgroundClick}
+                 onDoubleClick={() => {
+                   // Double-click on empty canvas = center viewport (helps when user is "lost")
+                   setCanvasX(0)
+                   setCanvasY(0)
+                 }}
               >
                 {/* Background is now rendered via PIXI in MotionCanvas */}
 
