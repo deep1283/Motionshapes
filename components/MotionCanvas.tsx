@@ -14,6 +14,7 @@ import { PixelateFilter } from 'pixi-filters'
 import { AdjustmentFilter } from 'pixi-filters'
 import { SimpleParticleEmitter } from '@/lib/particle-emitter'
 import { PanZoomRegionOverlay, PanZoomRegion } from '@/components/PanZoomRegionOverlay'
+import { loadFont } from '@/lib/google-fonts'
 
 interface MotionCanvasProps {
   template: string
@@ -285,6 +286,19 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     appRef.current.render()
   }, [offsetX, offsetY, isReady])
 
+  // Preload custom fonts for text layers to prevent FOUT (Flash of Unstyled Text)
+  const [fontsLoaded, setFontsLoaded] = useState(0)
+  useEffect(() => {
+    const textLayers = layers.filter(l => l.type === 'text' && l.fontFamily && l.fontFamily !== 'Inter')
+    if (textLayers.length === 0) return
+    
+    const uniqueFonts = [...new Set(textLayers.map(l => l.fontFamily!))]
+    Promise.all(uniqueFonts.map(font => loadFont(font))).then(() => {
+      // Trigger re-render to update text with loaded fonts
+      setFontsLoaded(prev => prev + 1)
+    })
+  }, [layers])
+
   // Keep selectedLayerIdRef in sync with prop for per-frame handle positioning
   useEffect(() => {
     selectedLayerIdRef.current = selectedLayerId
@@ -499,9 +513,10 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       clips: templateClips.map(c => JSON.stringify(c)).join(','), // Animations (roll, jump, etc.)
       effects: effectClips.map(c => JSON.stringify(c)).join(','), // Effects (glow, blur, etc.)
       markers: clickMarkers.map(m => `${m.id}:${m.time}:${m.layerId}`).join(','), // Click markers
-      layers: layers.map(l => `${l.id}:${l.x}:${l.y}:${l.scale}:${l.rotation}:${l.fillColor}`).join(',')
+      layers: layers.map(l => `${l.id}:${l.x}:${l.y}:${l.scale}:${l.rotation}:${l.fillColor}:${l.fontFamily ?? ''}:${l.fontSize ?? ''}`).join(','),
+      fontsLoaded // Include fontsLoaded to trigger rebuild when fonts finish loading
     })
-  }, [timelineTracks, templateClips, effectClips, clickMarkers, layers])
+  }, [timelineTracks, templateClips, effectClips, clickMarkers, layers, fontsLoaded])
   
   // Invalidate cache when version changes
   useEffect(() => {
@@ -4123,7 +4138,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         stage.off('pointerdown', handleStagePointerDown)
     }
 
-  }, [template, templateVersion, pathVersion, pathLayerId, activePathPoints, isReady]) // Re-run on template/path switches; layer moves are handled directly
+  }, [template, templateVersion, pathVersion, pathLayerId, activePathPoints, isReady, fontsLoaded]) // Re-run on template/path switches; layer moves are handled directly. fontsLoaded triggers text rebuild with correct fonts.
 
   // 3. Handle Selection Outline Updates
   useEffect(() => {
