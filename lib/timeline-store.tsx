@@ -2826,6 +2826,27 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           case 'mask_top_out':
             built = PRESET_BUILDERS.mask_top_out(duration)
             break
+          case 'color':
+            built = PRESET_BUILDERS.color(duration, params?.colorFrom, params?.colorTo, params?.colorEasing)
+            break
+          case 'resize':
+             built = PRESET_BUILDERS.resize(
+               duration, 
+               params?.resizeFromWidth, 
+               params?.resizeFromHeight, 
+               params?.resizeToWidth, 
+               params?.resizeToHeight, 
+               params?.resizeEasing
+             )
+             break
+          case 'rotate':
+             built = PRESET_BUILDERS.rotate(
+               duration, 
+               params?.rotateFromAngle, 
+               params?.rotateToAngle, 
+               params?.rotateEasing
+             )
+             break
           default:
             console.warn(`Unknown template: ${clip.template}`)
             return
@@ -2862,6 +2883,21 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           opacity: addFrames(track.opacity, shift(built.opacity)),
           maskScale: addFrames(track.maskScale, shift(built.maskScale)),
           // Paths are not part of PresetResult, they're handled separately
+
+          // CRITICAL: Populate clipKeyframes for unified sampling
+          clipKeyframes: {
+            ...(track.clipKeyframes ?? {}),
+            [clip.id]: {
+              position: built.position?.map((f: any) => ({ ...f })),
+              scale: built.scale?.map((f: any) => ({ ...f })),
+              rotation: built.rotation?.map((f: any) => ({ ...f })),
+              opacity: built.opacity?.map((f: any) => ({ ...f })),
+              maskScale: built.maskScale?.map((f: any) => ({ ...f })),
+              color: built.color?.map((f: any) => ({ ...f })),
+              width: built.width?.map((f: any) => ({ ...f })),
+              height: built.height?.map((f: any) => ({ ...f })),
+            }
+          }
         }
       })
 

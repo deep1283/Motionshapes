@@ -1,18 +1,10 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Inter, Roboto, Poppins, Montserrat, Space_Grotesk, DM_Sans } from "next/font/google";
+import { Inter, Roboto } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { ToastProvider } from "@/components/Toast";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 // Text layer fonts
 const inter = Inter({
@@ -26,31 +18,12 @@ const roboto = Roboto({
   weight: ["400", "500", "700"],
 });
 
-const poppins = Poppins({
-  variable: "--font-poppins",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
 
-const montserrat = Montserrat({
-  variable: "--font-montserrat",
-  subsets: ["latin"],
-});
-
-const spaceGrotesk = Space_Grotesk({
-  variable: "--font-space-grotesk",
-  subsets: ["latin"],
-});
-
-const dmSans = DM_Sans({
-  variable: "--font-dm-sans",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "MotionShapes - Professional Motion Design in the Browser",
   description: "Create stunning, Apple-quality product animations directly in your browser. No heavy software, no steep learning curve.",
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://motionshapes.com'),
   keywords: ["motion design", "animation", "video editor", "browser animation", "marketing videos", "motion graphics", "product showcase", "jitter alternative", "2D", "logo animation"],
   authors: [{ name: "MotionShapes Team" }],
   creator: "MotionShapes",
@@ -66,8 +39,14 @@ export const metadata: Metadata = {
       'max-snippet': -1,
     },
   },
+  alternates: {
+    canonical: './',
+  },
   icons: {
-    icon: '/favicon.ico',
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/resources/logo.png', type: 'image/png' },
+    ],
     shortcut: '/favicon.ico',
     apple: '/resources/logo.png',
   },
@@ -102,7 +81,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${inter.variable} ${roboto.variable} ${poppins.variable} ${montserrat.variable} ${spaceGrotesk.variable} ${dmSans.variable} antialiased`}
+        className={`${inter.variable} ${roboto.variable} antialiased`}
         suppressHydrationWarning
       >
         <ToastProvider>
@@ -111,6 +90,24 @@ export default function RootLayout({
         {/* Preload emoji fonts to prevent flash when rendering emojis in canvas */}
         <span className="emoji-preload" aria-hidden="true">🎄🎁😀</span>
         <SpeedInsights />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              '@context': 'https://schema.org',
+              '@type': 'SoftwareApplication',
+              name: 'MotionShapes',
+              applicationCategory: 'DesignApplication',
+              operatingSystem: 'Web',
+              offers: {
+                '@type': 'Offer',
+                price: '0',
+                priceCurrency: 'USD',
+              },
+              description: 'Create stunning, Apple-quality product animations directly in your browser. No heavy software, no steep learning curve.',
+            }),
+          }}
+        />
       </body>
     </html>
   );

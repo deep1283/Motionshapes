@@ -13,7 +13,7 @@ import Link from 'next/link'
 export default function Home() {
   const router = useRouter()
   const [isLoggedIn, setIsLoggedIn] = useState(false)
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true)
+
 
   // Check auth status on mount (but don't auto-redirect)
   useEffect(() => {
@@ -21,7 +21,6 @@ export default function Home() {
       const supabase = createClient()
       const { data: { session } } = await supabase.auth.getSession()
       setIsLoggedIn(!!session)
-      setIsCheckingAuth(false)
     }
     
     checkAuth()
@@ -43,14 +42,6 @@ export default function Home() {
     }
   }
 
-  // Show loading spinner while checking auth
-  if (isCheckingAuth) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-950">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-white" />
-      </div>
-    )
-  }
 
   return (
     <main className="relative flex h-screen w-full flex-col items-center bg-gray-950 antialiased bg-grid-white/[0.02] overflow-y-auto overflow-x-hidden">

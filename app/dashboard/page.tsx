@@ -272,10 +272,7 @@ function DashboardContent() {
         
         // Restore timeline
         if (existingProject.timeline_snapshot && typeof existingProject.timeline_snapshot === 'object') {
-          const snapshot = existingProject.timeline_snapshot as Parameters<typeof timeline.restoreSnapshot>[0]
-          timeline.restoreSnapshot(snapshot)
-          
-
+          timeline.restoreSnapshot(existingProject.timeline_snapshot as any)
         }
         
         // Restore background (full object if available, fallback to color only)
