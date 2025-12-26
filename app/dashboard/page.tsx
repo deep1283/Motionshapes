@@ -1488,15 +1488,20 @@ function DashboardContent() {
   }
 
   const handleUpdateLayerPosition = (id: string, x: number, y: number) => {
+    // Check if layer has animation clips (path/templates)
+    // For animated shapes, skip layer.x/y update and path point delta - 
+    // the visual position is controlled by timeline, not base layer position
+    const hasAnimationClips = templateClips.some(c => c.layerId === id)
+    
+    if (hasAnimationClips) {
+      // For animated shapes: don't update layer.x/y during drag
+      // The path points stay where they are, shape follows timeline animations
+      return
+    }
+    
+    // For non-animated shapes: update layer position normally
     const nx = Math.max(0, Math.min(1, x))
     const ny = Math.max(0, Math.min(1, y))
-    
-    // Get the old position to calculate delta
-    const oldLayer = layers.find(l => l.id === id)
-    const oldX = oldLayer?.x ?? 0.5
-    const oldY = oldLayer?.y ?? 0.5
-    const deltaX = nx - oldX
-    const deltaY = ny - oldY
     
     setLayers((prev) =>
       prev.map((layer) =>
@@ -1506,35 +1511,31 @@ function DashboardContent() {
       )
     )
     
-    // Also update all path clips for this layer - move their points by the same delta
-    if (Math.abs(deltaX) > 0.001 || Math.abs(deltaY) > 0.001) {
-      const layerPathClips = templateClips.filter(c => c.layerId === id && c.template === 'path')
-      for (const clip of layerPathClips) {
-        if (clip.parameters?.pathPoints) {
-          const newPoints = clip.parameters.pathPoints.map((pt: { x: number; y: number }) => ({
-            x: pt.x + deltaX,
-            y: pt.y + deltaY
-          }))
-          timeline.updateTemplateClip(id, clip.id, {
-            parameters: { pathPoints: newPoints }
-          })
-        }
-      }
-    }
-    
     const currentScale = layers.find((l) => l.id === id)?.scale ?? 1
     lastLayerBaseRef.current[id] = { x: nx, y: ny, scale: currentScale }
     timeline.ensureTrack(id)
   }
 
-  // Offset all animation clip positions when a text layer is moved
   // This makes animations move with the text layer
   const handleOffsetClipPositions = (layerId: string, deltaX: number, deltaY: number) => {
     // Get all clips for this layer
     const layerClips = templateClips.filter(c => c.layerId === layerId)
     
+    // Only update layer.x/y for shapes WITH animation clips
+    // For animated shapes, handleUpdateLayerPosition returns early, so we update here
+    // For non-animated shapes, handleUpdateLayerPosition already updates layer.x/y during drag
+    if (layerClips.length > 0) {
+      setLayers((prev) =>
+        prev.map((layer) =>
+          layer.id === layerId
+            ? { ...layer, x: layer.x + deltaX, y: layer.y + deltaY }
+            : layer
+        )
+      )
+    }
+    
     for (const clip of layerClips) {
-      // Update layerBase.position if it exists
+      // Update layerBase.position if it exists (for some template types)
       if (clip.parameters?.layerBase?.position) {
         const newPosition = {
           x: (clip.parameters.layerBase.position.x || 0) + deltaX,

@@ -292,7 +292,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
 
 
   // ... (rest of component)
-  const dragRef = useRef<{ id: string; offsetX: number; offsetY: number; originalX?: number; originalY?: number; hasClips?: boolean } | null>(null)
+  // Drag ref for cursor following - includes accumulated delta for path offset at drag end
+  const dragRef = useRef<{ id: string; offsetX: number; offsetY: number; originalX?: number; originalY?: number; lastNormX?: number; lastNormY?: number; accumulatedDeltaX?: number; accumulatedDeltaY?: number } | null>(null)
   const graphicsByIdRef = useRef<Record<string, PIXI.Graphics>>({})
   // Export dimensions override - when set, updateGraphicsFromTimeline uses these instead of container bounds
   const exportDimensionsRef = useRef<{ width: number; height: number } | null>(null)
@@ -1465,6 +1466,9 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         return
       }
       
+      // DEBUG: Log sampled position vs current g position (uncomment to debug position issues)
+      // console.log('[RENDER LOOP]', { id, sampledPos: state.position, gPos: { x: g.x, y: g.y } })
+      
       // Set zIndex: top of timeline (idx=0) = back (low z), bottom (high idx) = front (high z)
       g.zIndex = idx
       if (appRef.current?.stage && appRef.current.stage.sortableChildren !== true) {
@@ -1530,8 +1534,10 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       // Check if shape is outside the visible canvas bounds
       const isOffCanvas = posX < 0 || posX > screenWidth || posY < 0 || posY > screenHeight
       
-      if (g && Number.isFinite(canvasPosX)) g.x = canvasPosX
-      if (g && Number.isFinite(canvasPosY)) g.y = canvasPosY
+      // Skip position update if this layer is being dragged (for smooth cursor following)
+      const isDragging = dragRef.current?.id === id
+      if (g && Number.isFinite(canvasPosX) && !isDragging) g.x = canvasPosX
+      if (g && Number.isFinite(canvasPosY) && !isDragging) g.y = canvasPosY
       
       // Apply resize animation: if we have animated width/height, calculate scale from it
       // Resize animation works by scaling the shape based on the ratio of animated size to base size
@@ -2736,21 +2742,56 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       // Convert from canvas coordinates back to normalized
       const nx = screenWidth > 0 ? newX / screenWidth : 0
       const ny = screenHeight > 0 ? newY / screenHeight : 0
+      
+      // Calculate frame-by-frame delta and ACCUMULATE it (don't apply each frame)
+      // Timeline store updates are async, so we accumulate total drag and apply at end
+      if (dragRef.current.lastNormX !== undefined && dragRef.current.lastNormY !== undefined) {
+        const deltaX = nx - dragRef.current.lastNormX
+        const deltaY = ny - dragRef.current.lastNormY
+        
+        // Accumulate total delta during drag
+        dragRef.current.accumulatedDeltaX = (dragRef.current.accumulatedDeltaX || 0) + deltaX
+        dragRef.current.accumulatedDeltaY = (dragRef.current.accumulatedDeltaY || 0) + deltaY
+        
+        // Update visual path offset immediately (no React re-render needed)
+        // This makes the path move EXACTLY with the shape, no lag
+        const pathGroup = document.getElementById(`path-visual-${id}`)
+        if (pathGroup) {
+          const dx = (dragRef.current.accumulatedDeltaX || 0) * screenWidth
+          const dy = (dragRef.current.accumulatedDeltaY || 0) * screenHeight
+          pathGroup.setAttribute('transform', `translate(${dx}, ${dy})`)
+        }
+      }
+      
+      // Update last position for next frame
+      dragRef.current.lastNormX = nx
+      dragRef.current.lastNormY = ny
+      
+      // Update layer position for non-animated shapes
       onUpdateLayerPosition?.(id, nx, ny)
   }
 
   const clearDrag = () => {
-    // If this was an animated layer drag, offset all clip positions
-    if (dragRef.current?.hasClips && dragRef.current.originalX !== undefined && dragRef.current.originalY !== undefined) {
-      const layer = layers.find(l => l.id === dragRef.current?.id)
-      if (layer) {
-        const deltaX = layer.x - dragRef.current.originalX
-        const deltaY = layer.y - dragRef.current.originalY
-        if (deltaX !== 0 || deltaY !== 0) {
-          onOffsetClipPositions?.(layer.id, deltaX, deltaY)
-        }
+    // Apply accumulated path offset at drag END (not per frame)
+    // This ensures timeline store has consistent values
+    if (dragRef.current) {
+      const { id, accumulatedDeltaX, accumulatedDeltaY } = dragRef.current
+      
+      // Reset visual path offset (timeline update will take over now)
+      const pathGroup = document.getElementById(`path-visual-${id}`)
+      if (pathGroup) {
+        pathGroup.setAttribute('transform', '')
+      }
+      
+      // Only offset if there was significant total movement
+      const totalDeltaX = accumulatedDeltaX || 0
+      const totalDeltaY = accumulatedDeltaY || 0
+      
+      if (Math.abs(totalDeltaX) > 0.001 || Math.abs(totalDeltaY) > 0.001) {
+        onOffsetClipPositions?.(id, totalDeltaX, totalDeltaY)
       }
     }
+    
     dragRef.current = null
     resizeStateRef.current = null
     stage.cursor = 'default'
@@ -3691,6 +3732,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           if (e.originalEvent) {
             e.originalEvent.stopPropagation()
           }
+          
           const pos = e.global
           onSelectLayer?.(layer.id)
           // Show outline/handles immediately on click for shape/icon layers
@@ -3699,18 +3741,26 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           // Position handles correctly (they're in overlay, not on shape)
           syncHandlePositions(layer.id)
           
-          // Track if layer has animation clips - we'll offset their positions on drag end
-          const hasClips = templateClips.some(c => c.layerId === layer.id)
+          // Simple drag setup - track offset for cursor following and last position for delta calculation
+          // Get screen dimensions for normalization
+          const bounds = containerRef.current?.getBoundingClientRect()
+          const sw = bounds?.width || 1
+          const sh = bounds?.height || 1
           
           dragRef.current = {
             id: layer.id,
             offsetX: pos.x - g.x,
             offsetY: pos.y - g.y,
-            // Store original normalized position for text layer clip offset on drag end
             originalX: layer.x,
             originalY: layer.y,
-            hasClips: hasClips,  // Track if this is an animated text layer
+            // Initial normalized position for frame-by-frame delta calculation
+            lastNormX: g.x / sw,
+            lastNormY: g.y / sh,
+            // Accumulated delta for path offset at drag end
+            accumulatedDeltaX: 0,
+            accumulatedDeltaY: 0,
           }
+          
           stage.cursor = 'grabbing'
         })
 
@@ -4752,7 +4802,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
               const canDrag = !isDrawingPath && !isDrawingLine
               
               return (
-                <g key={pathClip.id || pathIndex}>
+                <g key={pathClip.id || pathIndex} id={`path-visual-${pathClip.layerId}`}>
                   {/* Path line */}
                   <path
                     d={pathD}

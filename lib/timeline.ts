@@ -474,15 +474,18 @@ export const sampleLayerTracksUnified = (
     // Sort paths by start time to process in order
     const sortedPaths = [...layer.paths].sort((a, b) => a.startTime - b.startTime)
     
-    // Accumulate offsets from all COMPLETED paths (those that ended before current time)
+    // Track the COMPLETED path's end point and end time for subsequent templates
+    let completedPathEndPoint: Vec2 | null = null
+    let completedPathEndTime: number = 0
+    let isPathActive: boolean = false
+    
+    // Process all COMPLETED paths to find the final end point and latest end time
     for (const clip of sortedPaths) {
       const clipEnd = clip.startTime + clip.duration
-      if (time > clipEnd && clip.points.length > 1) {
-        // This path is complete - add its full offset (end - start)
-        const startPt = clip.points[0]
-        const endPt = clip.points[clip.points.length - 1]
-        accumulatedPathOffset.x += endPt.x - startPt.x
-        accumulatedPathOffset.y += endPt.y - startPt.y
+      if (time > clipEnd && clip.points.length > 0) {
+        // This path is complete - store its end point and end time
+        completedPathEndPoint = clip.points[clip.points.length - 1]
+        completedPathEndTime = clipEnd  // Track when path ended
       }
     }
     
@@ -492,35 +495,85 @@ export const sampleLayerTracksUnified = (
         const p = samplePathClip(clip, time)
         if (p && clip.points.length > 0) {
           pathResult = p
-          pathFirstPoint = clip.points[0] // Store first point as origin
+          pathFirstPoint = clip.points[0]
           activePathId = clip.id
+          isPathActive = true
           break
         }
       }
     }
     
-    // If no active path but we have accumulated offset, apply it
-    if (!pathResult && (accumulatedPathOffset.x !== 0 || accumulatedPathOffset.y !== 0)) {
-      // Use a dummy point to trigger offset application
-      pathResult = { x: 0, y: 0 }
-      pathFirstPoint = { x: 0, y: 0 }
+    // If no active path but there was a completed path, use its end point
+    if (!pathResult && completedPathEndPoint) {
+      pathResult = completedPathEndPoint
+      pathFirstPoint = completedPathEndPoint
+      isPathActive = false
+    }
+    
+    // Store metadata for later use
+    if (pathResult) {
+      const activeFlag = isPathActive
+      const endTime = completedPathEndTime;
+      (pathResult as any)._isActivelyAnimating = activeFlag;
+      (pathResult as any)._pathEndTime = endTime
     }
   }
 
   // Calculate final position
-  // For paths: treat path as RELATIVE motion from the shape's current animated position
-  // The path's first point is the "origin" - we calculate offset from there and apply to `pos`
+  // ABSOLUTE PATH POSITIONING:
+  // - During path: shape IS at pathResult (absolute coordinates where user drew)
+  // - After path: shape is at path end point + templates that started AFTER path ended
+  // - Templates BEFORE path are already accounted for (user drew path at visual position)
   let finalPosition: Vec2
   if (pathResult && pathFirstPoint) {
-    // Calculate how far along the current path we've moved from its first point
-    const currentPathOffset = {
-      x: pathResult.x - pathFirstPoint.x,
-      y: pathResult.y - pathFirstPoint.y
-    }
-    // Apply BOTH accumulated offset from completed paths AND current path offset
-    finalPosition = {
-      x: pos.x + accumulatedPathOffset.x + currentPathOffset.x,
-      y: pos.y + accumulatedPathOffset.y + currentPathOffset.y
+    const isActivelyAnimating = (pathResult as any)._isActivelyAnimating ?? false
+    const pathEndTime = (pathResult as any)._pathEndTime ?? 0
+    
+    if (isActivelyAnimating) {
+      // DURING PATH: Shape is at ABSOLUTE path point (no offset)
+      finalPosition = pathResult
+    } else {
+      // AFTER PATH: Calculate offset only from templates that started AFTER path ended
+      // Re-calculate position from only those clips
+      let afterPathOffset = { x: 0, y: 0 }
+      
+      if (pathEndTime > 0) {
+        // Sort clips by start time
+        const sortedClips = [...clips].sort((a, b) => a.start - b.start)
+        
+        for (const clip of sortedClips) {
+          const kf = layer.clipKeyframes?.[clip.id]
+          if (!kf) continue
+          
+          // Only include templates that START at or after path end time
+          if (clip.start < pathEndTime) continue
+          
+          const clipStart = clip.start
+          const clipEnd = clipStart + clip.duration
+          
+          let localTime: number
+          if (time >= clipStart && time <= clipEnd) {
+            localTime = time - clipStart
+          } else if (time > clipEnd) {
+            localTime = clip.duration
+          } else {
+            continue
+          }
+          
+          // Add position offset from this template (skip path clips)
+          if (kf.position && clip.template !== 'path') {
+            const offset = sampleVec2Track(kf.position, localTime, { x: 0, y: 0 })
+            afterPathOffset.x += offset.x
+            afterPathOffset.y += offset.y
+          }
+        }
+      }
+      
+      // Final position = path end point + offsets from templates after path
+      finalPosition = {
+        x: pathResult.x + afterPathOffset.x,
+        y: pathResult.y + afterPathOffset.y
+      }
     }
   } else {
     finalPosition = pos
