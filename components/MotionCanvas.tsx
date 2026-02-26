@@ -1174,8 +1174,10 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       bgGraphics.fill({ color, alpha: _background.opacity ?? 1 })
     } else if (_background.mode === 'gradient') {
       // Gradient background - use a series of rects to approximate gradient
-      const fromColor = parseInt(_background.from.replace('#', ''), 16)
-      const toColor = parseInt(_background.to.replace('#', ''), 16)
+      const fromHex = _background?.from ?? '#000000'
+      const toHex = _background?.to ?? '#000000'
+      const fromColor = parseInt(fromHex.replace('#', ''), 16)
+      const toColor = parseInt(toHex.replace('#', ''), 16)
       const steps = 64 // Number of gradient steps
       const isRadial = _background.gradientType === 'radial'
       const position = _background.gradientPosition ?? 0.5
@@ -1192,9 +1194,9 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           const maxRadius = Math.sqrt(width * width + height * height) / 2
           
           const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, maxRadius)
-          gradient.addColorStop(0, _background.from)
-          gradient.addColorStop(position, _background.from)
-          gradient.addColorStop(1, _background.to)
+          gradient.addColorStop(0, fromHex)
+          gradient.addColorStop(position, fromHex)
+          gradient.addColorStop(1, toHex)
           
           ctx.fillStyle = gradient
           ctx.fillRect(0, 0, width, height)
@@ -1223,9 +1225,9 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         if (ctx) {
           // Create vertical gradient (top to bottom)
           const gradient = ctx.createLinearGradient(0, 0, 0, height)
-          gradient.addColorStop(0, _background.from)
-          gradient.addColorStop(position, _background.from)
-          gradient.addColorStop(1, _background.to)
+          gradient.addColorStop(0, fromHex)
+          gradient.addColorStop(position, fromHex)
+          gradient.addColorStop(1, toHex)
           
           ctx.fillStyle = gradient
           ctx.fillRect(0, 0, width, height)
