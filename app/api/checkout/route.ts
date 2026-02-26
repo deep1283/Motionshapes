@@ -1,17 +1,26 @@
 import { NextResponse } from 'next/server'
 import DodoPayments from 'dodopayments'
 
-// Initialize the Dodo server client
-const apiKey = process.env.dodo_api_key || ''
-const client = new DodoPayments({
-  bearerToken: apiKey,
-  environment: apiKey.toLowerCase().includes('test') ? 'test_mode' : 'live_mode',
-})
-
 export async function POST(request: Request) {
   try {
-    const origin = request.headers.get('origin') || 'http://localhost:3000'
+    // Initialize inside the handler so env vars are always read fresh
+    const apiKey = process.env.dodo_api_key || ''
     const productId = process.env.product_id
+
+    if (!apiKey) {
+      console.error('Dodo API key is missing from environment variables')
+      return NextResponse.json(
+        { error: 'Payment provider not configured' },
+        { status: 500 }
+      )
+    }
+
+    const client = new DodoPayments({
+      bearerToken: apiKey,
+      environment: 'live_mode',
+    })
+
+    const origin = request.headers.get('origin') || 'http://localhost:3000'
 
     if (!productId) {
       return NextResponse.json(
@@ -38,6 +47,7 @@ export async function POST(request: Request) {
         {
           product_id: productId,
           quantity: 1,
+          amount: 900, // $9.00 minimum in cents for Pay What You Want
         }
       ],
       return_url: `${origin}/dashboard?sponsor=success`,
