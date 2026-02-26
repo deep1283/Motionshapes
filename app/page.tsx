@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase'
 import { motion } from 'framer-motion'
-import { ArrowRight, Play, Layers, Zap, MousePointer2, Grid } from 'lucide-react'
+import { ArrowRight, Play, Layers, Zap, MousePointer2, Grid, Sparkles, Wand2, Github, Mail, Smartphone, Coffee } from 'lucide-react'
+import Image from 'next/image'
 import { Spotlight } from '@/components/ui/spotlight'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -12,34 +12,10 @@ import Link from 'next/link'
 
 export default function Home() {
   const router = useRouter()
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
-
-
-  // Check auth status on mount (but don't auto-redirect)
-  useEffect(() => {
-    const checkAuth = async () => {
-      const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
-      setIsLoggedIn(!!session)
-    }
-    
-    checkAuth()
-  }, [])
-
+  // Open-source version: users can immediately start creating anonymously
   const handleStartCreating = async () => {
-    if (isLoggedIn) {
-      // Already logged in - go directly to dashboard
-      router.push('/dashboard')
-    } else {
-      // Not logged in - trigger login flow
-      const supabase = createClient()
-      await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/dashboard`,
-        },
-      })
-    }
+    // Open-source version: Directly go to the dashboard without requiring an account
+    router.push('/dashboard')
   }
 
 
@@ -126,15 +102,7 @@ export default function Home() {
             </span>
           </Button>
 
-          <Link href="/library" target="_blank">
-            <Button
-              variant="outline"
-              className="h-12 rounded-full border-white/20 bg-transparent px-6 text-base font-medium text-white hover:bg-white/10 hover:border-white/30 transition-all flex items-center gap-2"
-            >
-              <Grid className="h-4 w-4" />
-              Library
-            </Button>
-          </Link>
+
           
           <Button
             onClick={() => document.getElementById('founder-contact')?.scrollIntoView({ behavior: 'smooth' })}
@@ -312,8 +280,8 @@ export default function Home() {
               <p className="text-sm text-neutral-400">Professional motion design in your browser</p>
             </div>
             
-            {/* Founder Contact */}
-            <div className="text-center md:text-right">
+            {/* Founder Contact & Sponsor */}
+            <div className="text-center md:text-right flex flex-col items-center md:items-end">
               <p className="text-xs uppercase tracking-wider text-neutral-500 mb-2">Founder</p>
               <p className="text-sm font-medium text-white mb-1">Deep Mishra</p>
               <div className="space-y-1 mb-3">
@@ -333,6 +301,31 @@ export default function Home() {
               <p className="text-xs text-neutral-500 max-w-[250px] md:ml-auto">
                 Have a suggestion, found an edge case, or want a new feature? Feel free to reach out — your feedback helps us improve.
               </p>
+              
+              <button 
+                onClick={async (e) => {
+                    const btn = e.currentTarget;
+                    const originalText = btn.innerHTML;
+                    btn.innerHTML = '<span class="animate-pulse">Loading...</span>';
+                    btn.disabled = true;
+                    try {
+                        const res = await fetch('/api/checkout', { method: 'POST' });
+                        const data = await res.json();
+                        if (data.url) window.open(data.url, "_blank");
+                        else throw new Error(data.error || "Failed to create checkout");
+                    } catch (err) {
+                        console.error(err);
+                        alert("Failed to initialize sponsor checkout.");
+                    } finally {
+                        btn.innerHTML = originalText;
+                        btn.disabled = false;
+                    }
+                }}
+                className="mt-6 inline-flex items-center gap-2 px-6 py-2.5 rounded-full bg-[#8b5cf6]/10 text-[#a78bfa] border border-[#8b5cf6]/30 hover:bg-[#8b5cf6]/20 hover:border-[#8b5cf6]/50 transition-all font-medium text-sm shadow-[0_0_15px_rgba(139,92,246,0.15)] hover:shadow-[0_0_25px_rgba(139,92,246,0.3)]"
+              >
+                <Coffee className="w-4 h-4" />
+                <span>Buy me a coffee</span>
+              </button>
             </div>
           </div>
           
