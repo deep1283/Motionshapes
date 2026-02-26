@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useRef, useCallback, useMemo, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { createClient } from '@/lib/supabase'
 import DashboardLayout, { BackgroundSettings, Effect, EffectType } from '@/components/DashboardLayout'
 import dynamic from 'next/dynamic'
 import { TimelineProvider, useTimeline, useTimelineActions } from '@/lib/timeline-store'
@@ -14,9 +13,9 @@ import { HistoryManager, type HistorySnapshot } from '@/lib/history-manager'
 import { debounce } from '@/lib/utils'
 import { chaikinSmooth, calculatePathLength } from '@/lib/path-smoothing'
 import { loadActiveProject, saveProject as saveProjectToSupabase } from '@/lib/supabase-projects'
-import { getMotionById } from '@/lib/library-api'
 import { useToast } from '@/components/Toast'
 import { loadFont } from '@/lib/google-fonts'
+import { compressImage } from '@/lib/image-compression'
 
 // Dynamically import MotionCanvas to avoid SSR issues with Pixi.js
 const MotionCanvas = dynamic(() => import('@/components/MotionCanvas'), { 
@@ -196,74 +195,38 @@ function DashboardContent() {
       setPathVersion(v => v + 1)
     }
   }, [selectedClipId, templateClips])
+
+  // Listen for storage quota errors and show a toast warning to the user
+  useEffect(() => {
+    const handleQuotaExceeded = () => {
+      showToast('Project is too large to save! Try removing some large images.', 'error')
+    }
+    
+    window.addEventListener('motionshapes:quota_exceeded', handleQuotaExceeded)
+    return () => window.removeEventListener('motionshapes:quota_exceeded', handleQuotaExceeded)
+  }, [showToast])
   useEffect(() => {
     const checkUserAndLoadProject = async () => {
-      const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
-
-      if (!session && !motionId) {
-        router.push('/')
-        return
-      }
+      // For the open-source version, everyone is an anonymous local user
+      const currentUserId = motionId ? null : 'anonymous_local_user_' + Math.random().toString(36).substring(7)
       
-      if (session) {
-        setUserId(session.user.id)
-        setUserEmail(session.user.email ?? null)
-      } else if (motionId) {
-         // Guest mode with motion loaded
-         setUserId(null)
-         setUserEmail(null) 
-      }
+      if (!currentUserId) return
       
-      // If motion param exists, load that instead of user project
-      if (motionId) {
-         try {
-            const motion = await getMotionById(motionId)
-            const data = motion.data
-            
-            setProjectName(motion.name)
-            setLayers(data.layers || [])
-            setLayerOrder(data.layerOrder || [])
-            
-            // PRELOAD FONTS: Start downloading fonts early (fire and forget - don't block)
-            const textLayers = (data.layers || []).filter((l: any) => l.type === 'text' && l.fontFamily && l.fontFamily !== 'Inter')
-            textLayers.forEach((l: any) => loadFont(l.fontFamily))
-            
-            if (data.timeline) {
-               timeline.restoreSnapshot(data.timeline)
-            }
-            
-            if (data.background) {
-               setBackground(data.background)
-            }
-            
-            if (data.canvasWidth) setCanvasWidth(data.canvasWidth)
-            if (data.canvasHeight) setCanvasHeight(data.canvasHeight)
-            
-            // Auto-play for preview?
-            setTimeout(() => timeline.setPlaying(true), 500)
-            
-         } catch (error) {
-            console.error('Failed to load motion:', error)
-            showToast('Failed to load motion', 'error')
-         }
-         
-         setIsLoading(false)
-         setHasLoadedProject(true)
-         return
-      }
+      setUserId(currentUserId)
+      setUserEmail('local_user@motionshapes.local')
       
-      // Try to load existing project (only if logged in and no motion param)
-      const existingProject = await loadActiveProject(session!.user.id)
-      
-      if (existingProject) {
-        // Restore project state
-        setProjectId(existingProject.id ?? null)
+      // Try to load existing project (only if logged in or anonymous)
+      if (currentUserId && !motionId) {
+        const existingProject = await loadActiveProject(currentUserId)
         
-        // Restore project name
-        if (existingProject.name) {
-          setProjectName(existingProject.name)
-        }
+        if (existingProject) {
+          // Restore project state
+          setProjectId(existingProject.id ?? null)
+          
+          // Restore project name
+          if (existingProject.name) {
+            setProjectName(existingProject.name)
+          }
         
         // Restore layers
         if (existingProject.layers && Array.isArray(existingProject.layers)) {
@@ -299,8 +262,9 @@ function DashboardContent() {
           setCanvasHeight(existingProject.canvas_height)
         }
         
-        // Trigger re-render
-        setTemplateVersion(v => v + 1)
+          // Trigger re-render
+          setTemplateVersion(v => v + 1)
+        }
       }
       
       setIsLoading(false)
@@ -309,7 +273,7 @@ function DashboardContent() {
     }
 
     checkUserAndLoadProject()
-  }, [router, timeline])
+  }, [router, timeline, motionId, showToast])
 
   // History Manager
   const historyManagerRef = useRef(new HistoryManager())
@@ -1173,24 +1137,19 @@ function DashboardContent() {
       return
     }
 
-    // Read file as base64
-    const reader = new FileReader()
-    reader.onload = async (e) => {
-      const imageUrl = e.target?.result as string
-      if (!imageUrl) return
-
-      // Get image dimensions
+    try {
+      setIsLoading(true)
+      // Compress the image before adding to the project payload
+      const imageUrl = await compressImage(file, { maxWidth: 2048, maxHeight: 2048, quality: 0.85 })
+      
+      // Get image dimensions for the canvas to maintain aspect ratio
       const img = new Image()
       img.onload = () => {
-        // Downscale if larger than 4096px for WebGL compatibility
         let width = img.width
         let height = img.height
-        const maxDimension = 4096
-        if (width > maxDimension || height > maxDimension) {
-          const ratio = Math.min(maxDimension / width, maxDimension / height)
-          width = Math.round(width * ratio)
-          height = Math.round(height * ratio)
-        }
+        // Note: the compressImage already bounded it to 2048px, but we still ensure 
+        // the initial canvas drop size is manageable (e.g. 300px scale)
+        const displayRatio = Math.min(300 / width, 300 / height, 1)
 
         // Create image layer with default 300x300 size to fit canvas
         // User can resize afterwards
@@ -1233,10 +1192,14 @@ function DashboardContent() {
         const track = timeline.getState().tracks.find(t => t.layerId === newLayer.id)
         const layerStartTime = track?.startTime ?? 0
         timeline.setCurrentTime(layerStartTime)
+        setIsLoading(false)
       }
       img.src = imageUrl
+    } catch (err) {
+      console.error('Failed to parse or compress image:', err)
+      showToast('Error importing image', 'error')
+      setIsLoading(false)
     }
-    reader.readAsDataURL(file)
   }
 
   const handleAIGenerateImage = async (prompt: string) => {

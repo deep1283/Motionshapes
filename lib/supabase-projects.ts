@@ -1,11 +1,11 @@
 /**
- * Supabase Project Persistence
+ * Local Project Persistence (IndexedDB)
  * 
- * Helper functions for saving and loading user animation projects.
- * Projects are stored in the `projects` table in Supabase.
+ * Helper functions for saving and loading user animation projects locally.
+ * Projects are stored using IndexedDB via `idb-keyval` to bypass 5MB limits.
  */
 
-import { createClient } from '@/lib/supabase'
+import { get, set } from 'idb-keyval'
 
 export interface ProjectData {
   id?: string
@@ -21,80 +21,99 @@ export interface ProjectData {
   background_settings?: unknown // Full background object (type, solid, gradient, image)
   created_at?: string
   updated_at?: string
+  is_active?: boolean
+}
+
+const STORE_KEY = 'motionshapes_local_projects'
+
+async function getLocalProjects(): Promise<Record<string, ProjectData>> {
+  if (typeof window === 'undefined') return {}
+  try {
+    const data = await get(STORE_KEY)
+    return data || {}
+  } catch (e) {
+    console.error('Error getting local projects:', e)
+    return {}
+  }
+}
+
+async function saveLocalProjects(projects: Record<string, ProjectData>): Promise<void> {
+  if (typeof window === 'undefined') return
+  try {
+    await set(STORE_KEY, projects)
+  } catch (e: any) {
+    console.error('Failed to save to IndexedDB:', e)
+    if (e && e.name === 'QuotaExceededError') {
+      window.dispatchEvent(new CustomEvent('motionshapes:quota_exceeded'))
+    }
+  }
 }
 
 /**
  * Load the user's active project (most recently updated)
  */
 export async function loadActiveProject(userId: string): Promise<ProjectData | null> {
-  const supabase = createClient()
+  const projects = await getLocalProjects()
   
-  const { data, error } = await supabase
-    .from('projects')
-    .select('*')
-    .eq('user_id', userId)
-    .eq('is_active', true)
-    .order('updated_at', { ascending: false })
-    .limit(1)
-    .single()
-  
-  if (error) {
-    // No project found is not an error for us
-    if (error.code === 'PGRST116') {
-      return null
+  // Find the most recently updated active project for this user
+  let activeProject: ProjectData | null = null
+  for (const id in projects) {
+    const p = projects[id]
+    if (p.user_id === userId && p.is_active) {
+      if (!activeProject || new Date(p.updated_at || 0) > new Date(activeProject.updated_at || 0)) {
+        activeProject = p
+      }
     }
-    console.error('Error loading project:', error)
-    return null
   }
   
-  return data as ProjectData
+  // If no active project found, check if there's any legacy local storage fallback we can migrate
+  if (!activeProject && typeof window !== 'undefined') {
+      const saved = window.localStorage.getItem('motionshapes_anonymous_project')
+      if (saved) {
+        try {
+          const legacyProject = JSON.parse(saved) as ProjectData
+          // Migrate it to IDB
+          await saveProject(legacyProject.id || `local_${Math.random().toString(36).substring(7)}`, userId, legacyProject)
+          window.localStorage.removeItem('motionshapes_anonymous_project')
+          return legacyProject
+        } catch (e) {
+          console.error('Error parsing legacy local project', e)
+        }
+      }
+  }
+  
+  return activeProject
 }
 
 /**
- * Save (upsert) a project to Supabase
+ * Save (upsert) a project to IndexedDB
  */
 export async function saveProject(
   projectId: string | null,
   userId: string,
   projectData: Partial<ProjectData>
 ): Promise<{ id: string } | null> {
-  const supabase = createClient()
+  const projects = await getLocalProjects()
   
-  const payload = {
+  const id = projectId || 'local_' + Math.random().toString(36).substring(7)
+  const now = new Date().toISOString()
+  
+  const existingProject = projects[id] || {}
+  
+  const payload: ProjectData = {
+    ...existingProject,
     ...projectData,
+    id,
     user_id: userId,
     is_active: true,
+    updated_at: now,
+    created_at: existingProject.created_at || now
   }
   
-  if (projectId) {
-    // Update existing project
-    const { error } = await supabase
-      .from('projects')
-      .update(payload)
-      .eq('id', projectId)
-      .eq('user_id', userId)
-    
-    if (error) {
-      console.error('Error saving project:', error)
-      return null
-    }
-    
-    return { id: projectId }
-  } else {
-    // Create new project
-    const { data, error } = await supabase
-      .from('projects')
-      .insert(payload)
-      .select('id')
-      .single()
-    
-    if (error) {
-      console.error('Error creating project:', error)
-      return null
-    }
-    
-    return data as { id: string }
-  }
+  projects[id] = payload
+  
+  await saveLocalProjects(projects)
+  return { id }
 }
 
 /**
@@ -113,18 +132,8 @@ export async function createNewProject(userId: string): Promise<{ id: string } |
  * List all projects for a user (for future project management UI)
  */
 export async function listProjects(userId: string): Promise<ProjectData[]> {
-  const supabase = createClient()
-  
-  const { data, error } = await supabase
-    .from('projects')
-    .select('id, name, created_at, updated_at')
-    .eq('user_id', userId)
-    .order('updated_at', { ascending: false })
-  
-  if (error) {
-    console.error('Error listing projects:', error)
-    return []
-  }
-  
-  return data as ProjectData[]
+  const projects = await getLocalProjects()
+  return Object.values(projects)
+    .filter(p => p.user_id === userId)
+    .sort((a, b) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime())
 }

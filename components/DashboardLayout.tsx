@@ -45,9 +45,9 @@ import {
   Trash2,
   Image as ImageIcon,
   X,
+  Coffee,
   RefreshCw
 } from 'lucide-react'
-import { createClient } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { EffectPreview } from '@/components/EffectPreview'
@@ -57,8 +57,7 @@ import FontPicker from '@/components/FontPicker'
 import { ExploreShapesModal } from '@/components/ExploreShapesModal'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { ExportModal } from '@/components/ExportModal'
-import { SaveMotionModal } from '@/components/SaveMotionModal'
-import { saveMotion, uploadToCloudflare } from '@/lib/library-api'
+import { compressImage } from '@/lib/image-compression'
 import { useTimeline, useTimelineActions } from '@/lib/timeline-store'
 
 const parseNum = (value: string, fallback: number = 0): number => {
@@ -763,136 +762,10 @@ export default function DashboardLayout({
   userEmail
 }: DashboardLayoutProps) {
   const router = useRouter()
-  const supabase = createClient()
   // showToast is already available from useToast hook if needed, but checking for dupes
   // If showToast is duplicated, remove one.
   // const { showToast } = useToast() <- REMOVED
   
-  const [isSaveLibraryOpen, setIsSaveLibraryOpen] = useState(false)
-  const [isSavingLibrary, setIsSavingLibrary] = useState(false)
-
-  const handleSaveToLibrary = async (data: { name: string, category: string }) => {
-    setIsSavingLibrary(true)
-    try {
-       const canvas = exportCanvasRef?.current
-       if (!canvas) throw new Error('No canvas found')
-  
-       timeline.setPlaying(false)
-       timeline.setCurrentTime(0)
-       exportHideHandlesRef?.current?.() // Hide handles for clean recording
-       await new Promise(r => setTimeout(r, 500)) // Wait for render
-
-       // Calculate viewport bounds (same logic as export)
-       const dpr = window.devicePixelRatio || 1
-       const physicalViewportWidth = canvasWidth * dpr
-       const physicalViewportHeight = canvasHeight * dpr
-       const physicalCanvasX = canvasX * dpr
-       const physicalCanvasY = canvasY * dpr
-       const workspaceWidth = canvas.width
-       const workspaceHeight = canvas.height
-       const vpX = (workspaceWidth - physicalViewportWidth) / 2 + physicalCanvasX
-       const vpY = (workspaceHeight - physicalViewportHeight) / 2 + physicalCanvasY
-
-       // 1. Thumbnail - crop to viewport
-       const thumbCanvas = document.createElement('canvas')
-       thumbCanvas.width = canvasWidth  // Logical pixels for output
-       thumbCanvas.height = canvasHeight
-       const thumbCtx = thumbCanvas.getContext('2d')!
-       thumbCtx.drawImage(
-         canvas,
-         vpX, vpY, physicalViewportWidth, physicalViewportHeight,  // Source (physical pixels)
-         0, 0, canvasWidth, canvasHeight  // Dest (logical pixels)
-       )
-       const thumbnailDataUrl = thumbCanvas.toDataURL('image/png', 0.8)
-       const thumbnailBlob = await (await fetch(thumbnailDataUrl)).blob()
-       const thumbnailKey = `thumbnails/${Date.now()}.png`
-       const thumbnailUrl = await uploadToCloudflare(thumbnailBlob, thumbnailKey)
-  
-       // 2. Video Preview - capture cropped viewport only
-       const previewCanvas = document.createElement('canvas')
-       previewCanvas.width = canvasWidth  // Logical pixels
-       previewCanvas.height = canvasHeight
-       const previewCtx = previewCanvas.getContext('2d')!
-       
-       const stream = previewCanvas.captureStream(30)
-       const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' })
-       const chunks: Blob[] = []
-       
-       recorder.ondataavailable = e => {
-         if (e.data.size > 0) chunks.push(e.data)
-       }
-       
-       const recordingPromise = new Promise<string>((resolve, reject) => {
-          recorder.onstop = async () => {
-             const blob = new Blob(chunks, { type: 'video/webm' })
-             const key = `previews/${Date.now()}.webm`
-             try {
-                const url = await uploadToCloudflare(blob, key)
-                resolve(url)
-             } catch(e) { reject(e) }
-          }
-       })
-  
-       // Frame loop to copy cropped viewport to preview canvas
-       let isRecording = true
-       const drawFrame = () => {
-         if (!isRecording) return
-         previewCtx.drawImage(
-           canvas,
-           vpX, vpY, physicalViewportWidth, physicalViewportHeight,
-           0, 0, canvasWidth, canvasHeight
-         )
-         requestAnimationFrame(drawFrame)
-       }
-       
-       recorder.start()
-       timeline.setPlaying(true)
-       drawFrame()
-       
-       // Calculate total duration based on tracks AND template clips
-       const snapshot = timeline.getSnapshot()
-       const tracks = (snapshot as any).tracks || []
-       const clips = (snapshot as any).templateClips || []
-       const trackEndTimes = tracks.map((t: any) => (t.startTime||0) + (t.duration||0))
-       const clipEndTimes = clips.map((c: any) => (c.start||0) + (c.duration||0))
-       const totalDuration = Math.max(3000, ...trackEndTimes, ...clipEndTimes) // Min 3s
-       
-       await new Promise(r => setTimeout(r, totalDuration + 200)) 
-       
-       isRecording = false
-       timeline.setPlaying(false)
-       recorder.stop()
-       exportShowHandlesRef?.current?.() // Show handles again
-       const previewUrl = await recordingPromise
-  
-       // 3. Save Data
-       await saveMotion({
-         name: data.name,
-         category: data.category,
-         thumbnail_url: thumbnailUrl,
-         preview_url: previewUrl,
-         data: {
-            layers,
-            layerOrder,
-            timeline: snapshot,
-            background,
-            canvasWidth: initialCanvasWidth, // Use initialCanvasWidth from props
-            canvasHeight: initialCanvasHeight // Use initialCanvasHeight from props
-         },
-         status: 'approved',
-         is_featured: false
-       })
-       
-       showToast('Saved to Library', 'success')
-       setIsSaveLibraryOpen(false)     
-    } catch (error) {
-       console.error(error)
-       showToast('Failed to save to library', 'error')
-    } finally {
-       setIsSavingLibrary(false)
-       timeline.setPlaying(false)
-    }
-  }
   const templateClips = useTimeline((s) => s.templateClips)
   const effectClips = useTimeline((s) => s.effectClips)
   const timelineTracks = useTimeline((s) => s.tracks)
@@ -1274,7 +1147,6 @@ export default function DashboardLayout({
 
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
     router.push('/')
   }
 
@@ -1801,18 +1673,31 @@ export default function DashboardLayout({
                 <span className="hidden md:inline">Export</span>
             </Button>
             
-            {userEmail === 'deepmishra1283@gmail.com' && (
-              <Button 
-                  onClick={() => setIsSaveLibraryOpen(true)}
-                  variant="ghost"
-                  size="sm"
-                  className="flex h-9 w-9 md:h-8 md:w-auto md:px-3 gap-2 bg-purple-600 text-white hover:bg-purple-700 text-xs rounded-full font-medium transition-all duration-200"
-              >
-                  <Upload className="h-3.5 w-3.5" />
-                  <span className="hidden md:inline">Save Motion</span>
-              </Button>
-            )}
-
+            <button 
+                onClick={async (e) => {
+                    const btn = e.currentTarget;
+                    const originalText = btn.innerHTML;
+                    btn.innerHTML = '<span class="animate-pulse">Loading...</span>';
+                    btn.disabled = true;
+                    try {
+                        const res = await fetch('/api/checkout', { method: 'POST' });
+                        const data = await res.json();
+                        if (data.url) window.open(data.url, "_blank");
+                        else throw new Error(data.error || "Failed to create checkout");
+                    } catch (err) {
+                        console.error(err);
+                        alert("Failed to initialize sponsor checkout.");
+                    } finally {
+                        btn.innerHTML = originalText;
+                        btn.disabled = false;
+                    }
+                }}
+                className="flex items-center h-9 md:h-8 px-3 ml-2 gap-2 bg-[#8b5cf6]/10 text-[#8b5cf6] hover:bg-[#8b5cf6]/20 text-xs rounded-full font-medium transition-all duration-200 border border-[#8b5cf6]/20 hover:border-[#8b5cf6]/40 shadow-[0_0_15px_rgba(139,92,246,0.1)] hover:shadow-[0_0_20px_rgba(139,92,246,0.2)]"
+            >
+                <Coffee className="h-3.5 w-3.5" />
+                <span className="hidden md:inline">Sponsor Project</span>
+            </button>
+            
             {/* Mobile: Settings Toggle (Right Sidebar Toggle) */}
             <button 
               onClick={() => setIsMobileRightOpen(!isMobileRightOpen)}
@@ -1844,15 +1729,15 @@ export default function DashboardLayout({
         />
       )}
 
-      <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-h-0 relative">
+      <div className="relative flex-1 overflow-hidden min-h-0 bg-[#000000]">
         {/* Left Sidebar Wrapper - Mobile: Off-screen Drawer (Left) | Desktop: Fixed (Left) */}
         <div className={cn(
-          "fixed md:relative top-12 md:top-0 bottom-0 left-0 z-[70] w-[280px] md:w-auto md:flex-shrink-0 h-[calc(100vh-3rem)] md:h-full bg-[#0a0a0a] flex flex-col border-r border-white/5 transition-transform duration-300 order-last md:order-first shadow-2xl md:shadow-none",
+          "absolute top-0 bottom-0 left-0 z-[70] w-[280px] md:w-auto md:flex-shrink-0 h-full bg-[#0a0a0a] flex flex-col border-r border-white/5 transition-transform duration-300 shadow-2xl md:shadow-[4px_0_24px_rgba(0,0,0,0.5)]",
           isMobileLeftOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         )}>
         {/* Resize Handle - Outside scrollable area to span full height */}
         <div
-          className="absolute right-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-purple-500/50 active:bg-purple-500/50 transition-colors z-50"
+          className="absolute right-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-purple-500/50 active:bg-purple-500/80 transition-colors z-[100]"
           onMouseDown={startSidebarResize}
         />
         <aside 
@@ -3048,7 +2933,7 @@ export default function DashboardLayout({
         </div>
 
         {/* MAIN CONTENT AREA */}
-        <div className="flex-1 flex flex-col relative min-w-0 h-[50vh] md:h-full order-1 md:order-none z-0">
+        <div className="absolute inset-0 z-0 flex flex-col bg-[#000000] overflow-hidden">
           
           {/* Floating Navigation Tabs */}
           <div className="absolute top-1 left-1/2 -translate-x-1/2 z-40 flex items-center justify-center max-w-[calc(100%-32px)]">
@@ -3417,13 +3302,13 @@ export default function DashboardLayout({
         {/* RIGHT PROPERTIES PANEL - Mobile: Off-screen Drawer (Right) | Desktop: Fixed (Right) */}
       {/* Right Sidebar Wrapper */}
       <div className={cn(
-        "fixed md:relative inset-y-0 right-0 z-[70] w-[280px] md:w-auto h-full bg-[#0a0a0a] flex flex-col border-l border-white/5 transition-transform duration-300 order-last shadow-2xl md:shadow-none",
+        "absolute top-0 bottom-0 right-0 z-[70] w-[280px] md:w-auto h-full bg-[#0a0a0a] flex flex-col border-l border-white/5 transition-transform duration-300 shadow-2xl md:shadow-[-4px_0_24px_rgba(0,0,0,0.5)]",
         isMobileRightOpen ? "translate-x-0" : "translate-x-full md:translate-x-0"
       )}>
         
         {/* Resize Handle - Positioned on the left edge */}
         <div
-            className="absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-violet-500/50 active:bg-violet-500/50 transition-colors z-50 -translate-x-1/2"
+            className="absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-purple-500/50 active:bg-purple-500/80 transition-colors z-[100]"
             onMouseDown={startRightSidebarResize}
         />
 
@@ -3603,18 +3488,18 @@ export default function DashboardLayout({
                     <div className="relative w-8 h-8 rounded shrink-0 overflow-hidden border border-white/10">
                       <input
                         type="color"
-                        value={background.from}
+                        value={background.from ?? '#000000'}
                         onChange={(e) => updateBackground({ from: normalizeHex(e.target.value) })}
                         className="absolute inset-0 w-[200%] h-[200%] -top-[50%] -left-[50%] p-0 m-0 cursor-pointer opacity-0"
                       />
                       <div 
                         className="absolute inset-0 pointer-events-none"
-                        style={{ backgroundColor: background.from }}
+                        style={{ backgroundColor: background.from ?? '#000000' }}
                       />
                     </div>
                     <input
                       type="text"
-                      value={background.from}
+                      value={background.from ?? '#000000'}
                       onChange={(e) => updateBackground({ from: normalizeHex(e.target.value) })}
                       className="flex-1 bg-transparent text-neutral-200 text-xs font-mono outline-none uppercase"
                       spellCheck={false}
@@ -3630,18 +3515,18 @@ export default function DashboardLayout({
                     <div className="relative w-8 h-8 rounded shrink-0 overflow-hidden border border-white/10">
                       <input
                         type="color"
-                        value={background.to}
+                        value={background.to ?? '#000000'}
                         onChange={(e) => updateBackground({ to: normalizeHex(e.target.value) })}
                         className="absolute inset-0 w-[200%] h-[200%] -top-[50%] -left-[50%] p-0 m-0 cursor-pointer opacity-0"
                       />
                       <div 
                         className="absolute inset-0 pointer-events-none"
-                        style={{ backgroundColor: background.to }}
+                        style={{ backgroundColor: background.to ?? '#000000' }}
                       />
                     </div>
                     <input
                       type="text"
-                      value={background.to}
+                      value={background.to ?? '#000000'}
                       onChange={(e) => updateBackground({ to: normalizeHex(e.target.value) })}
                       className="flex-1 bg-transparent text-neutral-200 text-xs font-mono outline-none uppercase"
                       spellCheck={false}
@@ -3660,14 +3545,15 @@ export default function DashboardLayout({
                     type="file"
                     accept="image/*"
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                    onChange={(e) => {
+                    onChange={async (e) => {
                       const file = e.target.files?.[0]
                       if (file) {
-                        const reader = new FileReader()
-                        reader.onload = (event) => {
-                          updateBackground({ image: event.target?.result as string })
+                        try {
+                          const compressedUrl = await compressImage(file)
+                          updateBackground({ image: compressedUrl })
+                        } catch (err) {
+                          console.error('Failed to compress background image:', err)
                         }
-                        reader.readAsDataURL(file)
                       }
                     }}
                   />
@@ -5406,13 +5292,6 @@ export default function DashboardLayout({
         }}
       />
 
-      {/* Save Motion Modal */}
-      <SaveMotionModal
-        isOpen={isSaveLibraryOpen}
-        onClose={() => setIsSaveLibraryOpen(false)}
-        onSave={handleSaveToLibrary}
-        isSaving={isSavingLibrary}
-      />
     </div>
   )
 }
