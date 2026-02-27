@@ -1,29 +1,45 @@
 import { MetadataRoute } from 'next'
- 
+
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://motionshapes.com'
- 
+  const now = new Date()
+
   return [
     {
       url: baseUrl,
-      lastModified: new Date(),
+      lastModified: now,
       changeFrequency: 'weekly',
       priority: 1,
     },
     {
-      url: `${baseUrl}/library`,
-      lastModified: new Date(),
-      changeFrequency: 'daily',
+      url: `${baseUrl}/features`,
+      lastModified: now,
+      changeFrequency: 'weekly',
       priority: 0.9,
     },
-    // Add about page if it exists
-    /*
+    {
+      url: `${baseUrl}/use-cases`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.9,
+    },
     {
       url: `${baseUrl}/about`,
-      lastModified: new Date(),
+      lastModified: now,
       changeFrequency: 'monthly',
       priority: 0.8,
     },
-    */
+    {
+      url: `${baseUrl}/contribute`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.85,
+    },
+    {
+      url: `${baseUrl}/llms.txt`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.7,
+    },
   ]
 }
