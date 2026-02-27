@@ -109,7 +109,7 @@ async function waitForRender(isFirstFrame: boolean = false): Promise<void> {
  * This ensures smooth output regardless of system performance during capture.
  */
 export async function exportToWebM(options: ExportOptions): Promise<Blob> {
-  const { canvas, duration, fps, quality, viewportBounds, outputWidth, outputHeight, background, onProgress, onSeek, onRender } = options
+  const { canvas, duration, fps, quality, viewportBounds, outputWidth, outputHeight, onProgress, onSeek, onRender } = options
   
   const frameInterval = 1000 / fps
   const totalFrames = Math.ceil(duration / frameInterval)
@@ -331,4 +331,3 @@ export async function convertToMP4(
     throw new Error('MP4 conversion failed. Try exporting as WebM instead.')
   }
 }
-

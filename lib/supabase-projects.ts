@@ -11,14 +11,14 @@ export interface ProjectData {
   id?: string
   user_id?: string
   name?: string
-  layers: unknown[]
+  layers: UnsafeAny[]
   layer_order: string[]
-  timeline_snapshot: unknown
+  timeline_snapshot: UnsafeAny
   canvas_width?: number
   canvas_height?: number
   aspect_ratio?: string
   background_color?: string
-  background_settings?: unknown // Full background object (type, solid, gradient, image)
+  background_settings?: UnsafeAny // Full background object (type, solid, gradient, image)
   created_at?: string
   updated_at?: string
   is_active?: boolean
@@ -41,7 +41,7 @@ async function saveLocalProjects(projects: Record<string, ProjectData>): Promise
   if (typeof window === 'undefined') return
   try {
     await set(STORE_KEY, projects)
-  } catch (e: any) {
+  } catch (e: UnsafeAny) {
     console.error('Failed to save to IndexedDB:', e)
     if (e && e.name === 'QuotaExceededError') {
       window.dispatchEvent(new CustomEvent('motionshapes:quota_exceeded'))

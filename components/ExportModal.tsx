@@ -60,7 +60,7 @@ export function ExportModal({
       setFilename(defaultFilename)
       setFormat('webm')
     }
-  }, [isOpen])
+  }, [isOpen, defaultFilename])
 
   if (!isOpen) return null
 
@@ -466,7 +466,7 @@ export function ExportModal({
               </div>
               <h3 className="text-lg font-semibold text-white mb-2">Export Complete!</h3>
               <p className="text-neutral-400 text-sm mb-4">
-                Found a bug or have ideas? We'd love to hear from you!
+                Found a bug or have ideas? We&apos;d love to hear from you!
                 <br /><br />
                 <span className="italic text-purple-300">Girlfriend wants to go on a date but I am broke 🥺</span>
               </p>

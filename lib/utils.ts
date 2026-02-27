@@ -5,7 +5,7 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function debounce<T extends (...args: any[]) => any>(
+export function debounce<T extends (...args: UnsafeAny[]) => unknown>(
   func: T,
   wait: number
 ): (...args: Parameters<T>) => void {

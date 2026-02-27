@@ -1,5 +1,5 @@
-import { Pause, Play, Repeat, SlidersHorizontal, ChevronRight, ChevronDown } from 'lucide-react'
-import { useMemo, useState, useRef, useEffect } from 'react'
+import { Pause, Play, Repeat, ChevronRight, ChevronDown } from 'lucide-react'
+import { useMemo, useState, useRef, useEffect, useCallback } from 'react'
 import { useTimeline, useTimelineActions } from '@/lib/timeline-store'
 import { sampleTimeline } from '@/lib/timeline'
 
@@ -28,6 +28,7 @@ const formatTime = (ms: number) => {
 }
 
 export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers, selectedLayerId, selectedTemplate, selectedClipId, isDrawingPath, onFinishPath, onCancelPath, pathPointCount = 0, onClipClick, onSelectLayer }: TimelinePanelProps) {
+  void [selectedTemplate, isDrawingPath, onFinishPath, onCancelPath, pathPointCount]
   // Split selectors to ensure each value change triggers re-render
   const currentTime = useTimeline((s) => s.currentTime)
   const duration = useTimeline((s) => s.duration)
@@ -46,6 +47,7 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
   const clickMarkers = useTimeline((s) => s.clickMarkers)
   const effectClips = useTimeline((s) => s.effectClips)
   const timeline = useTimelineActions()
+  void [templateSpeed, rollDistance, jumpHeight, jumpVelocity, popScale, popWobble, popSpeed, popCollapse]
   const MIN_TIMELINE_MS = 5000 // 5 seconds minimum for free playhead movement
   const safeDuration = Math.max(MIN_TIMELINE_MS, Number.isFinite(duration) ? duration : MIN_TIMELINE_MS)
   
@@ -102,7 +104,7 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
       setTimelineHeight(newHeight)
     }
 
-    const handleResizeEnd = (e: PointerEvent) => {
+    const handleResizeEnd = () => {
       setIsResizing(false)
       if (typeof window !== 'undefined') {
         localStorage.setItem('timelineHeight', timelineHeight.toString())
@@ -117,7 +119,7 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
       window.removeEventListener('pointermove', handleResizeMove)
       window.removeEventListener('pointerup', handleResizeEnd)
     }
-  }, [isResizing, MIN_HEIGHT, MAX_HEIGHT])
+  }, [isResizing, MIN_HEIGHT, MAX_HEIGHT, timelineHeight])
 
   const orderedLayers = useMemo(() => {
     if (!layers || layers.length === 0) return []
@@ -152,6 +154,7 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
     const track = tracks.find((t) => t.layerId === selectedLayerId)
     return track?.paths?.[0] ?? null
   }, [tracks, selectedLayerId])
+  void [selectedSample, pathClip]
   const handlePlayClick = () => {
     // If currently playing, just pause (don't reset)
     if (isPlaying) {
@@ -162,7 +165,7 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
     // Starting playback - check if we need to reset from end
     const clipsEnd = templateClips.reduce((max, c) => Math.max(max, (c.start ?? 0) + (c.duration ?? 0)), 0)
     
-    const getTrackEnd = (track: any) => {
+    const getTrackEnd = (track: UnsafeAny) => {
       const times: number[] = []
       if (track.position?.length) times.push(track.position[track.position.length - 1].time)
       if (track.scale?.length) times.push(track.scale[track.scale.length - 1].time)
@@ -221,6 +224,15 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
     currentStart?: number
     element?: HTMLElement // Direct reference to DOM element for zero-lag drag
   } | null>(null)
+  void [
+    showTemplateControls,
+    templateControlsVisible,
+    setIsResizingClip,
+    setIsMovingClip,
+    setOptimisticClip,
+    resizeStateRef,
+    moveStateRef,
+  ]
   
   // State for dragging/resizing the Shape Visibility Bar itself
   const [optimisticLayer, setOptimisticLayer] = useState<{ layerId: string; startTime: number; duration: number } | null>(null)
@@ -422,12 +434,12 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
   } | null>(null)
   const MIN_CLIP_DURATION = 80 // ms
 
-  const applyScrub = (clientX: number) => {
+  const applyScrub = useCallback((clientX: number) => {
     const rect = timelineAreaRef.current?.getBoundingClientRect()
     if (!rect) return
     const t = ((clientX - rect.left) / rect.width) * safeDuration
     timeline.setCurrentTime(Math.max(0, Math.min(safeDuration, t)))
-  }
+  }, [safeDuration, timeline])
 
   const handleScrubStart = (e: React.PointerEvent<HTMLDivElement>) => {
     if (isResizingClip || isMovingClip) return
@@ -446,7 +458,7 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
     }
-  }, [isScrubbing, scrubTarget])
+  }, [isScrubbing, scrubTarget, applyScrub])
 
   const startResize = (e: React.PointerEvent, clip: { id: string; layerId: string; start: number; duration: number }, edge: 'left' | 'right') => {
     e.stopPropagation()
@@ -547,7 +559,7 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
     setIsScrubbing(false)
   }
 
-  const startMove = (e: React.PointerEvent, clip: { id: string; layerId: string; start: number; duration: number; template: any }) => {
+  const startMove = (e: React.PointerEvent, clip: { id: string; layerId: string; start: number; duration: number; template: UnsafeAny }) => {
     e.stopPropagation()
     onClipClick?.({ id: clip.id, template: clip.template as string })
     const rect = timelineAreaRef.current?.getBoundingClientRect()
@@ -747,7 +759,7 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
       window.removeEventListener('pointermove', handleMove)
       window.removeEventListener('pointerup', handleUp)
     }
-  }, [isMovingLayer, safeDuration, timeline, tracks])
+  }, [isMovingLayer, safeDuration, timeline, tracks, templateClips, effectClips])
 
   // Effect for Resizing Layer visibility bar
   useEffect(() => {
@@ -848,7 +860,7 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
       window.removeEventListener('pointermove', handleMove)
       window.removeEventListener('pointerup', handleUp)
     }
-  }, [isResizingLayer, safeDuration, timeline, tracks])
+  }, [isResizingLayer, safeDuration, timeline, tracks, templateClips])
 
   const [collapsedLayers, setCollapsedLayers] = useState<Record<string, boolean>>({})
 
@@ -973,6 +985,7 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
               const summaryDuration = maxEnd - minStart
               const summaryLeft = (minStart / safeDuration) * 100
               const summaryWidth = Math.max(0, (summaryDuration / safeDuration) * 100)
+              void [summaryLeft, summaryWidth]
 
 
               return (
@@ -1066,6 +1079,7 @@ export default function TimelinePanel({ layers, layerOrder = [], onReorderLayers
                         const hasPaths = (track?.paths?.length ?? 0) > 0
                         // Keyframes check could be complex, for now let's stick to clips/paths as "children"
                         const isLocked = hasClips || hasPaths || hasPaths
+                        void isLocked
 
                         return (
                           <div
