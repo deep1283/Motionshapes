@@ -81,7 +81,7 @@ We designed a hybrid storage model. While Supabase powers user authentication an
 
 ## 🤝 Contributing
 
-We welcome community contributions! Whether it's a new 3D shape preset, an optimization for the WASM encoder, or a bug fix, we'd love your help.
+We welcome community contributions! Whether it's a new 2D shape preset, an optimization for the WASM encoder, or a bug fix, we'd love your help.
 
 Please see our [Contribution Guidelines](CONTRIBUTING.md) for details on how to get started.
 

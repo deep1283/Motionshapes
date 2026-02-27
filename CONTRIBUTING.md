@@ -12,7 +12,7 @@ If you find a bug in the application, please open an issue in the GitHub reposit
 - Any relevant console errors or screenshots.
 
 ### 2. Suggesting Enhancements
-Have an idea for a new 2D shape preset, an animation curve, or a UI workflow optimization?
+Have an idea for a new 2D shape preset,a figma plugin an animation curve, or a UI workflow optimization?
 - Open a feature request issue.
 - Explain **why** this enhancement would be useful to most users.
 - If possible, include wireframes, code examples, or references to similar tools.
