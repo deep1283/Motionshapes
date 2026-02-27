@@ -16,8 +16,10 @@ Whether you need a dynamic hero asset for your landing page, a text animation se
 
 ![Export Options](./public/export_modal.png)
 > *Exporting high-quality animations entirely in the browser.*
-### 🎥 Video Demo
-https://github.com/deep1283/Motionshapes/raw/main/public/demo.mp4
+### 🎥 Video Demos
+
+![MotionShapes Demo 1](./public/demo1.gif)
+![MotionShapes Demo 2](./public/demo2.gif)
 
 ---
 
