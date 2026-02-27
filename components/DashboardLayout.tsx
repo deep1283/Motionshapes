@@ -70,7 +70,7 @@ const EASING_OPTIONS = [
   { label: 'Ease In', value: 'easeInQuad' },
   { label: 'Ease Out', value: 'easeOutQuad' },
   { label: 'Ease In Out', value: 'easeInOutQuad' },
-  { label: 'Jittery (Quint)', value: 'easeInOutQuint' }
+  { label: 'Quint', value: 'easeInOutQuint' }
 ]
 
 const ResizeClipItem = ({

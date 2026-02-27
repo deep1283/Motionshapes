@@ -782,7 +782,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         containerRef.current.style.overflow = 'visible'
         
         // keep rendering even if no template animation is running
-        // ALSO sync handle positions every frame for the selected layer (like Jitter/Figma)
+        // Also sync handle positions every frame for the selected layer
         app.ticker.add(() => {
           // Skip handle sync during playback - handles are hidden
           if (isPlayingRef.current) return
