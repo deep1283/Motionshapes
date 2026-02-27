@@ -1,31 +1,94 @@
-# Motionshapes
+# MotionShapes
 
-Motionshapes is a modern web application built with Next.js, Framer Motion, and Pixi.js, offering interactive animations and graphics creation, with video export capabilities powered by FFmpeg. It also integrates with Supabase and AI image generation APIs.
+[![Website](https://img.shields.io/website?url=https%3A%2F%2Fwww.motionshapes.com&up_message=online&down_message=offline&style=flat-square&label=MotionShapes)](https://www.motionshapes.com)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
-## Features
+**MotionShapes** ([www.motionshapes.com](https://www.motionshapes.com)) is a modern, blazing-fast web-based design tool that allows users to create stunning, animated 2D shapes and interactive motion graphics right in their browser. 
 
-- Interactive WebGL graphics with Pixi.js
-- Smooth animations with Framer Motion
-- Video generation and export via FFmpeg WebAssembly
-- AI-powered image generation
-- Secure user authentication and data storage with Supabase
+Whether you need a dynamic hero asset for your landing page, a text animation sequence, or a complex particle effect, MotionShapes gives you a powerful visual node editor to build it, animate it, and export it as an optimized video or GIF—all without leaving the browser.
 
-## Getting Started
+---
 
-First, install dependencies:
+## 📸 Screenshots & Demos
 
-```bash
-npm install
-```
+*(Add your screenshots or demo GIFs here! Drop them in the `/public` folder and update these links)*
 
-Then, run the development server:
+![MotionShapes Editor Preview](./public/demo-editor.png)
+> *The interactive node editor and 3D canvas.*
 
-```bash
-npm run dev
-```
+![Export Options](./public/demo-export.gif)
+> *Seamlessly exporting an animation to an MP4 video entirely in the browser.*
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the application.
+---
 
-## License
+## 🚀 Tech Stack
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+- **Framework:** [Next.js](https://nextjs.org/) (App Router)
+- **Styling:** [Tailwind CSS](https://tailwindcss.com/)
+- **UI Animations:** [Framer Motion](https://www.framer.com/motion/)
+- **WebGL / Rendering:** [Pixi.js](https://pixijs.com/)
+- **Video Export:** [FFmpeg WebAssembly](https://ffmpegwasm.netlify.app/)
+- **Backend / Auth:** [Supabase](https://supabase.com/)
+- **Payments / Sponsorship:** [Dodo Payments](https://www.dodopayments.com/)
+
+---
+
+## 💻 Installation
+
+To run MotionShapes locally on your machine:
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/yourusername/motionshapes.git
+   cd motionshapes
+   ```
+
+2. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+3. **Set up environment variables:**
+   Create a `.env.local` file and add your Supabase and Dodo Payments keys (see `.env.example` if available).
+
+4. **Start the development server:**
+   ```bash
+   npm run dev
+   ```
+
+5. **Open the app:**
+   Navigate to [http://localhost:3000](http://localhost:3000) in your browser.
+
+---
+
+## 🧠 What Makes This Interesting? (Architecture)
+
+MotionShapes pushes the boundaries of what is possible entirely inside a web browser without relying on expensive cloud rendering servers. 
+
+### 🎨 Rendering: Pixi.js
+Instead of traditional DOM elements, the core canvas relies on **Pixi.js** for hardware-accelerated 2D WebGL rendering. This allows us to push thousands of particles, complex vector filters (glow, drop shadow, pixelation), and intricate motion tracking smoothly at 60FPS.
+
+### 🎬 Video Export: FFmpeg WASM
+The most technically complex feature is the export engine. Instead of sending frame data to a backend server to be encoded (which is slow and expensive), we use **FFmpeg compiled to WebAssembly (WASM)**. The user's browser captures the Pixi.js canvas frame-by-frame and encodes a high-quality MP4 video or GIF *locally* on their own CPU.
+
+### ⚡ Front-end: Next.js + Framer Motion
+The surrounding application wrapper and UI panels are built with **Next.js** for optimal routing and SEO, while **Framer Motion** drives the fluid, native-feeling UI transitions between configuration states.
+
+### 💾 Local-First Storage
+We designed a hybrid storage model. While Supabase powers user authentication and global settings, active drafts and high-frequency canvas saves are written directly to the browser's **IndexedDB**. This ensures the editor feels instantaneous and works even if the connection drops.
+
+---
+
+## 🤝 Contributing
+
+We welcome community contributions! Whether it's a new 3D shape preset, an optimization for the WASM encoder, or a bug fix, we'd love your help.
+
+Please see our [Contribution Guidelines](CONTRIBUTING.md) for details on how to get started.
+
+---
+
+## 📄 License
+
+This project is licensed under the **GNU Affero General Public License v3.0 (AGPLv3)**. See the [LICENSE](LICENSE) file for the full text. 
+
+*(TL;DR: You are free to use, modify, and distribute this software, but if you run it as a public service over a network, you must open-source your modifications under the same license.)*
