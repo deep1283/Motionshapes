@@ -5,19 +5,20 @@
 
 **MotionShapes** ([www.motionshapes.com](https://www.motionshapes.com)) is a modern, blazing-fast web-based design tool that allows users to create stunning, animated 2D shapes and interactive motion graphics right in their browser. 
 
-Whether you need a dynamic hero asset for your landing page, a text animation sequence, or a complex particle effect, MotionShapes gives you a powerful visual node editor to build it, animate it, and export it as an optimized video or GIF—all without leaving the browser.
+Whether you need a dynamic hero asset for your landing page, a text animation sequence, or a complex particle effect, MotionShapes gives you a powerful visual node editor to build it, animate it, and export it as an optimized MP4 or WebM video—all without leaving the browser.
 
 ---
 
 ## 📸 Screenshots & Demos
 
-*(Add your screenshots or demo GIFs here! Drop them in the `/public` folder and update these links)*
+![MotionShapes Editor Preview](./public/canvas.png)
+> *The interactive 2D canvas and property editor.*
 
-![MotionShapes Editor Preview](./public/demo-editor.png)
-> *The interactive node editor and 3D canvas.*
+![Export Options](./public/export_modal.png)
+> *Exporting high-quality animations entirely in the browser.*
 
-![Export Options](./public/demo-export.gif)
-> *Seamlessly exporting an animation to an MP4 video entirely in the browser.*
+### 🎥 Video Demo
+[Watch MotionShapes in action (demo.mp4)](./public/demo.mp4)
 
 ---
 
@@ -28,7 +29,7 @@ Whether you need a dynamic hero asset for your landing page, a text animation se
 - **UI Animations:** [Framer Motion](https://www.framer.com/motion/)
 - **WebGL / Rendering:** [Pixi.js](https://pixijs.com/)
 - **Video Export:** [FFmpeg WebAssembly](https://ffmpegwasm.netlify.app/)
-- **Backend / Auth:** [Supabase](https://supabase.com/)
+- **Local Storage:** IndexedDB (idb-keyval)
 - **Payments / Sponsorship:** [Dodo Payments](https://www.dodopayments.com/)
 
 ---
@@ -49,7 +50,7 @@ To run MotionShapes locally on your machine:
    ```
 
 3. **Set up environment variables:**
-   Create a `.env.local` file and add your Supabase and Dodo Payments keys (see `.env.example` if available).
+   Create a `.env.local` file and add your Google Gemini and Dodo Payments keys (see `.env.example` if available).
 
 4. **Start the development server:**
    ```bash
@@ -69,13 +70,13 @@ MotionShapes pushes the boundaries of what is possible entirely inside a web bro
 Instead of traditional DOM elements, the core canvas relies on **Pixi.js** for hardware-accelerated 2D WebGL rendering. This allows us to push thousands of particles, complex vector filters (glow, drop shadow, pixelation), and intricate motion tracking smoothly at 60FPS.
 
 ### 🎬 Video Export: FFmpeg WASM
-The most technically complex feature is the export engine. Instead of sending frame data to a backend server to be encoded (which is slow and expensive), we use **FFmpeg compiled to WebAssembly (WASM)**. The user's browser captures the Pixi.js canvas frame-by-frame and encodes a high-quality MP4 video or GIF *locally* on their own CPU.
+The most technically complex feature is the export engine. Instead of sending frame data to a backend server to be encoded (which is slow and expensive), we use **FFmpeg compiled to WebAssembly (WASM)**. The user's browser captures the Pixi.js canvas frame-by-frame and encodes a high-quality MP4 or WebM video *locally* on their own CPU.
 
 ### ⚡ Front-end: Next.js + Framer Motion
 The surrounding application wrapper and UI panels are built with **Next.js** for optimal routing and SEO, while **Framer Motion** drives the fluid, native-feeling UI transitions between configuration states.
 
 ### 💾 Local-First Storage
-We designed a hybrid storage model. While Supabase powers user authentication and global settings, active drafts and high-frequency canvas saves are written directly to the browser's **IndexedDB**. This ensures the editor feels instantaneous and works even if the connection drops.
+We designed a fully local storage model. Active drafts and high-frequency canvas saves are written directly to the browser's **IndexedDB**. This ensures the editor feels instantaneous, works offline, and respects user privacy by never sending design data to a cloud database.
 
 ---
 
