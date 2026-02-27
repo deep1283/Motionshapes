@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Download, Monitor } from 'lucide-react'
+import { X, Download, Monitor, Coffee } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { exportToWebM, downloadBlob, estimateFileSize, ExportQuality, ExportFPS, ExportBackground, convertToMP4 } from '@/lib/video-exporter'
 
@@ -467,15 +467,43 @@ export function ExportModal({
               <h3 className="text-lg font-semibold text-white mb-2">Export Complete!</h3>
               <p className="text-neutral-400 text-sm mb-4">
                 Found a bug or have ideas? We'd love to hear from you!
+                <br /><br />
+                <span className="italic text-purple-300">Girlfriend wants to go on a date but I am broke 🥺</span>
               </p>
-              <a
-                href="mailto:deepmishra1283@gmail.com?subject=MotionShapes Feedback&body=Hi Deep,%0A%0AI have some feedback about MotionShapes:%0A%0A"
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white font-medium text-sm hover:from-purple-600 hover:to-pink-600 transition-all"
-                onClick={() => { setShowFeedbackModal(false); onClose(); }}
-              >
-                Send Feedback
-              </a>
-              <p className="text-neutral-400 text-xs mt-2">deepmishra1283@gmail.com</p>
+              <div className="flex flex-col gap-3 sm:flex-row sm:justify-center mt-2">
+                <a
+                  href="mailto:deepmishra1283@gmail.com?subject=MotionShapes Feedback&body=Hi Deep,%0A%0AI have some feedback about MotionShapes:%0A%0A"
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-neutral-800 text-white border border-white/10 hover:bg-neutral-700 transition-all font-medium text-sm w-full sm:w-auto"
+                  onClick={() => { setShowFeedbackModal(false); onClose(); }}
+                >
+                  Send Feedback
+                </a>
+                
+                <button 
+                  onClick={async (e) => {
+                      const btn = e.currentTarget;
+                      const originalText = btn.innerHTML;
+                      btn.innerHTML = '<span class="animate-pulse">Loading...</span>';
+                      btn.disabled = true;
+                      try {
+                          const res = await fetch('/api/checkout', { method: 'POST' });
+                          const data = await res.json();
+                          if (data.url) window.open(data.url, "_blank");
+                          else throw new Error(data.error || "Failed to create checkout");
+                      } catch (err) {
+                          console.error(err);
+                          alert("Failed to initialize sponsor checkout.");
+                      } finally {
+                          btn.innerHTML = originalText;
+                          btn.disabled = false;
+                      }
+                  }}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white font-medium text-sm hover:from-purple-600 hover:to-pink-600 transition-all w-full sm:w-auto shadow-[0_0_15px_rgba(168,85,247,0.3)]"
+                >
+                  <Coffee className="w-4 h-4" />
+                  <span>Sponsor my date</span>
+                </button>
+              </div>
               <p className="text-neutral-500 text-xs mt-3">This popup will close in 10 seconds</p>
             </div>
           </div>

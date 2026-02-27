@@ -299,7 +299,7 @@ export default function Home() {
                 </a>
               </div>
               <p className="text-xs text-neutral-500 max-w-[250px] md:ml-auto">
-                Have a suggestion, found an edge case, or want a new feature? Feel free to reach out — your feedback helps us improve.
+                Girlfriend wants to go on a date but I am broke 🥺
               </p>
               
               <button 
@@ -324,7 +324,7 @@ export default function Home() {
                 className="mt-6 inline-flex items-center gap-2 px-6 py-2.5 rounded-full bg-[#8b5cf6]/10 text-[#a78bfa] border border-[#8b5cf6]/30 hover:bg-[#8b5cf6]/20 hover:border-[#8b5cf6]/50 transition-all font-medium text-sm shadow-[0_0_15px_rgba(139,92,246,0.15)] hover:shadow-[0_0_25px_rgba(139,92,246,0.3)]"
               >
                 <Coffee className="w-4 h-4" />
-                <span>Buy me a coffee</span>
+                <span>Sponsor my date</span>
               </button>
             </div>
           </div>

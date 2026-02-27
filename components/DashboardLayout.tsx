@@ -1674,6 +1674,7 @@ export default function DashboardLayout({
             </Button>
             
             <button 
+                title="Girlfriend wants to go on a date but I am broke 🥺"
                 onClick={async (e) => {
                     const btn = e.currentTarget;
                     const originalText = btn.innerHTML;
@@ -1695,7 +1696,7 @@ export default function DashboardLayout({
                 className="flex items-center h-9 md:h-8 px-3 ml-2 gap-2 bg-[#8b5cf6]/10 text-[#8b5cf6] hover:bg-[#8b5cf6]/20 text-xs rounded-full font-medium transition-all duration-200 border border-[#8b5cf6]/20 hover:border-[#8b5cf6]/40 shadow-[0_0_15px_rgba(139,92,246,0.1)] hover:shadow-[0_0_20px_rgba(139,92,246,0.2)]"
             >
                 <Coffee className="h-3.5 w-3.5" />
-                <span className="hidden md:inline">Sponsor Project</span>
+                <span className="hidden md:inline">Sponsor my date</span>
             </button>
             
             {/* Mobile: Settings Toggle (Right Sidebar Toggle) */}
