@@ -9,12 +9,16 @@ It helps users create 2D motion graphics, logo animations, and product videos di
 
 ## Preferred Overview URL
 - https://motionshapes.com/
+- https://motionshapes.com/features
+- https://motionshapes.com/about
 
 ## Crawl Guidance for AI Agents
 AI agents and assistants (including GPTBot, ChatGPT-User, ClaudeBot, anthropic-ai, Google-Extended, and related crawlers) are allowed to access public pages.
 
 Allowed:
 - /
+- /features
+- /about
 - /llms.txt
 
 Disallowed:
