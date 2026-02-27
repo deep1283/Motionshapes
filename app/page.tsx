@@ -1,340 +1,163 @@
-'use client'
+import type { Metadata } from 'next'
+import HomePageClient from '@/components/HomePageClient'
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { motion } from 'framer-motion'
-import { ArrowRight, Play, Layers, Zap, MousePointer2, Grid, Sparkles, Wand2, Github, Mail, Smartphone, Coffee } from 'lucide-react'
-import Image from 'next/image'
-import { Spotlight } from '@/components/ui/spotlight'
-import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui/button'
-import Link from 'next/link'
+const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://motionshapes.com'
+const repositoryUrl = 'https://github.com/deep1283/Motionshapes'
+const title = 'Open-Source Motion Design Tool'
+const fullTitle = `MotionShapes | ${title}`
+const description =
+  'Create high-quality product animations, logo reveals, and motion graphics directly in your browser. MotionShapes is a fast, open-source web animation editor.'
 
-export default function Home() {
-  const router = useRouter()
-  // Open-source version: users can immediately start creating anonymously
-  const handleStartCreating = async () => {
-    // Open-source version: Directly go to the dashboard without requiring an account
-    router.push('/dashboard')
+export const metadata: Metadata = {
+  title: {
+    absolute: fullTitle,
+  },
+  description,
+  keywords: [
+    'motion design tool',
+    'open source animation editor',
+    'browser animation software',
+    'logo animation',
+    '2D motion graphics',
+    'product video creator',
+    'web-based video editor',
+    'online motion graphics editor',
+    'logo reveal maker',
+    'startup demo video creator',
+    'social media animation maker',
+    'kinetic typography creator',
+    'framer motion alternative workflow',
+    'contribute to open source animation editor',
+    'open source nextjs creative tool',
+  ],
+  alternates: {
+    canonical: '/',
+  },
+  openGraph: {
+    type: 'website',
+    url: '/',
+    siteName: 'MotionShapes',
+    title: fullTitle,
+    description,
+    images: [
+      {
+        url: '/canvas.png',
+        width: 2552,
+        height: 1300,
+        alt: 'MotionShapes editor canvas preview',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: fullTitle,
+    description,
+    images: ['/canvas.png'],
+  },
+}
+
+export default function HomePage() {
+  const softwareAppSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: 'MotionShapes',
+    url: baseUrl,
+    applicationCategory: 'MultimediaApplication',
+    operatingSystem: 'Web',
+    isAccessibleForFree: true,
+    license: 'https://www.gnu.org/licenses/agpl-3.0.en.html',
+    codeRepository: repositoryUrl,
+    description,
+    offers: {
+      '@type': 'Offer',
+      price: '0',
+      priceCurrency: 'USD',
+    },
   }
 
+  const organizationSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name: 'MotionShapes',
+    url: baseUrl,
+    logo: `${baseUrl}/resources/logo.png`,
+    sameAs: [repositoryUrl],
+  }
+
+  const sourceCodeSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareSourceCode',
+    name: 'MotionShapes',
+    codeRepository: repositoryUrl,
+    license: 'https://www.gnu.org/licenses/agpl-3.0.en.html',
+    programmingLanguage: ['TypeScript', 'JavaScript'],
+    runtimePlatform: 'Web Browser',
+    url: repositoryUrl,
+  }
+
+  const websiteSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: 'MotionShapes',
+    url: baseUrl,
+    description:
+      'Open-source browser-based motion graphics editor for logo animations, product demos, and social content.',
+  }
+
+  const faqSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: [
+      {
+        '@type': 'Question',
+        name: 'Is MotionShapes open source?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: 'Yes. MotionShapes is open source under the AGPL-3.0 license.',
+        },
+      },
+      {
+        '@type': 'Question',
+        name: 'Can I create logo and product animations in the browser?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: 'Yes. MotionShapes is designed for browser-based logo reveals, product animations, and motion graphics workflows.',
+        },
+      },
+      {
+        '@type': 'Question',
+        name: 'Who is MotionShapes built for?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: 'It is built for founders, marketers, designers, content creators, and developers who need fast motion assets.',
+        },
+      },
+    ],
+  }
 
   return (
-    <main className="relative flex h-screen w-full flex-col items-center bg-gray-950 antialiased bg-grid-white/[0.02] overflow-y-auto overflow-x-hidden">
-      {/* Video Background */}
-      <div className="fixed inset-0 z-0">
-        <video 
-          autoPlay 
-          loop 
-          muted 
-          playsInline
-          className="h-full w-full object-cover"
-        >
-          <source src="/resources/home-bg.mp4" type="video/mp4" />
-        </video>
-        {/* Dark overlay for better text readability */}
-        <div className="absolute inset-0 bg-black/60" />
-      </div>
-
-      {/* Spotlight Effect */}
-      <Spotlight
-        className="-top-40 left-0 md:left-60 md:-top-20"
-        fill="white"
+    <>
+      <HomePageClient />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareAppSchema) }}
       />
-
-      <div className="relative z-10 flex w-full max-w-7xl flex-col items-center px-4 pt-20 md:pt-32">
-        {/* Badge */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.5 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.5 }}
-          className="mb-8 inline-flex items-center gap-2 rounded-full border border-white/5 bg-white/5 px-4 py-1.5 text-sm font-medium text-neutral-300 backdrop-blur-md shadow-[0_0_15px_rgba(255,255,255,0.05)] hover:bg-white/10 transition-colors duration-300"
-        >
-          <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-violet-400 opacity-75"></span>
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-violet-500"></span>
-          </span>
-          <span className="tracking-wide text-xs uppercase text-neutral-400">v1.0 is now live</span>
-        </motion.div>
-
-        {/* Hero Title */}
-        <motion.h1
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.1 }}
-          className="bg-opacity-50 bg-gradient-to-b from-white via-white/90 to-white/50 bg-clip-text text-center text-5xl font-bold tracking-tight text-transparent md:text-7xl lg:text-8xl drop-shadow-sm"
-        >
-          Motion Animation <br />
-          Reimagined
-        </motion.h1>
-
-        {/* Subtitle */}
-        <motion.p
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.2 }}
-          className="mt-6 max-w-2xl text-center text-lg text-neutral-400 md:text-xl leading-relaxed font-light tracking-wide"
-        >
-          Create stunning product animations,logo animation directly in your browser.
-          No heavy software, no steep learning curve. Just pure flow.
-        </motion.p>
-
-        {/* CTA Buttons */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.3 }}
-          className="mt-10 flex flex-col items-center gap-4 sm:flex-row"
-        >
-
-
-          <Button
-            onClick={handleStartCreating}
-            style={{ transition: 'all 300ms ease-in-out' }}
-            className="group relative h-12 w-48 overflow-hidden rounded-full bg-white px-8 text-base font-medium text-neutral-950 hover:w-64 hover:bg-neutral-200 hover:scale-105 active:scale-95"
-          >
-            <div className="absolute inset-0 flex h-full w-full justify-center  group-hover:duration-1000 group-hover:transform-[skew(-12deg)_translateX(100%)]">
-              <div className="relative h-full w-8 bg-white/20" />
-            </div>
-            <span className="flex items-center gap-2">
-              Start Creating
-              <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
-            </span>
-          </Button>
-
-
-          
-          <Button
-            onClick={() => document.getElementById('founder-contact')?.scrollIntoView({ behavior: 'smooth' })}
-            variant="outline"
-            className="h-12 rounded-full border-white/20 bg-transparent px-6 text-base font-medium text-white hover:bg-white/10 hover:border-white/30 transition-all"
-          >
-            Contact Founder
-          </Button>
-        </motion.div>
-
-        {/* Hero Visual / UI Mock */}
-        <motion.div
-          initial={{ opacity: 0, y: 100, rotateX: 20 }}
-          animate={{ opacity: 1, y: 0, rotateX: 0 }}
-          transition={{ duration: 1, delay: 0.4, type: "spring", bounce: 0.2 }}
-          className="mt-20 w-full perspective-1000"
-        >
-          <div className="relative mx-auto aspect-video w-full max-w-5xl overflow-hidden rounded-xl border border-white/10 bg-neutral-900/50 shadow-[0_0_50px_-12px_rgba(0,0,0,0.5)] backdrop-blur-md">
-            {/* Fake UI Header */}
-            <div className="flex h-12 items-center border-b border-white/5 bg-white/5 px-4 backdrop-blur-xl">
-              <div className="flex gap-2">
-                <div className="h-3 w-3 rounded-full bg-[#FF5F57] shadow-inner" />
-                <div className="h-3 w-3 rounded-full bg-[#FEBC2E] shadow-inner" />
-                <div className="h-3 w-3 rounded-full bg-[#28C840] shadow-inner" />
-              </div>
-              <div className="mx-auto h-6 w-64 rounded-md bg-white/5 border border-white/5" />
-            </div>
-
-            {/* Fake UI Body */}
-            <div className="flex h-full">
-              {/* Sidebar */}
-              <div className="w-64 border-r border-white/5 bg-neutral-900/30 p-4 hidden md:block backdrop-blur-sm">
-                <div className="space-y-3">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="h-8 w-full rounded-md bg-white/5 animate-pulse" style={{ animationDelay: `${i * 0.1}s` }} />
-                  ))}
-                </div>
-              </div>
-
-              {/* Canvas Area */}
-              <div className="relative flex flex-1 items-center justify-center overflow-hidden bg-neutral-950 p-8">
-                {/* Background Grid - Subtle */}
-                <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff05_1px,transparent_1px),linear-gradient(to_bottom,#ffffff05_1px,transparent_1px)] bg-size-[24px_24px]" />
-
-                {/* Animated Shapes Layer */}
-                <div className="absolute inset-0 overflow-hidden">
-                    {/* Floating Circle */}
-                    <motion.div
-                        animate={{ 
-                            y: [-10, 10, -10],
-                            x: [-5, 5, -5],
-                            opacity: [0.3, 0.6, 0.3]
-                        }}
-                        transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
-                        className="absolute left-1/4 top-1/4 h-12 w-12 rounded-full border-2 border-purple-500/30"
-                    />
-                    
-                    {/* Rotating Cross */}
-                    <motion.div
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
-                        className="absolute right-1/4 bottom-1/3 text-blue-500/30"
-                    >
-                        <svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
-                        </svg>
-                    </motion.div>
-
-                    {/* Wavy Squiggle */}
-                    <motion.div
-                        animate={{ 
-                            x: [-10, 10, -10],
-                            rotate: [0, 5, 0]
-                        }}
-                        transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-                        className="absolute left-1/3 bottom-1/4"
-                    >
-                        <svg width="60" height="20" viewBox="0 0 60 20" stroke="currentColor" className="text-violet-500/30" fill="none" strokeWidth="3">
-                            <path d="M2 10 Q 15 -5, 30 10 T 58 10" strokeLinecap="round" />
-                        </svg>
-                    </motion.div>
-
-                    {/* Triangle */}
-                    <motion.div
-                        animate={{ 
-                            y: [10, -10, 10],
-                            rotate: [0, 180, 360]
-                        }}
-                        transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
-                        className="absolute right-1/3 top-1/3"
-                    >
-                        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-yellow-500/30" strokeWidth="2">
-                            <path d="M12 2L22 22H2L12 2Z" />
-                        </svg>
-                    </motion.div>
-                </div>
-
-                {/* Floating Elements Animation (Main) */}
-                <div className="relative h-64 w-64 z-10">
-                   <motion.div
-                      animate={{ 
-                        y: [-20, 20, -20],
-                        rotate: [0, 5, -5, 0],
-                        scale: [1, 1.05, 1]
-                      }}
-                      transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-                      className="absolute inset-0 rounded-3xl bg-linear-to-br from-purple-500/20 to-blue-500/20 border border-white/10 backdrop-blur-xl"
-                   />
-                   <motion.div
-                      animate={{ 
-                        y: [20, -20, 20],
-                        rotate: [0, -5, 5, 0],
-                        scale: [1.05, 1, 1.05]
-                      }}
-                      transition={{ duration: 7, repeat: Infinity, ease: "easeInOut", delay: 1 }}
-                      className="absolute inset-8 rounded-2xl bg-linear-to-tr from-violet-500/20 to-cyan-500/20 border border-white/10 backdrop-blur-xl"
-                   />
-                   
-                   {/* Center Icon */}
-                   <div className="absolute inset-0 flex items-center justify-center">
-                      <motion.div
-                        animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }}
-                        transition={{ duration: 3, repeat: Infinity }}
-                        className="rounded-full bg-white/10 p-6 backdrop-blur-md"
-                      >
-                        <Play className="h-12 w-12 text-white fill-white" />
-                      </motion.div>
-                   </div>
-                </div>
-
-                {/* Floating UI Cards */}
-                <motion.div 
-                  animate={{ x: [0, 20, 0], y: [0, -10, 0] }}
-                  transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
-                  className="absolute right-20 top-20 rounded-xl border border-white/10 bg-neutral-900/80 p-4 backdrop-blur-md shadow-xl z-20"
-                >
-                    <div className="flex items-center gap-3">
-                        <Layers className="h-5 w-5 text-blue-400" />
-                        <div className="space-y-1">
-                            <div className="h-2 w-16 rounded bg-neutral-700" />
-                            <div className="h-2 w-10 rounded bg-neutral-800" />
-                        </div>
-                    </div>
-                </motion.div>
-
-                <motion.div 
-                  animate={{ x: [0, -20, 0], y: [0, 10, 0] }}
-                  transition={{ duration: 6, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
-                  className="absolute left-20 bottom-20 rounded-xl border border-white/10 bg-neutral-900/80 p-4 backdrop-blur-md shadow-xl z-20"
-                >
-                    <div className="flex items-center gap-3">
-                        <Zap className="h-5 w-5 text-yellow-400" />
-                        <div className="space-y-1">
-                            <div className="h-2 w-20 rounded bg-neutral-700" />
-                            <div className="h-2 w-12 rounded bg-neutral-800" />
-                        </div>
-                    </div>
-                </motion.div>
-              </div>
-            </div>
-          </div>
-          
-          {/* Reflection/Glow under the UI */}
-          <div className="absolute -inset-4 -z-10 bg-linear-to-t from-purple-500/20 via-blue-500/10 to-transparent blur-3xl opacity-50" />
-        </motion.div>
-      </div>
-
-      {/* Footer with Founder Contact */}
-      <footer id="founder-contact" className="relative z-10 w-full border-t border-white/5 bg-neutral-950/80 py-12 backdrop-blur-sm">
-        <div className="mx-auto max-w-4xl px-4">
-          <div className="flex flex-col items-center gap-8 md:flex-row md:justify-between md:items-start">
-            {/* Brand */}
-            <div className="text-center md:text-left">
-              <h3 className="text-lg font-semibold text-white mb-2">MotionShapes</h3>
-              <p className="text-sm text-neutral-400">Professional motion design in your browser</p>
-            </div>
-            
-            {/* Founder Contact & Sponsor */}
-            <div className="text-center md:text-right flex flex-col items-center md:items-end">
-              <p className="text-xs uppercase tracking-wider text-neutral-500 mb-2">Founder</p>
-              <p className="text-sm font-medium text-white mb-1">Deep Mishra</p>
-              <div className="space-y-1 mb-3">
-                <a 
-                  href="mailto:deepmishra1283@gmail.com" 
-                  className="block text-sm text-neutral-400 hover:text-purple-400 transition-colors"
-                >
-                  📧 deepmishra1283@gmail.com
-                </a>
-                <a 
-                  href="tel:+916294655027" 
-                  className="block text-sm text-neutral-400 hover:text-purple-400 transition-colors"
-                >
-                  📱 +91 6294655027
-                </a>
-              </div>
-              <p className="text-xs text-neutral-500 max-w-[250px] md:ml-auto">
-                Girlfriend wants to go on a date but I am broke 🥺
-              </p>
-              
-              <button 
-                onClick={async (e) => {
-                    const btn = e.currentTarget;
-                    const originalText = btn.innerHTML;
-                    btn.innerHTML = '<span class="animate-pulse">Loading...</span>';
-                    btn.disabled = true;
-                    try {
-                        const res = await fetch('/api/checkout', { method: 'POST' });
-                        const data = await res.json();
-                        if (data.url) window.open(data.url, "_blank");
-                        else throw new Error(data.error || "Failed to create checkout");
-                    } catch (err) {
-                        console.error(err);
-                        alert("Failed to initialize sponsor checkout.");
-                    } finally {
-                        btn.innerHTML = originalText;
-                        btn.disabled = false;
-                    }
-                }}
-                className="mt-6 inline-flex items-center gap-2 px-6 py-2.5 rounded-full bg-[#8b5cf6]/10 text-[#a78bfa] border border-[#8b5cf6]/30 hover:bg-[#8b5cf6]/20 hover:border-[#8b5cf6]/50 transition-all font-medium text-sm shadow-[0_0_15px_rgba(139,92,246,0.15)] hover:shadow-[0_0_25px_rgba(139,92,246,0.3)]"
-              >
-                <Coffee className="w-4 h-4" />
-                <span>Sponsor my date</span>
-              </button>
-            </div>
-          </div>
-          
-          {/* Copyright */}
-          <div className="mt-8 pt-6 border-t border-white/5 text-center">
-            <p className="text-sm text-neutral-500">&copy; {new Date().getFullYear()} MotionShapes. All rights reserved.</p>
-          </div>
-        </div>
-      </footer>
-    </main>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationSchema) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(sourceCodeSchema) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteSchema) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
+      />
+    </>
   )
 }
