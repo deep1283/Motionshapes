@@ -18,7 +18,7 @@ Whether you need a dynamic hero asset for your landing page, a text animation se
 > *Exporting high-quality animations entirely in the browser.*
 
 ### 🎥 Video Demo
-[Watch MotionShapes in action (demo.mp4)](./public/demo.mp4)
+![MotionShapes Demo](./public/demo.gif)
 
 ---
 
