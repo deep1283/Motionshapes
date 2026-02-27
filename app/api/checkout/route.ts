@@ -4,8 +4,8 @@ import DodoPayments from 'dodopayments'
 export async function POST(request: Request) {
   try {
     // Initialize inside the handler so env vars are always read fresh
-    const apiKey = process.env.dodo_api_key || ''
-    const productId = process.env.product_id
+    const apiKey = process.env.DODO_API_KEY || ''
+    const productId = process.env.PRODUCT_ID
 
     if (!apiKey) {
       console.error('Dodo API key is missing from environment variables')
