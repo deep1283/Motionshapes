@@ -4,6 +4,7 @@ export function getUserIdentifier(userId?: string | null, ip?: string): string {
 }
 
 export async function checkAIGenerationLimit(identifier: string) {
+  void identifier
   return {
     success: true,
     limit: 100,

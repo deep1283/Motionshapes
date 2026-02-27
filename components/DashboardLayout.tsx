@@ -7,20 +7,12 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/Toast'
 import {
-  Layout,
-  Settings,
-  LogOut,
   Plus,
   Minus,
   ChevronLeft,
   Play,
-  Share2,
   Download,
   Upload,
-  MousePointer2,
-  Layers,
-  Zap,
-  Activity,
   Circle,
   Square,
   MessageCircle,
@@ -31,12 +23,9 @@ import {
   Star,
   Triangle,
   SlidersHorizontal,
-  LayoutTemplate,
   Shapes,
   PenTool,
   Wand2,
-  Undo,
-  Redo,
   Type,
   Sparkles,
   ChevronUp,
@@ -70,7 +59,7 @@ const EASING_OPTIONS = [
   { label: 'Ease In', value: 'easeInQuad' },
   { label: 'Ease Out', value: 'easeOutQuad' },
   { label: 'Ease In Out', value: 'easeInOutQuad' },
-  { label: 'Jittery (Quint)', value: 'easeInOutQuint' }
+  { label: 'Quint', value: 'easeInOutQuint' }
 ]
 
 const ResizeClipItem = ({
@@ -78,9 +67,9 @@ const ResizeClipItem = ({
   index,
   timeline,
 }: {
-  clip: any
+  clip: UnsafeAny
   index: number
-  timeline: any
+  timeline: UnsafeAny
 }) => {
   const [expanded, setExpanded] = useState(true)
   const [widthFrom, setWidthFrom] = useState(String(clip.parameters?.resizeFromWidth ?? 100))
@@ -92,18 +81,7 @@ const ResizeClipItem = ({
   const [easing, setEasing] = useState(clip.parameters?.resizeEasing ?? 'linear')
   const [anchor, setAnchor] = useState(clip.parameters?.resizeAnchor ?? 'middle')
 
-  useEffect(() => {
-    setWidthFrom(String(clip.parameters?.resizeFromWidth ?? 100))
-    setHeightFrom(String(clip.parameters?.resizeFromHeight ?? 100))
-    setWidthTo(String(clip.parameters?.resizeToWidth ?? 100))
-    setHeightTo(String(clip.parameters?.resizeToHeight ?? 100))
-    setDuration(String(clip.duration ?? 800))
-
-    setEasing(clip.parameters?.resizeEasing ?? 'linear')
-    setAnchor(clip.parameters?.resizeAnchor ?? 'middle')
-  }, [clip])
-
-  const updateParam = (key: string, value: any) => {
+  const updateParam = (key: string, value: UnsafeAny) => {
     timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { [key]: value } })
   }
 
@@ -257,9 +235,9 @@ const RotateClipItem = ({
   index,
   timeline,
 }: {
-  clip: any
+  clip: UnsafeAny
   index: number
-  timeline: any
+  timeline: UnsafeAny
 }) => {
   const [expanded, setExpanded] = useState(true)
   const [angleFrom, setAngleFrom] = useState(String(clip.parameters?.rotateFromAngle ?? 0))
@@ -267,14 +245,7 @@ const RotateClipItem = ({
   const [duration, setDuration] = useState(String(clip.duration ?? 800))
   const [easing, setEasing] = useState(clip.parameters?.rotateEasing ?? 'linear')
 
-  useEffect(() => {
-    setAngleFrom(String(clip.parameters?.rotateFromAngle ?? 0))
-    setAngleTo(String(clip.parameters?.rotateToAngle ?? 0))
-    setDuration(String(clip.duration ?? 800))
-    setEasing(clip.parameters?.rotateEasing ?? 'linear')
-  }, [clip])
-
-  const updateParam = (key: string, value: any) => {
+  const updateParam = (key: string, value: UnsafeAny) => {
     timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { [key]: value } })
   }
 
@@ -363,9 +334,9 @@ const ColorClipItem = ({
   index,
   timeline,
 }: {
-  clip: any
+  clip: UnsafeAny
   index: number
-  timeline: any
+  timeline: UnsafeAny
 }) => {
   const [expanded, setExpanded] = useState(true)
   const [colorFrom, setColorFrom] = useState(() => '#' + (clip.parameters?.colorFrom ?? 0xffffff).toString(16).toUpperCase().padStart(6, '0'))
@@ -373,14 +344,7 @@ const ColorClipItem = ({
   const [duration, setDuration] = useState(String(clip.duration ?? 800))
   const [easing, setEasing] = useState(clip.parameters?.colorEasing ?? 'linear')
 
-  useEffect(() => {
-    setColorFrom('#' + (clip.parameters?.colorFrom ?? 0xffffff).toString(16).toUpperCase().padStart(6, '0'))
-    setColorTo('#' + (clip.parameters?.colorTo ?? 0xffffff).toString(16).toUpperCase().padStart(6, '0'))
-    setDuration(String(clip.duration ?? 800))
-    setEasing(clip.parameters?.colorEasing ?? 'linear')
-  }, [clip])
-
-  const updateParam = (key: string, value: any) => {
+  const updateParam = (key: string, value: UnsafeAny) => {
     timeline.updateTemplateClip(clip.layerId, clip.id, { parameters: { [key]: value } })
   }
 
@@ -483,7 +447,7 @@ export interface Effect {
   id: string
   type: EffectType
   isEnabled: boolean
-  params: Record<string, any>
+  params: Record<string, UnsafeAny>
 }
 
 type ShapeKind =
@@ -579,7 +543,7 @@ interface DashboardLayoutProps {
   // Effects
   activeEffectId?: string
   onSelectEffect?: (effectId: string) => void
-  onUpdateEffect?: (effectId: string, params: Record<string, any>) => void
+  onUpdateEffect?: (effectId: string, params: Record<string, UnsafeAny>) => void
   onToggleEffect?: (effectId: string, isEnabled: boolean) => void
   layerEffects?: Effect[]
   selectedClipId?: string
@@ -773,6 +737,29 @@ export default function DashboardLayout({
   const timelineDuration = useTimeline((s) => s.duration)
   const timeline = useTimelineActions()
   const { showToast } = useToast()
+  void [
+    showSelectShapeHint,
+    jumpVelocity,
+    popReappear,
+    onJumpHeightChange,
+    onJumpVelocityChange,
+    onPopWobbleChange,
+    onPopReappearChange,
+    selectedLayerScale,
+    onSelectedLayerScaleChange,
+    onDeselectShape,
+    onSelectEffect,
+    canUndo,
+    canRedo,
+    onUndo,
+    onRedo,
+    exportResetStagePositionRef,
+    exportRestoreStagePositionRef,
+    exportResizeForExportRef,
+    exportRestoreFromExportRef,
+    userEmail,
+    timelineDuration,
+  ]
   
   // Helper to safely parse number input - defaults to 0 if empty or NaN
   const parseNum = (value: string, fallback: number = 0): number => {
@@ -791,6 +778,7 @@ export default function DashboardLayout({
     return Math.max(100, clipsEnd, layersEnd, effectsEnd, markersEnd)
   }, [templateClips, timelineTracks, effectClips, clickMarkers])
   const [showBackgroundPanel, setShowBackgroundPanel] = useState(false)
+  void setShowBackgroundPanel
   const [isBackgroundPanelCollapsed, setIsBackgroundPanelCollapsed] = useState(false)
   const [bgPrompt, setBgPrompt] = useState('')
   const [bgGenerating, setBgGenerating] = useState(false)
@@ -824,6 +812,7 @@ export default function DashboardLayout({
   const [customColorTo, setCustomColorTo] = useState('#FF9042')
   const [customColorDuration, setCustomColorDuration] = useState(800) // in ms
   const [customColorEasing, setCustomColorEasing] = useState<'none' | 'ease-in' | 'ease-out' | 'ease-in-out'>('none')
+  void [customColorFrom, customColorTo, customColorDuration, customColorEasing]
 
   // Sync color animation controls with timeline clip (for real-time updates when bar is dragged)
   useEffect(() => {
@@ -841,7 +830,7 @@ export default function DashboardLayout({
           setCustomColorTo('#' + params.colorTo.toString(16).toUpperCase().padStart(6, '0'))
         }
         if (params.colorEasing) {
-          setCustomColorEasing(params.colorEasing === 'linear' ? 'none' : params.colorEasing as any)
+          setCustomColorEasing(params.colorEasing === 'linear' ? 'none' : params.colorEasing as UnsafeAny)
         }
       }
     }
@@ -857,6 +846,15 @@ export default function DashboardLayout({
 
   const [customResizeEasing, setCustomResizeEasing] = useState<'none' | 'ease-in' | 'ease-out' | 'ease-in-out'>('none')
   const [customResizeAnchor, setCustomResizeAnchor] = useState<'middle' | 'top' | 'bottom' | 'left' | 'right'>('middle')
+  void [
+    customResizeFromWidth,
+    customResizeFromHeight,
+    customResizeToWidth,
+    customResizeToHeight,
+    customResizeDuration,
+    customResizeEasing,
+    customResizeAnchor,
+  ]
 
   // Sync resize animation controls with timeline clip
   useEffect(() => {
@@ -870,10 +868,10 @@ export default function DashboardLayout({
         if (params.resizeToWidth !== undefined) setCustomResizeToWidth(String(params.resizeToWidth))
         if (params.resizeToHeight !== undefined) setCustomResizeToHeight(String(params.resizeToHeight))
         if (params.resizeEasing) {
-          setCustomResizeEasing(params.resizeEasing === 'linear' ? 'none' : params.resizeEasing as any)
+          setCustomResizeEasing(params.resizeEasing === 'linear' ? 'none' : params.resizeEasing as UnsafeAny)
         }
         if (params.resizeAnchor) {
-          setCustomResizeAnchor(params.resizeAnchor as any)
+          setCustomResizeAnchor(params.resizeAnchor as UnsafeAny)
         }
       }
     }
@@ -884,6 +882,7 @@ export default function DashboardLayout({
   const [customRotateToAngle, setCustomRotateToAngle] = useState(45)
   const [customRotateDuration, setCustomRotateDuration] = useState(800) // in ms
   const [customRotateEasing, setCustomRotateEasing] = useState<'none' | 'ease-in' | 'ease-out' | 'ease-in-out'>('none')
+  void [customRotateFromAngle, customRotateToAngle, customRotateDuration, customRotateEasing]
 
   // Sync rotation animation controls with timeline clip
   useEffect(() => {
@@ -895,7 +894,7 @@ export default function DashboardLayout({
         if (params.rotateFromAngle !== undefined) setCustomRotateFromAngle(params.rotateFromAngle)
         if (params.rotateToAngle !== undefined) setCustomRotateToAngle(params.rotateToAngle)
         if (params.rotateEasing) {
-          setCustomRotateEasing(params.rotateEasing === 'linear' ? 'none' : params.rotateEasing as any)
+          setCustomRotateEasing(params.rotateEasing === 'linear' ? 'none' : params.rotateEasing as UnsafeAny)
         }
       } else {
         // Read initial angle from layer's rotation property
@@ -922,6 +921,7 @@ export default function DashboardLayout({
   }, [selectedClipId]) // Only run when selectedClipId changes, not on every templateClips update
 
   const [showTextColorPicker, setShowTextColorPicker] = useState(false)
+  void [showTextColorPicker, setShowTextColorPicker]
   
   // AI State
   const [showAIModal, setShowAIModal] = useState(false)
@@ -929,6 +929,7 @@ export default function DashboardLayout({
   const [isGeneratingAI, setIsGeneratingAI] = useState(false)
   const [aiMode, setAiMode] = useState<'generate' | 'edit'>('generate')
   const [aiEditLayerId, setAiEditLayerId] = useState<string | null>(null)
+  void [setAiMode, setAiEditLayerId]
 
   // Compute selectedLayer for text animation checks
   const selectedLayer = layers?.find(l => l.id === selectedLayerId)
@@ -1049,10 +1050,10 @@ export default function DashboardLayout({
   })
 
   // Notify parent when canvas dimensions change (for Supabase persistence)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   useEffect(() => {
     onCanvasDimensionsChange?.(canvasWidth, canvasHeight)
-  }, [canvasWidth, canvasHeight]) // Intentionally omitting callback to prevent infinite loops
+  }, [canvasWidth, canvasHeight, onCanvasDimensionsChange])
 
   const [isResizingCanvas, setIsResizingCanvas] = useState(false)
   const [isMovingCanvas, setIsMovingCanvas] = useState(false)
@@ -1082,6 +1083,7 @@ export default function DashboardLayout({
 
     setIsCanvasSelected(true)
   }
+  void handleCanvasClick
 
   // Handle label click specifically
   const handleLabelClick = (e: React.MouseEvent) => {
@@ -1232,7 +1234,7 @@ export default function DashboardLayout({
     },
   ]
 
-  const availableEffects: { id: EffectType; name: string; icon: any }[] = [
+  const availableEffects: { id: EffectType; name: string; icon: UnsafeAny }[] = [
     { id: 'glow', name: 'Glow', icon: Wand2 },
     { id: 'dropShadow', name: 'Drop Shadow', icon: Wand2 },
     { id: 'blur', name: 'Blur', icon: Wand2 },
@@ -1387,7 +1389,7 @@ export default function DashboardLayout({
       window.removeEventListener('pointermove', handleMove)
       window.removeEventListener('pointerup', handleEnd)
     }
-  }, [isResizingCanvas, MIN_CANVAS_WIDTH, MIN_CANVAS_HEIGHT])
+  }, [isResizingCanvas, MIN_CANVAS_WIDTH, MIN_CANVAS_HEIGHT, canvasWidth, canvasHeight, canvasX, canvasY])
 
   // Handle canvas move
   useEffect(() => {
@@ -1420,7 +1422,7 @@ export default function DashboardLayout({
       window.removeEventListener('pointermove', handleMove)
       window.removeEventListener('pointerup', handleEnd)
     }
-  }, [isMovingCanvas])
+  }, [isMovingCanvas, canvasX, canvasY])
 
   // Prevent text selection during resize/move
   useEffect(() => {
@@ -1462,6 +1464,7 @@ export default function DashboardLayout({
       : {
           backgroundColor: hexToRgba(background.solid, background.opacity),
         }
+  void canvasBgStyle
 
   // Handle background click (when not clicking a shape)
   const handleBackgroundClick = (e: React.PointerEvent) => {
@@ -1610,7 +1613,7 @@ export default function DashboardLayout({
           </Button>
           
           <div className="hidden md:flex items-center">
-            <img src="/resources/wordmark.png" alt="MotionShapes" className="h-6 w-auto" />
+            <Image src="/resources/wordmark.png" alt="MotionShapes" width={154} height={24} className="h-6 w-auto" />
           </div>
         </div>
 
@@ -2249,7 +2252,7 @@ export default function DashboardLayout({
                         
                         timeline.addEffectClip(
                           selectedLayerId,
-                          effect.id as any, // Cast to effect type
+                          effect.id as UnsafeAny, // Cast to effect type
                           lastEnd, // append after existing clips
                           1000 // 1 second duration
                         )
@@ -2274,7 +2277,7 @@ export default function DashboardLayout({
                 {/* AI Generate/Modify Image - DISABLED for cost savings
                 {(() => {
                   const selectedLayer = layers.find(l => l.id === selectedLayerId)
-                  const isImageSelected = selectedLayer?.type === 'image' && !!(selectedLayer as any)?.imageUrl
+                  const isImageSelected = selectedLayer?.type === 'image' && !!(selectedLayer as UnsafeAny)?.imageUrl
                   
                   return (
                     <div className="mb-4 px-2">
@@ -2392,6 +2395,7 @@ export default function DashboardLayout({
             
             // Get the index of the selected "from" image for display
             const selectedFromIndex = selectedFromLayer ? imageLayers.findIndex(l => l.id === selectedLayerId) : -1
+            void selectedFromIndex
             const nextImageIndex = nextImageLayer ? imageLayers.findIndex(l => l.id === nextImageLayer.id) : -1
             
             return (
@@ -2877,7 +2881,7 @@ export default function DashboardLayout({
                   
                   {/* Color Clips */}
                   {selectedLayerId && templateClips.filter(c => c.layerId === selectedLayerId && c.template === 'color').map((clip, i) => (
-                    <div key={clip.id} style={{ order: clipOrder.indexOf(clip.id) >= 0 ? clipOrder.indexOf(clip.id) : 99 }}>
+                    <div key={`${clip.id}:${clip.duration}:${JSON.stringify(clip.parameters ?? {})}`} style={{ order: clipOrder.indexOf(clip.id) >= 0 ? clipOrder.indexOf(clip.id) : 99 }}>
                       <ColorClipItem
                         clip={clip}
                         index={i}
@@ -2888,7 +2892,7 @@ export default function DashboardLayout({
 
                   {/* Resize Clips */}
                   {selectedLayerId && templateClips.filter(c => c.layerId === selectedLayerId && c.template === 'resize').map((clip, i) => (
-                    <div key={clip.id} style={{ order: clipOrder.indexOf(clip.id) >= 0 ? clipOrder.indexOf(clip.id) : 99 }}>
+                    <div key={`${clip.id}:${clip.duration}:${JSON.stringify(clip.parameters ?? {})}`} style={{ order: clipOrder.indexOf(clip.id) >= 0 ? clipOrder.indexOf(clip.id) : 99 }}>
                       <ResizeClipItem
                         clip={clip}
                         index={i}
@@ -2899,7 +2903,7 @@ export default function DashboardLayout({
 
                   {/* Rotation Clips */}
                   {selectedLayerId && templateClips.filter(c => c.layerId === selectedLayerId && c.template === 'rotate').map((clip, i) => (
-                    <div key={clip.id} style={{ order: clipOrder.indexOf(clip.id) >= 0 ? clipOrder.indexOf(clip.id) : 99 }}>
+                    <div key={`${clip.id}:${clip.duration}:${JSON.stringify(clip.parameters ?? {})}`} style={{ order: clipOrder.indexOf(clip.id) >= 0 ? clipOrder.indexOf(clip.id) : 99 }}>
                       <RotateClipItem
                         clip={clip}
                         index={i}
@@ -3174,7 +3178,7 @@ export default function DashboardLayout({
 
                {React.Children.map(children, child => {
                  if (React.isValidElement(child)) {
-                   // @ts-ignore - We know MotionCanvas accepts these props
+                   // @ts-expect-error MotionCanvas receives these injected viewport props
                    return React.cloneElement(child, { offsetX: canvasX, offsetY: canvasY, viewportWidth: canvasWidth, viewportHeight: canvasHeight })
                  }
                  return child
@@ -3560,10 +3564,13 @@ export default function DashboardLayout({
                   />
                   {background.image ? (
                     <div className="relative rounded-lg overflow-hidden border border-white/10 bg-neutral-900">
-                      <img 
-                        src={background.image} 
-                        alt="Background preview" 
-                        className="w-full h-24 object-cover"
+                      <Image
+                        src={background.image}
+                        alt="Background preview"
+                        width={480}
+                        height={96}
+                        unoptimized
+                        className="h-24 w-full object-cover"
                       />
                       <button
                         className="absolute top-1 right-1 p-1 bg-black/60 rounded hover:bg-red-500/80 transition-colors z-20"
@@ -4538,7 +4545,7 @@ export default function DashboardLayout({
                            onClick={() => {
                              if (selectedLayerId) {
                                timeline.updateTemplateClip(selectedLayerId, selectedClipId!, {
-                                 parameters: { ...slideClip.parameters, slideDirection: d.id as any }
+                                 parameters: { ...slideClip.parameters, slideDirection: d.id as UnsafeAny }
                                })
                              }
                            }}
@@ -5100,7 +5107,7 @@ export default function DashboardLayout({
                           ? templateClips.find(c => c.id === selectedClipId && c.template === 'path')
                           : templateClips.find(c => c.layerId === selectedLayerId && c.template === 'path')
                         if (clip && selectedLayerId) {
-                          timeline.updateTemplateClip(selectedLayerId, clip.id, { parameters: { pathEasing: e.target.value as any } })
+                          timeline.updateTemplateClip(selectedLayerId, clip.id, { parameters: { pathEasing: e.target.value as UnsafeAny } })
                         }
                       }}
                       className="px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-neutral-200"

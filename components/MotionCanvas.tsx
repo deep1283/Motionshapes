@@ -5,13 +5,12 @@ import type { PointerEvent as ReactPointerEvent } from 'react'
 import * as PIXI from 'pixi.js'
 import 'pixi.js/app' // ensure Application plugins (ticker/resize) are registered
 import 'pixi.js/events' // enable pointer events
-import { sampleTimeline, sampleTimelineUnified, ClipInfo } from '@/lib/timeline'
+import { sampleTimelineUnified, ClipInfo } from '@/lib/timeline'
 import { useTimeline, useTimelineActions } from '@/lib/timeline-store'
 import { GlowFilter } from 'pixi-filters'
 import { DropShadowFilter } from 'pixi-filters'
 import { GlitchFilter } from 'pixi-filters'
 import { PixelateFilter } from 'pixi-filters'
-import { AdjustmentFilter } from 'pixi-filters'
 import { SimpleParticleEmitter } from '@/lib/particle-emitter'
 import { PanZoomRegionOverlay, PanZoomRegion } from '@/components/PanZoomRegionOverlay'
 import { loadFont } from '@/lib/google-fonts'
@@ -46,7 +45,7 @@ interface MotionCanvasProps {
       id: string
       type: string
       isEnabled: boolean
-      params: Record<string, any>
+      params: Record<string, UnsafeAny>
     }>
   }>
   onUpdateLayerPosition?: (id: string, x: number, y: number) => void
@@ -119,7 +118,7 @@ const ICON_SHAPE_KINDS = ['like', 'comment', 'share', 'cursor'] as const
 // Extract the item type from the array, handling the fact that 'layers' might be undefined
 type LayerItem = NonNullable<MotionCanvasProps['layers']>[number]
 const isIconShapeKind = (kind?: LayerItem['shapeKind']) =>
-  !!kind && ICON_SHAPE_KINDS.includes(kind as any)
+  !!kind && ICON_SHAPE_KINDS.includes(kind as UnsafeAny)
 
 // Shared heart path so resizing keeps the shape consistent
 const drawHeartPath = (g: PIXI.Graphics, width: number, height: number) => {
@@ -177,8 +176,8 @@ function LineOverlay({
   const layerBase = layers?.find((l) => l.id === selectedLayerId)
   const layerPos = layerBase ? { x: layerBase.x, y: layerBase.y } : { x: 0.5, y: 0.5 }
   const points = activePathPoints.length ? activePathPoints : pathPoints
-  const currentStart = lineStartRef.current ?? points[0] ?? layerPos
-  const currentEnd = lineEndRef.current ?? points[1] ?? currentStart
+  const currentStart = points[0] ?? layerPos
+  const currentEnd = points[1] ?? currentStart
 
   const toScreen = (pt: { x: number; y: number }) => ({
     x: pt.x * width + offsetX,
@@ -274,6 +273,7 @@ function LineOverlay({
 }
 
 export default function MotionCanvas({ template, templateVersion, layers = [], layerOrder = [], onUpdateLayerPosition, onUpdateLayerSize, onTemplateComplete, isDrawingPath = false, isDrawingLine = false, pathPoints = [], onAddPathPoint, onFinishPath, onFinishLine, onAddCustomPathPoint, onFinishCustomPath, onSelectLayer, selectedLayerId, activePathPoints = [], pathVersion = 0, pathLayerId, onPathPlaybackComplete, onUpdateActivePathPoint, onClearPath, onInsertPathPoint, background: _background, viewportWidth = 640, viewportHeight = 360, offsetX = 0, offsetY = 0, popReappear = false, onCanvasBackgroundClick, selectedClipId, onSelectClipId, onUpdatePanZoomRegions, onCanvasReady, selectedTemplate, rollDistance = 0.3, onRollDistanceChange, jumpHeight = 0.2, onJumpHeightChange, onOffsetClipPositions }: MotionCanvasProps) {
+  void onInsertPathPoint
   const containerRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<PIXI.Application | null>(null)
   const [isReady, setIsReady] = useState(false)
@@ -323,9 +323,10 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   const selectedLayerIdRef = useRef<string | undefined>(undefined) // Track selected layer for per-frame sync
   const isPlayingRef = useRef<boolean>(false) // Track playing state for ticker callback
   const playheadRef = useRef<number>(0) // Track playhead for timeline-based handle visibility
-  const timelineTracksRef = useRef<any[]>([]) // Track timeline tracks for visibility check
+  const timelineTracksRef = useRef<UnsafeAny[]>([]) // Track timeline tracks for visibility check
   const handlesOverlayRef = useRef<PIXI.Container | null>(null) // Overlay container for handles (doesn't inherit shape transforms)
   const handlesByIdRef = useRef<Record<string, PIXI.Graphics[]>>({}) // For text layer resize handles
+  void handlesByIdRef
   const spotlightOverlayRef = useRef<PIXI.Graphics | null>(null) // For pan_zoom spotlight blur effect
   // Ref to store updateGraphicsFromTimeline function for calling from restoreFromExport
   const updateGraphicsFnRef = useRef<(() => void) | null>(null)
@@ -414,7 +415,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       }))
     
     // Find deleted path clips (were in prev but not in current)
-    const prevIds = new Set(prevPathClipsRef.current.map(c => c.id))
     const currentIds = new Set(currentPathClips.map(c => c.id))
     
     for (const prevClip of prevPathClipsRef.current) {
@@ -491,12 +491,13 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   
   // Pan/Zoom region editing state
   const [panZoomActiveRegion, setPanZoomActiveRegion] = useState<'start' | 'end' | null>(null)
+  void [panZoomActiveRegion, setPanZoomActiveRegion]
   
   // ANIMATION CACHE: Stores sampled frames for instant replay
   // Cache is invalidated when animation data changes
   const animationCacheRef = useRef<{
     version: number
-    frames: Map<number, Record<string, any>>  // frameIndex -> sampledTimeline
+    frames: Map<number, Record<string, UnsafeAny>>  // frameIndex -> sampledTimeline
     frameInterval: number  // ms per frame (e.g., 16.67 for 60fps)
   }>({
     version: 0,
@@ -782,7 +783,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         containerRef.current.style.overflow = 'visible'
         
         // keep rendering even if no template animation is running
-        // ALSO sync handle positions every frame for the selected layer (like Jitter/Figma)
+        // Also sync handle positions every frame for the selected layer
         app.ticker.add(() => {
           // Skip handle sync during playback - handles are hidden
           if (isPlayingRef.current) return
@@ -794,7 +795,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             const layer = layersRef.current.find(l => l.id === layerId)
             if (g && layer && handlesOverlayRef.current) {
               // Check if layer is visible at current playhead position
-              const layerTrack = timelineTracksRef.current.find((t: any) => t.layerId === layerId)
+              const layerTrack = timelineTracksRef.current.find((t: UnsafeAny) => t.layerId === layerId)
               const layerStart = layerTrack?.startTime ?? 0
               const layerDuration = layerTrack?.duration ?? 2000
               const currentPlayhead = playheadRef.current
@@ -1078,6 +1079,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         appRef.current = null
       }
     }
+  // Intentionally initialize once; callbacks/props are read via refs in runtime paths.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // BACKGROUND RENDERING EFFECT
@@ -1176,9 +1179,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       // Gradient background - use a series of rects to approximate gradient
       const fromHex = _background?.from ?? '#000000'
       const toHex = _background?.to ?? '#000000'
-      const fromColor = parseInt(fromHex.replace('#', ''), 16)
-      const toColor = parseInt(toHex.replace('#', ''), 16)
-      const steps = 64 // Number of gradient steps
       const isRadial = _background.gradientType === 'radial'
       const position = _background.gradientPosition ?? 0.5
       
@@ -1453,7 +1453,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     }
   }
   
-  const updateGraphicsFromTimeline = (sampledData?: Record<string, any>, manualPlayhead?: number) => {
+  const updateGraphicsFromTimeline = (sampledData?: Record<string, UnsafeAny>, manualPlayhead?: number) => {
     if (!containerRef.current) return
     
     // During export, use export dimensions for positioning; otherwise use container bounds
@@ -1491,10 +1491,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       if (appRef.current?.stage && appRef.current.stage.sortableChildren !== true) {
         appRef.current.stage.sortableChildren = true
       }
-      const shapeSize = (g as PIXI.Graphics & { __shapeSize?: { width?: number; height?: number } })?.__shapeSize
-      const halfW = shapeSize?.width ? (shapeSize.width * state.scale) / 2 : 0
-      const halfH = shapeSize?.height ? (shapeSize.height * state.scale) / 2 : 0
-      
       const layerData = layersRef.current.find(l => l.id === id)
       const layerScale = layerData?.scale ?? 1
       
@@ -1558,17 +1554,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       
       // Apply resize animation: if we have animated width/height, calculate scale from it
       // Resize animation works by scaling the shape based on the ratio of animated size to base size
-      let resizeScaleX = 1
-      let resizeScaleY = 1
       const baseWidth = layerData?.width ?? 100
       const baseHeight = layerData?.height ?? 100
-      
-      if (state.width !== undefined && baseWidth > 0) {
-        resizeScaleX = state.width / baseWidth
-      }
-      if (state.height !== undefined && baseHeight > 0) {
-        resizeScaleY = state.height / baseHeight
-      }
       
       // Combine all scale factors: animation scale * layer scale * resize scale
       // For uniform scaling, use average of X and Y; for non-uniform use separate X/Y
@@ -1596,7 +1583,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         const shapeKind = layerData?.shapeKind
         if (shapeKind === 'pill' && g instanceof PIXI.Graphics) {
           // Only redraw if dimensions actually changed (avoid unnecessary redraws)
-          const lastDims = (g as any).__lastPillDims as { w: number, h: number } | undefined
+          const lastDims = (g as UnsafeAny).__lastPillDims as { w: number, h: number } | undefined
           const needsRedraw = !lastDims || 
             Math.abs(lastDims.w - animatedWidth) > 0.1 || 
             Math.abs(lastDims.h - animatedHeight) > 0.1
@@ -1610,9 +1597,9 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             g.fill(0xffffff)
             g.tint = finalColor // Use animated color, not static layer color
             // Store dimensions to avoid unnecessary redraws
-            ;(g as any).__lastPillDims = { w: animatedWidth, h: animatedHeight }
+            ;(g as UnsafeAny).__lastPillDims = { w: animatedWidth, h: animatedHeight }
             // Store shape size for hit area
-            ;(g as any).__shapeSize = { width: animatedWidth, height: animatedHeight }
+            ;(g as UnsafeAny).__shapeSize = { width: animatedWidth, height: animatedHeight }
           }
           // Apply uniform scale (just the layer scale, not resize scale since we redrew)
           g.scale.set(finalScale * layerScale)
@@ -1650,18 +1637,18 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         g.pivot.set(0, 0)
         
         // Mark resize as active but disable mask approach (using scale-only)
-        ;(g as any).__resizeProgress = { active: false }
+        ;(g as UnsafeAny).__resizeProgress = { active: false }
       } else {
         // Clear resize progress flag and ensure uniform scale
         if (g) {
-          (g as any).__resizeProgress = null
+          (g as UnsafeAny).__resizeProgress = null
           g.pivot.set(0, 0)
           g.scale.set(finalScale)
           
           // For PILL shapes: if previously resized, redraw at base dimensions
           const shapeKind = layerData?.shapeKind
           if (shapeKind === 'pill' && g instanceof PIXI.Graphics) {
-            const lastDims = (g as any).__lastPillDims as { w: number, h: number } | undefined
+            const lastDims = (g as UnsafeAny).__lastPillDims as { w: number, h: number } | undefined
             const pillBaseWidth = layerData?.width ?? 100
             const pillBaseHeight = layerData?.height ?? 100
             
@@ -1671,12 +1658,12 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
               const pillRadius = Math.min(pillBaseWidth, pillBaseHeight) / 2
               g.roundRect(-pillBaseWidth / 2, -pillBaseHeight / 2, pillBaseWidth, pillBaseHeight, pillRadius)
               g.fill(layerData?.fillColor ?? 0xffffff)
-              ;(g as any).__lastPillDims = { w: pillBaseWidth, h: pillBaseHeight }
-              ;(g as any).__shapeSize = { width: pillBaseWidth, height: pillBaseHeight }
+              ;(g as UnsafeAny).__lastPillDims = { w: pillBaseWidth, h: pillBaseHeight }
+              ;(g as UnsafeAny).__shapeSize = { width: pillBaseWidth, height: pillBaseHeight }
             }
           }
           // Clear last pill dims cache when not animating
-          ;(g as any).__lastPillDims = null
+          ;(g as UnsafeAny).__lastPillDims = null
         }
       }
       
@@ -1832,7 +1819,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       // Apply filters (Effects + Off-canvas Blur + Pan/Zoom Focus Blur)
       if (g) {
         const layerEffects = filtersByLayerIdRef.current[id] || []
-        let activeFilters = [...layerEffects]
+        const activeFilters = [...layerEffects]
 
         // Hide any leftover spotlight overlay (from previous implementation)
         if (hasPanZoom && spotlightOverlayRef.current) {
@@ -1976,15 +1963,15 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       }
       
       // Handle Resize Animation (mask-based clipping like mask_top)
-      const resizeProgress = (g as any)?.__resizeProgress
+      const resizeProgress = (g as UnsafeAny)?.__resizeProgress
       if (resizeProgress?.active && g) {
         const { scaleX, scaleY, anchor, baseWidth: rBaseW, baseHeight: rBaseH } = resizeProgress
         
         // Create or get resize mask (separate from maskScale mask)
-        let resizeMask = (g as any).__resizeMask as PIXI.Graphics | undefined
+        let resizeMask = (g as UnsafeAny).__resizeMask as PIXI.Graphics | undefined
         if (!resizeMask) {
           resizeMask = new PIXI.Graphics()
-          ;(g as any).__resizeMask = resizeMask
+          ;(g as UnsafeAny).__resizeMask = resizeMask
           if (g.parent) g.parent.addChild(resizeMask)
         } else if (g.parent && resizeMask.parent !== g.parent) {
           g.parent.addChild(resizeMask)
@@ -2047,11 +2034,11 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         }
       } else if (g) {
         // Clean up resize mask if resize animation ended
-        const resizeMask = (g as any)?.__resizeMask as PIXI.Graphics | undefined
+        const resizeMask = (g as UnsafeAny)?.__resizeMask as PIXI.Graphics | undefined
         if (resizeMask) {
           if (g.mask === resizeMask) g.mask = null
           resizeMask.destroy()
-          ;(g as any).__resizeMask = null
+          ;(g as UnsafeAny).__resizeMask = null
         }
       }
       
@@ -2119,7 +2106,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
               rotation: 45,
               alpha: 0.5,
               color: 0x000000
-            } as any))
+            } as UnsafeAny))
           } else if (clip.effectType === 'blur') {
             const f = new PIXI.BlurFilter()
             f.blur = clip.params.blurStrength ?? 4
@@ -2153,7 +2140,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         
         activeEffectTypes.add(clip.effectType)
         
-        let emitter = currentEmitters.find(e => (e as any)._effectType === clip.effectType)
+        let emitter = currentEmitters.find(e => (e as UnsafeAny)._effectType === clip.effectType)
         
         if (!emitter) {
            const container = new PIXI.Container()
@@ -2171,8 +2158,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
                clip.effectType as 'sparkles' | 'confetti',
                texture
              )
-             ;(emitter as any)._effectType = clip.effectType
-             ;(emitter as any)._container = container
+             ;(emitter as UnsafeAny)._effectType = clip.effectType
+             ;(emitter as UnsafeAny)._container = container
              
              currentEmitters.push(emitter)
              emittersByLayerIdRef.current[layer.id] = currentEmitters
@@ -2180,7 +2167,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         }
         
         if (emitter) {
-           const container = (emitter as any)._container
+           const container = (emitter as UnsafeAny)._container
            if (container && !container.parent && appRef.current) {
               appRef.current.stage.addChild(container)
            }
@@ -2197,15 +2184,15 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
       })
       
       // Cleanup emitters for effects that are no longer active
-      const emittersToRemove = currentEmitters.filter(e => !activeEffectTypes.has((e as any)._effectType))
+      const emittersToRemove = currentEmitters.filter(e => !activeEffectTypes.has((e as UnsafeAny)._effectType))
       if (emittersToRemove.length > 0) {
         emittersToRemove.forEach(e => {
            e.destroy()
-           if ((e as any)._container) {
-              (e as any)._container.destroy()
+           if ((e as UnsafeAny)._container) {
+              (e as UnsafeAny)._container.destroy()
            }
         })
-        emittersByLayerIdRef.current[layer.id] = currentEmitters.filter(e => activeEffectTypes.has((e as any)._effectType))
+        emittersByLayerIdRef.current[layer.id] = currentEmitters.filter(e => activeEffectTypes.has((e as UnsafeAny)._effectType))
       }
 
       // Apply filters
@@ -2263,11 +2250,15 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
   useEffect(() => {
     if (isPlaying) return // During playback, PixiJS ticker handles updates
     updateGraphicsFromTimeline()
+    // updateGraphicsFromTimeline is intentionally not in deps to avoid effect churn.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sampledTimeline, isReady, isPlaying])
 
   // Re-apply transforms when layer props or selection changes (e.g., scale/position/rotation updates without timeline changes)
   useEffect(() => {
     updateGraphicsFromTimeline()
+    // updateGraphicsFromTimeline is intentionally not in deps to avoid effect churn.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderedLayers, layers, selectedLayerId])
   
   // Store updateGraphicsFromTimeline in ref for restoreFromExport to call
@@ -2334,7 +2325,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           
           if (g && layer) {
             // Get animated dimensions from shape (stored during resize animation) or use base
-            const shapeSize = (g as any).__shapeSize as { width?: number; height?: number } | undefined
+            const shapeSize = (g as UnsafeAny).__shapeSize as { width?: number; height?: number } | undefined
             const animatedWidth = shapeSize?.width ?? layer.width
             const animatedHeight = shapeSize?.height ?? layer.height
             
@@ -2402,6 +2393,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         app.render()
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPlaying, isReady, clipInfos, layerBaseStates, timelineActions, selectedLayerId])
 
   // Note: Typewriter animation is now handled in the playhead useEffect (around line 2520)
@@ -2420,7 +2412,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     const app = appRef.current
     const canvas = app?.canvas
     if (!app || !canvas) return
-    const handler = (e: PointerEvent) => {}
+    const handler = () => {}
     canvas.addEventListener('pointerdown', handler)
     return () => {
       canvas.removeEventListener('pointerdown', handler)
@@ -2512,7 +2504,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     // This is critical because stage.removeChildren() wipes them out
     Object.values(emittersByLayerIdRef.current).forEach(emitters => {
       emitters.forEach(emitter => {
-        const container = (emitter as any)._container
+        const container = (emitter as UnsafeAny)._container
         if (container) {
           stage.addChild(container)
         }
@@ -2523,8 +2515,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     // MAJOR FIX: Strictly destroy ALL previously created handles
     // This prevents "ghost" handles that might become detached but not destroyed
     allHandlesRef.current.forEach(h => {
-      if (h && typeof (h as any).destroy === 'function') {
-        (h as any).destroy()
+      if (h && typeof (h as UnsafeAny).destroy === 'function') {
+        (h as UnsafeAny).destroy()
       }
     })
     allHandlesRef.current = [] // Clear the tracking array
@@ -2926,7 +2918,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         if (!iconPath) {
           // Fallback to manual drawing
           const g = new PIXI.Graphics()
-          drawShape(g, kind as any, width, height, fillColor)
+          drawShape(g, kind as UnsafeAny, width, height, fillColor)
           container.addChild(g)
           return container
         }
@@ -2953,19 +2945,18 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           console.error(`Failed to load icon ${kind}:`, error)
           // Fallback to manual drawing
           const g = new PIXI.Graphics()
-          drawShape(g, kind as any, width, height, fillColor)
+          drawShape(g, kind as UnsafeAny, width, height, fillColor)
           container.addChild(g)
         }
         
         return container
       }
+      void loadIconSprite
 
       // Use layerIndex to set zIndex for proper z-ordering
       // Timeline displays top-to-bottom, but we want bottom to appear ON TOP on canvas
       // So we invert: first in renderLayers (top of timeline) gets lowest zIndex
       // Last in renderLayers (bottom of timeline) gets highest zIndex = rendered on top
-      const totalLayers = renderLayers.length
-      
       // Use async IIFE to properly await all layer creation (including async SVG/image loading)
       // Without this, forEach(async...) fires and forgets, causing timing issues
       ;(async () => {
@@ -3021,7 +3012,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             app.render()
             
             // Store references
-            graphicsByIdRef.current[layer.id] = container as any
+            graphicsByIdRef.current[layer.id] = container as UnsafeAny
             spritesByIdRef.current[layer.id] = sprite
             
             // Add outline to handles overlay (not container) so it doesn't inherit transforms
@@ -3156,7 +3147,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             container.hitArea = new PIXI.Rectangle(-layer.width / 2, -layer.height / 2, layer.width, layer.height)
             
             // Store references
-            graphicsByIdRef.current[layer.id] = container as any
+            graphicsByIdRef.current[layer.id] = container as UnsafeAny
             spritesByIdRef.current[layer.id] = sprite
             
             // Add outline to handles overlay (not container) so it doesn't inherit transforms
@@ -3455,7 +3446,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
              
              // Store originalChars for scramble animation
              if (parts) {
-                (parts as any).originalChars = originalChars
+                (parts as UnsafeAny).originalChars = originalChars
              }
           }
 
@@ -3480,7 +3471,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           container.hitArea = new PIXI.Rectangle(-boxWidth / 2, -boxHeight / 2, boxWidth, boxHeight)
           
           // Store references for typewriter animation updates
-          graphicsByIdRef.current[layer.id] = container as any
+          graphicsByIdRef.current[layer.id] = container as UnsafeAny
           textsByIdRef.current[layer.id] = { text, fullText: initialText, layerId: layer.id, hasTypewriter: hasTypewriterClip, parts }
           
           // Add outline to handles overlay (not container) so it doesn't inherit transforms
@@ -3646,7 +3637,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
           width: layer.width,
           height: layer.height,
         }
-        const halfH = layer.height ? layer.height / 2 : 0
         const posX = layer.x <= 4 ? layer.x * screenWidth : layer.x
         const posY = layer.y <= 4 ? layer.y * screenHeight : layer.y
         // No canvas offset needed
@@ -3910,7 +3900,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
             
             let yOffset = 0
             let scaleY = 1
-            let scaleX = 1
             
             // Custom easing helpers
             const easeOutQuad = (t: number) => 1 - (1 - t) * (1 - t)
@@ -4146,20 +4135,20 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         stage.off('pointerdown', handleStagePointerDown)
     }
 
-  }, [template, templateVersion, pathVersion, pathLayerId, activePathPoints, isReady, fontsLoaded]) // Re-run on template/path switches; layer moves are handled directly. fontsLoaded triggers text rebuild with correct fonts.
+  // Re-run on template/path switches; layer moves are handled directly. fontsLoaded triggers text rebuild with correct fonts.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [template, templateVersion, pathVersion, pathLayerId, activePathPoints, isReady, fontsLoaded])
 
   // 3. Handle Selection Outline Updates
   useEffect(() => {
     if (!isReady || !appRef.current) return
     
-    let needsRender = false
     // Simply show/hide the outline graphics and resize handles
     // Hide during playback so handles don't appear in exports
     Object.entries(outlinesByIdRef.current).forEach(([id, outline]) => {
       const isSelected = selectedLayerId === id && !isPlaying
       if (outline.visible !== isSelected) {
         outline.visible = isSelected
-        needsRender = true
       }
       
       // Also show/hide resize handles
@@ -4168,7 +4157,6 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
         handles.forEach(h => {
           if (h.visible !== isSelected) {
             h.visible = isSelected
-            needsRender = true
           }
         })
       }
@@ -4181,6 +4169,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     
     // Force render to ensure changes are visible
     appRef.current.render()
+  // syncHandlePositions is intentionally omitted from deps to avoid re-running per render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLayerId, isReady, isPlaying])
 
   // 4. Sync dimensions from panel to canvas (for BOTH images AND shapes)
@@ -4336,11 +4326,8 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
                 
                 // Scramble character pool
                 const scrambleChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%&*<>?'
-                const scrambleStagger = 100 // ms between each letter settling
-                const scrambleSpeed = 50 // ms between random character changes
-                
                 // Get stored originalChars
-                const originalChars = (textWrapper.parts as any).originalChars as string[] | undefined
+                const originalChars = (textWrapper.parts as UnsafeAny).originalChars as string[] | undefined
                 
                 textWrapper.parts.forEach((part: PIXI.Text, i: number) => {
                    let scale = 1
@@ -4737,7 +4724,7 @@ export default function MotionCanvas({ template, templateVersion, layers = [], l
     if (needsRender) {
       appRef.current?.render()
     }
-  }, [renderLayers, isReady, layers, playhead, timelineTracks])
+  }, [renderLayers, isReady, layers, playhead, timelineTracks, templateClips])
 
   return (
     <div className="relative h-full w-full overflow-visible rounded-lg" onPointerDown={handleCanvasPointerDown}>

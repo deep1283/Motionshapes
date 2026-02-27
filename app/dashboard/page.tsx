@@ -132,7 +132,6 @@ function DashboardContent() {
     opacity: 1,
   })
   const timeline = useTimelineActions()
-  const playhead = useTimeline((s) => s.currentTime)
   const templateSpeed = useTimeline((s) => s.templateSpeed)
   const rollDistance = useTimeline((s) => s.rollDistance)
   const rollRotation = useTimeline((s) => s.rollRotation)
@@ -150,9 +149,6 @@ function DashboardContent() {
   const shakeDistance = useTimeline((s) => s.shakeDistance)
   const tracks = useTimeline((s) => s.tracks)
   const templateClips = useTimeline((s) => s.templateClips)
-  const selectedSample = useTimeline((s) => 
-    selectedLayerId ? sampleTimeline(s.tracks, s.currentTime)[selectedLayerId] : undefined
-  )
   
   // Get the selected clip's duration
   const selectedClip = templateClips.find(c => c.id === selectedClipId)
@@ -233,8 +229,8 @@ function DashboardContent() {
           setLayers(existingProject.layers as Layer[])
           
           // PRELOAD FONTS: Start downloading fonts early (fire and forget - don't block)
-          const textLayers = existingProject.layers.filter((l: any) => l.type === 'text' && l.fontFamily && l.fontFamily !== 'Inter')
-          textLayers.forEach((l: any) => loadFont(l.fontFamily))
+          const textLayers = existingProject.layers.filter((l: UnsafeAny) => l.type === 'text' && l.fontFamily && l.fontFamily !== 'Inter')
+          textLayers.forEach((l: UnsafeAny) => loadFont(l.fontFamily))
         }
         
         // Restore layer order
@@ -244,7 +240,7 @@ function DashboardContent() {
         
         // Restore timeline
         if (existingProject.timeline_snapshot && typeof existingProject.timeline_snapshot === 'object') {
-          timeline.restoreSnapshot(existingProject.timeline_snapshot as any)
+          timeline.restoreSnapshot(existingProject.timeline_snapshot as UnsafeAny)
         }
         
         // Restore background (full object if available, fallback to color only)
@@ -279,6 +275,8 @@ function DashboardContent() {
   const historyManagerRef = useRef(new HistoryManager())
   const [canUndo, setCanUndo] = useState(false)
   const [canRedo, setCanRedo] = useState(false)
+  void canUndo
+  void canRedo
 
   // Helper to create snapshot
   // IMPORTANT: Deep copy all arrays and objects to prevent reference mutation
@@ -343,7 +341,7 @@ function DashboardContent() {
       
       const result = await saveProjectToSupabase(projectId, userId, {
         name: projectName,
-        layers: layers as unknown[],
+        layers: layers as UnsafeAny[],
         layer_order: layerOrder,
         timeline_snapshot: timeline.getSnapshot(),
         background_color: background.solid,
@@ -386,7 +384,7 @@ function DashboardContent() {
     
     saveProjectToSupabase(projectId, userId, {
       name: projectName,
-      layers: layers as unknown[],
+      layers: layers as UnsafeAny[],
       layer_order: layerOrder,
       timeline_snapshot: snapshotToSave,
       background_color: background.solid,
@@ -401,7 +399,7 @@ function DashboardContent() {
         lastSavedRef.current = currentState
       }
     })
-  }, [userId, projectId, layers, layerOrder, timeline, background, isLoading, projectName, canvasWidth, canvasHeight])
+  }, [userId, projectId, layers, layerOrder, timeline, background, isLoading, hasLoadedProject, projectName, canvasWidth, canvasHeight])
 
   // Debounced auto-save (triggered on changes)
   const debouncedAutoSave = useMemo(
@@ -603,7 +601,7 @@ function DashboardContent() {
     if (historyManagerRef.current.getHistorySize() === 0) {
       pushSnapshot()
     }
-  }, []) // Empty deps = run once on mount
+  }, [pushSnapshot])
 
   useEffect(() => {
     
@@ -648,7 +646,7 @@ function DashboardContent() {
         }
         
         // Update the clip's parameters based on the current control values
-        const parameters: any = {}
+        const parameters: UnsafeAny = {}
         
         if (selectedTemplate === 'roll') {
           parameters.rollDistance = rollDistance
@@ -703,19 +701,6 @@ function DashboardContent() {
       : 0
 
     const hasTemplateClipsForLayer = clipsForLayer.length > 0
-
-    const getTrackEndTime = (track: (typeof tracks)[number] | undefined) => {
-      if (!track) return 0
-      const times: number[] = []
-      if (track.position?.length) times.push(track.position[track.position.length - 1].time)
-      if (track.scale?.length) times.push(track.scale[track.scale.length - 1].time)
-      if (track.rotation?.length) times.push(track.rotation[track.rotation.length - 1].time)
-      if (track.opacity?.length) times.push(track.opacity[track.opacity.length - 1].time)
-      return times.length ? Math.max(...times) : 0
-    }
-
-    const targetTrack = tracks.find((t) => t.layerId === targetLayerId)
-    const trackEnd = getTrackEndTime(targetTrack)
 
     // Start logic: if same template, reuse its start; else append after last template clip
     let startAt = isSameTemplate && lastClipForTemplate
@@ -833,6 +818,8 @@ function DashboardContent() {
     timeline.setCurrentTime(startAt)
     // Don't auto-play so user can adjust controls first
     // timeline.setPlaying(true)
+  // Template application intentionally excludes many mutable deps to avoid duplicate clip creation.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     selectedTemplate,
     selectedLayerId,
@@ -886,7 +873,7 @@ function DashboardContent() {
     }
     
     // Build parameters based on template type
-    const parameters: Record<string, any> = { templateSpeed }
+    const parameters: Record<string, UnsafeAny> = { templateSpeed }
     if (templateId === 'roll') {
       parameters.rollDistance = rollDistance
       parameters.rollRotation = rollRotation
@@ -912,7 +899,7 @@ function DashboardContent() {
     // Create the new clip
     const clipId = timeline.addTemplateClip(
       selectedLayerId,
-      templateId as any,
+      templateId as UnsafeAny,
       lastEnd,
       duration,
       parameters,
@@ -1009,7 +996,7 @@ function DashboardContent() {
     setActiveEffectId(effectId)
   }
 
-  const handleUpdateEffect = (effectId: string, params: Record<string, any>) => {
+  const handleUpdateEffect = (effectId: string, params: Record<string, UnsafeAny>) => {
     if (!selectedLayerId) return
     setLayers(prev => prev.map(layer => {
       if (layer.id !== selectedLayerId) return layer
@@ -1145,12 +1132,8 @@ function DashboardContent() {
       // Get image dimensions for the canvas to maintain aspect ratio
       const img = new Image()
       img.onload = () => {
-        let width = img.width
-        let height = img.height
         // Note: the compressImage already bounded it to 2048px, but we still ensure 
         // the initial canvas drop size is manageable (e.g. 300px scale)
-        const displayRatio = Math.min(300 / width, 300 / height, 1)
-
         // Create image layer with default 300x300 size to fit canvas
         // User can resize afterwards
         const newLayer: Layer = {
@@ -2250,7 +2233,7 @@ function DashboardContent() {
   
   const handleClipDurationChange = (value: number) => {
     if (selectedClipId && selectedLayerId) {
-      const updates: any = { duration: value }
+      const updates: UnsafeAny = { duration: value }
       
       const clip = templateClips.find(c => c.id === selectedClipId)
       if (clip && clip.template === 'jump') {
@@ -2351,7 +2334,7 @@ function DashboardContent() {
     
     // Defer snapshot to next tick to ensure timeline state updates first
     setTimeout(() => pushSnapshot(), 0)
-  }, [layers, selectedLayerId, timeline, pushSnapshot, templateClips])
+  }, [layers, timeline, pushSnapshot, templateClips])
 
   const handleDeleteLayer = useCallback((layerId: string) => {
     // Remove track and all clips for this layer (includes track removal)
@@ -2453,7 +2436,7 @@ function DashboardContent() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedClipId, selectedLayerId, layers, templateClips, timeline])
+  }, [selectedClipId, selectedLayerId, layers, templateClips, timeline, pushSnapshot])
 
   const dashboard = (
     <>
@@ -2894,8 +2877,7 @@ function DashboardContent() {
           if (!toLayerId) {
             // Get timeline tracks and sort by startTime
             const tracks = timeline.getState().tracks
-            const fromTrack = tracks.find(t => t.layerId === fromLayerId)
-            const fromEnd = (fromTrack?.startTime ?? 0) + (fromTrack?.duration ?? 2000)
+          const fromTrack = tracks.find(t => t.layerId === fromLayerId)
             
             // Find a layer that starts at or after the fromLayer ends (or overlaps)
             // Sort tracks by startTime and find the one that comes after
@@ -2906,7 +2888,6 @@ function DashboardContent() {
             // Find the first track that starts near or after the fromLayer's end
             const nextTrack = sortedTracks.find(t => {
               const tStart = t.startTime ?? 0
-              const tEnd = tStart + (t.duration ?? 2000)
               // Either overlaps or starts after
               return tStart >= (fromTrack?.startTime ?? 0)
             })
@@ -2946,7 +2927,7 @@ function DashboardContent() {
           }
           
           // Map transition type to template name
-          const templateName = `transition_${transitionType}` as any
+          const templateName = `transition_${transitionType}` as UnsafeAny
           
           // Create a single unified transition clip on the fromLayer
           const clipId = timeline.addTemplateClip(

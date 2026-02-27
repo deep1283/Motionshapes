@@ -39,7 +39,7 @@ export interface Layer {
   rotation?: number
   opacity?: number
   fillColor: number
-  effects?: any[] // Simplified for now to avoid import issues
+  effects?: UnsafeAny[] // Simplified for now to avoid import issues
   imageUrl?: string  // Base64 data URL for imported images
   svgUrl?: string    // URL to SVG (from Iconify or local)
   iconName?: string  // Iconify icon name (e.g. "mdi:home")

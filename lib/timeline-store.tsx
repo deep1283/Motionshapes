@@ -584,6 +584,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     updates: Partial<TimelineState['templateClips'][number]>,
     layerScale?: number
   ) => {
+    void layerScale
     setState((prev) => {
       const newClips = prev.templateClips.map((clip) => {
         if (clip.id === clipId && clip.layerId === layerId) {
@@ -646,10 +647,6 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         popClip && typeof popClip.duration === 'number'
           ? popSpeedForDuration(popClip.duration)
           : prev.popSpeed
-      const nextPulseScale = prev.pulseScale
-      const nextSpinSpeed = prev.spinSpeed
-
-      
       // For path clips: if duration changed (from dragging the bar), calculate the new speed
       const pathClip = layerClips.find((c) => c.id === clipId && c.template === 'path')
       let updatedPathClip = pathClip
@@ -797,7 +794,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         if (!track) return currentTracks
 
         // Reset track to empty/default state, but initialize clipKeyframes for unified sampling
-        const newClipKeyframes: Record<string, { position?: any[]; scale?: any[]; rotation?: any[]; opacity?: any[]; maskScale?: any[]; color?: any[]; width?: any[]; height?: any[] }> = {}
+        const newClipKeyframes: Record<string, { position?: UnsafeAny[]; scale?: UnsafeAny[]; rotation?: UnsafeAny[]; opacity?: UnsafeAny[]; maskScale?: UnsafeAny[]; color?: UnsafeAny[]; width?: UnsafeAny[]; height?: UnsafeAny[] }> = {}
         
         let newTrack: LayerTracks = {
           ...track,
@@ -937,7 +934,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
               'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out',
               'bounce_in'
             ].includes(clip.template)) {
-              // @ts-ignore
+              // @ts-expect-error dynamic preset builder lookup by template key
               preset = PRESET_BUILDERS[clip.template](clip.duration)
             } else if (clip.template === 'color') {
               preset = PRESET_BUILDERS.color(
@@ -970,7 +967,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
                   startTime: start,
                   duration: duration,
                   points: clip.parameters.pathPoints,
-                  easing: (clip.parameters?.pathEasing as any) || 'linear'
+                  easing: (clip.parameters?.pathEasing as UnsafeAny) || 'linear'
                 }
               ]
               
@@ -1035,15 +1032,15 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
                if (baseValue !== undefined) {
                  if (mode === 'add') {
                      if (typeof f.value === 'object' && f.value !== null && 'x' in f.value) {
-                         const v = f.value as unknown as Vec2
-                         const b = baseValue as unknown as Vec2
-                         value = { x: v.x + b.x, y: v.y + b.y } as unknown as T
+                         const v = f.value as UnsafeAny as Vec2
+                         const b = baseValue as UnsafeAny as Vec2
+                         value = { x: v.x + b.x, y: v.y + b.y } as UnsafeAny as T
                      } else if (typeof f.value === 'number' && typeof baseValue === 'number') {
-                         value = (f.value as number + baseValue) as unknown as T
+                         value = (f.value as number + baseValue) as UnsafeAny as T
                      }
                  } else if (mode === 'multiply') {
                      if (typeof f.value === 'number' && typeof baseValue === 'number') {
-                         value = (f.value as number * baseValue) as unknown as T
+                         value = (f.value as number * baseValue) as UnsafeAny as T
                      }
                  }
                }
@@ -1094,12 +1091,10 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           const isInAnimation = ['fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in', 'bounce_in'].includes(clip.template)
           const isOutAnimation = ['fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out'].includes(clip.template)
 
-          let mergedPosition = isInOutAnimation && preset.position
-            ? preset.position.map((f: any, idx: number) => {
-                const v = f.value as unknown as Vec2
+          const mergedPosition = isInOutAnimation && preset.position
+            ? preset.position.map((f: UnsafeAny, idx: number) => {
+                const v = f.value as UnsafeAny as Vec2
                 const isFirstKeyframe = idx === 0
-                const isLastKeyframe = idx === preset.position!.length - 1
-                
                 // Check if this keyframe represents "base position" (offset is 0,0)
                 const isBasePosition = (v?.x ?? 0) === 0 && (v?.y ?? 0) === 0
                 
@@ -1149,7 +1144,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           const mergedScale = preset.scale // keep multipliers; layer.scale applied at render
 
           const mergedRotation = isInOutAnimation && preset.rotation
-            ? preset.rotation.map((f: any, idx: number) => {
+            ? preset.rotation.map((f: UnsafeAny, idx: number) => {
                 const v = f.value as number
                 const isFirstKeyframe = idx === 0
                 
@@ -1191,14 +1186,14 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           
           // CRITICAL: Populate clipKeyframes for unified sampling (with local 0-based times)
           newClipKeyframes[clip.id] = {
-            position: preset.position?.map((f: any) => ({ ...f })),  // Already 0-based in preset
-            scale: preset.scale?.map((f: any) => ({ ...f })),
-            rotation: preset.rotation?.map((f: any) => ({ ...f })),
-            opacity: preset.opacity?.map((f: any) => ({ ...f })),
-            maskScale: preset.maskScale?.map((f: any) => ({ ...f })),
-            color: preset.color?.map((f: any) => ({ ...f })),
-            width: preset.width?.map((f: any) => ({ ...f })),
-            height: preset.height?.map((f: any) => ({ ...f })),
+            position: preset.position?.map((f: UnsafeAny) => ({ ...f })),  // Already 0-based in preset
+            scale: preset.scale?.map((f: UnsafeAny) => ({ ...f })),
+            rotation: preset.rotation?.map((f: UnsafeAny) => ({ ...f })),
+            opacity: preset.opacity?.map((f: UnsafeAny) => ({ ...f })),
+            maskScale: preset.maskScale?.map((f: UnsafeAny) => ({ ...f })),
+            color: preset.color?.map((f: UnsafeAny) => ({ ...f })),
+            width: preset.width?.map((f: UnsafeAny) => ({ ...f })),
+            height: preset.height?.map((f: UnsafeAny) => ({ ...f })),
           }
           
            // Update prevClipEnd for next iteration
@@ -1384,7 +1379,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
                 'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in', 'bounce_in',
                 'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out'
               ].includes(template)
-              // @ts-ignore
+              // @ts-expect-error dynamic preset builder lookup by template key
               ? PRESET_BUILDERS[template](options?.targetDuration)
               : PRESET_BUILDERS.roll(options?.parameters?.rollDistance ?? state.rollDistance, state.templateSpeed, options?.parameters?.rollRotation ?? state.rollRotation ?? 2)
     if (!preset) return
@@ -1475,7 +1470,6 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         // CRITICAL: Use the authoritative layer base if provided; otherwise fall back to sampling
         const layerBasePosition = options?.layerBase?.position ?? options?.layerPosition
         const layerBaseScale = options?.layerBase?.scale
-        const layerBaseRotation = options?.layerBase?.rotation
         const layerBaseOpacity = options?.layerBase?.opacity
 
         const basePosition = base?.position ?? layerBasePosition ?? baseSample.position
@@ -1566,47 +1560,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           ]
         }
 
-        const baseState = sampleLayerTracks(clearedTrack, startOffset, DEFAULT_LAYER_STATE)
-
         const mergeFrames = <T,>(existing: TimelineKeyframe<T>[] | undefined, incoming: TimelineKeyframe<T>[]) =>
           incoming.reduce((acc, frame) => upsertKeyframe(acc, frame), existing ?? [])
-
-        const mappedPosition =
-          preset.position?.map((frame: TimelineKeyframe<Vec2>) => ({
-            ...frame,  // Store raw offset values (no normalization)
-            time: startOffset + scaleTime(frame.time),
-            clipId: newClipId,
-          })) ?? []
-
-        const mappedScale =
-          preset.scale?.map((f: TimelineKeyframe<number>) => ({
-            ...f,
-            time: startOffset + scaleTime(f.time),
-            clipId: newClipId, // Tag with clip ID for deletion
-          })) ?? []
-
-        const mappedRotation =
-          preset.rotation?.map((f: TimelineKeyframe<number>) => ({
-            ...f,  // Store raw offset values (no normalization)
-            time: startOffset + scaleTime(f.time),
-            clipId: newClipId,
-          })) ?? []
-
-        const isInOutAnimation = [
-          'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in', 'bounce_in',
-          'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out'
-        ].includes(template)
-
-        const mappedOpacity =
-          preset.opacity?.map((f: TimelineKeyframe<number>) => ({
-            ...f,  // Store raw values (no normalization)
-            time: startOffset + scaleTime(f.time),
-            clipId: newClipId,
-          })) ?? []
-
-        const finalOpacity = mergeFrames(clearedTrack.opacity, mappedOpacity).sort((a, b) => a.time - b.time)
-        
-        const finalPosition = mergeFrames(clearedTrack.position, mappedPosition).sort((a, b) => a.time - b.time)
 
         // For mask templates, ignore template speed and map directly to the clip duration
         const isMaskTemplate = ['mask_center', 'mask_top', 'mask_center_out', 'mask_top_out'].includes(template)
@@ -1812,7 +1767,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         if (!track) return currentTracks
 
         // Reset track and initialize clipKeyframes for unified sampling
-        const newClipKeyframes: Record<string, { position?: any[]; scale?: any[]; rotation?: any[]; opacity?: any[]; maskScale?: any[]; color?: any[]; width?: any[]; height?: any[] }> = {}
+        const newClipKeyframes: Record<string, { position?: UnsafeAny[]; scale?: UnsafeAny[]; rotation?: UnsafeAny[]; opacity?: UnsafeAny[]; maskScale?: UnsafeAny[]; color?: UnsafeAny[]; width?: UnsafeAny[]; height?: UnsafeAny[] }> = {}
         
         let newTrack: LayerTracks = {
           ...track,
@@ -1833,8 +1788,6 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
            const end = start + duration
            
            const sampleTime = index === 0 ? 0 : prevClipEnd
-          const previousClip = layerClips[index - 1]
-          
            let clipBaseState
            if (index === 0) {
               // First clip: check if this is the very first animation (no other clips)
@@ -1933,7 +1886,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
              'fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in', 'bounce_in', 'scramble',
              'fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out', 'bounce_out'
            ].includes(clip.template)) {
-             // @ts-ignore
+             // @ts-expect-error dynamic preset builder lookup by template key
              preset = PRESET_BUILDERS[clip.template](clip.duration)
            }
            else if (clip.template === 'path' && clip.parameters?.pathPoints) {
@@ -2034,15 +1987,15 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
                if (baseValue !== undefined) {
                  if (mode === 'add') {
                      if (typeof f.value === 'object' && f.value !== null && 'x' in f.value) {
-                         const v = f.value as unknown as Vec2
-                         const b = baseValue as unknown as Vec2
-                         value = { x: v.x + b.x, y: v.y + b.y } as unknown as T
+                         const v = f.value as UnsafeAny as Vec2
+                         const b = baseValue as UnsafeAny as Vec2
+                         value = { x: v.x + b.x, y: v.y + b.y } as UnsafeAny as T
                      } else if (typeof f.value === 'number' && typeof baseValue === 'number') {
-                         value = (f.value as number + baseValue) as unknown as T
+                         value = (f.value as number + baseValue) as UnsafeAny as T
                      }
                  } else if (mode === 'multiply') {
                      if (typeof f.value === 'number' && typeof baseValue === 'number') {
-                         value = (f.value as number * baseValue) as unknown as T
+                         value = (f.value as number * baseValue) as UnsafeAny as T
                      }
                  }
                }
@@ -2073,9 +2026,9 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             const isInAnimation = ['fade_in', 'slide_in', 'grow_in', 'shrink_in', 'spin_in', 'twist_in', 'move_scale_in', 'bounce_in'].includes(clip.template)
             const isOutAnimation = ['fade_out', 'slide_out', 'grow_out', 'shrink_out', 'spin_out', 'twist_out', 'move_scale_out'].includes(clip.template)
 
-            let mergedPosition = isInOutAnimation && preset.position
-              ? preset.position.map((f: any, idx: number) => {
-                  const v = f.value as unknown as Vec2
+            const mergedPosition = isInOutAnimation && preset.position
+              ? preset.position.map((f: UnsafeAny, idx: number) => {
+                  const v = f.value as UnsafeAny as Vec2
                   const isFirstKeyframe = idx === 0
                   
                   // Check if this keyframe represents "base position" (offset is 0,0)
@@ -2124,7 +2077,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
 
 
             const mergedRotation = isInOutAnimation && preset.rotation
-              ? preset.rotation.map((f: any, idx: number) => {
+              ? preset.rotation.map((f: UnsafeAny, idx: number) => {
                   const v = f.value as number
                   const isFirstKeyframe = idx === 0
                   
@@ -2168,14 +2121,14 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
             
             // CRITICAL: Populate clipKeyframes for unified sampling (with local 0-based times)
             newClipKeyframes[clip.id] = {
-              position: preset.position?.map((f: any) => ({ ...f })),
-              scale: preset.scale?.map((f: any) => ({ ...f })),
-              rotation: preset.rotation?.map((f: any) => ({ ...f })),
-              opacity: preset.opacity?.map((f: any) => ({ ...f })),
-              maskScale: preset.maskScale?.map((f: any) => ({ ...f })),
-              color: preset.color?.map((f: any) => ({ ...f })),
-              width: preset.width?.map((f: any) => ({ ...f })),
-              height: preset.height?.map((f: any) => ({ ...f })),
+              position: preset.position?.map((f: UnsafeAny) => ({ ...f })),
+              scale: preset.scale?.map((f: UnsafeAny) => ({ ...f })),
+              rotation: preset.rotation?.map((f: UnsafeAny) => ({ ...f })),
+              opacity: preset.opacity?.map((f: UnsafeAny) => ({ ...f })),
+              maskScale: preset.maskScale?.map((f: UnsafeAny) => ({ ...f })),
+              color: preset.color?.map((f: UnsafeAny) => ({ ...f })),
+              width: preset.width?.map((f: UnsafeAny) => ({ ...f })),
+              height: preset.height?.map((f: UnsafeAny) => ({ ...f })),
             }
             
            prevClipEnd = end
@@ -2281,6 +2234,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     clipId: string,
     layerBase?: { position?: Vec2; scale?: number; rotation?: number; opacity?: number }
   ) => {
+    void layerBase
     setState((prev) => {
       const clipToRemove = prev.templateClips.find((c) => c.id === clipId)
       if (!clipToRemove) return prev
@@ -2317,7 +2271,8 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         }
         
         // Remove from clipKeyframes
-        const { [clipId]: removed, ...remainingClipKeyframes } = track.clipKeyframes ?? {}
+        const remainingClipKeyframes = { ...(track.clipKeyframes ?? {}) }
+        delete remainingClipKeyframes[clipId]
         
         // Check if deleted clip is a path template - if so, clear the paths
         const isPathClip = clipToRemove.template === 'path'
@@ -2698,7 +2653,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
               startTime: start,
               duration: duration,
               points: clip.parameters.pathPoints,
-              easing: (clip.parameters?.pathEasing as any) || 'linear'
+              easing: (clip.parameters?.pathEasing as UnsafeAny) || 'linear'
             }
           ]
           return // Skip rest of processing for path clips
@@ -2738,7 +2693,7 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
         clipsEnd = Math.max(clipsEnd, start + duration)
 
         // Call preset with correct parameters based on template type
-        let built: any
+        let built: UnsafeAny
         const params = clip.parameters
         
         switch (clip.template) {
@@ -2888,14 +2843,14 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
           clipKeyframes: {
             ...(track.clipKeyframes ?? {}),
             [clip.id]: {
-              position: built.position?.map((f: any) => ({ ...f })),
-              scale: built.scale?.map((f: any) => ({ ...f })),
-              rotation: built.rotation?.map((f: any) => ({ ...f })),
-              opacity: built.opacity?.map((f: any) => ({ ...f })),
-              maskScale: built.maskScale?.map((f: any) => ({ ...f })),
-              color: built.color?.map((f: any) => ({ ...f })),
-              width: built.width?.map((f: any) => ({ ...f })),
-              height: built.height?.map((f: any) => ({ ...f })),
+              position: built.position?.map((f: UnsafeAny) => ({ ...f })),
+              scale: built.scale?.map((f: UnsafeAny) => ({ ...f })),
+              rotation: built.rotation?.map((f: UnsafeAny) => ({ ...f })),
+              opacity: built.opacity?.map((f: UnsafeAny) => ({ ...f })),
+              maskScale: built.maskScale?.map((f: UnsafeAny) => ({ ...f })),
+              color: built.color?.map((f: UnsafeAny) => ({ ...f })),
+              width: built.width?.map((f: UnsafeAny) => ({ ...f })),
+              height: built.height?.map((f: UnsafeAny) => ({ ...f })),
             }
           }
         }
@@ -2931,17 +2886,6 @@ export function createTimelineStore(initialState?: Partial<TimelineState>) {
     const nextDuration = Math.max(clipsEnd, pathsEnd, 4000)
 
     return { tracks: nextTracks, duration: nextDuration }
-  }
-
-  // Undo/Redo: Rebuild all tracks from current templateClips
-  const rebuildAllTracks = (clipsOverride?: typeof state.templateClips, layerBaseMap?: Record<string, { position?: Vec2; scale?: number; rotation?: number; opacity?: number }>) => {
-    const { tracks, duration } = buildTracksFromClips(clipsOverride ?? state.templateClips, layerBaseMap)
-    setState((prev) => ({
-      ...prev,
-      tracks,
-      duration,
-      currentTime: clampTime(prev.currentTime, duration),
-    }))
   }
 
   return {

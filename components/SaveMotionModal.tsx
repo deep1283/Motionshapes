@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { X, Upload, Loader2 } from 'lucide-react'
-import { cn } from '@/lib/utils'
 
 interface SaveMotionData {
   name: string

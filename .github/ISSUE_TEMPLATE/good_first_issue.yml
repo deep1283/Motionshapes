@@ -1,0 +1,40 @@
+name: Starter task proposal
+description: Propose a small, scoped task that could become a good first issue.
+title: "starter-task: "
+labels: ["good first issue", "help wanted", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this when proposing a beginner-friendly contribution task.
+  - type: textarea
+    id: task
+    attributes:
+      label: Task description
+      description: What exactly should be implemented or fixed?
+      placeholder: Add keyboard shortcut hints to the timeline toolbar.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and constraints
+      description: Keep scope small enough for first-time contributors.
+      placeholder: 1-2 files, no backend changes, no data migration.
+    validations:
+      required: true
+  - type: textarea
+    id: pointers
+    attributes:
+      label: Code pointers
+      description: Mention likely files/components to start from.
+      placeholder: components/TimelinePanel.tsx, lib/timeline-store.tsx
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: This task is scoped to be completed in a small PR.
+          required: true
+        - label: This task does not require deep project context.
+          required: true

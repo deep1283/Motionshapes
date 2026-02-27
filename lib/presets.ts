@@ -93,6 +93,7 @@ export const GRAVITY = 9.8 // normalized units per second^2
 // height = constant × duration
 // Using a scaling factor so that 1000ms = 0.25 height (reasonable default)
 export const jumpHeightForDuration = (duration: number, _velocity: number = 1.5) => {
+  void _velocity
   // Linear: height = duration / 4000
   // 1000ms → 0.25 height
   // 2000ms → 0.5 height
@@ -104,11 +105,13 @@ export const jumpHeightForDuration = (duration: number, _velocity: number = 1.5)
 // Calculate duration from height (inverse of jumpHeightForDuration)
 // Linear: duration = height × 4000
 export const jumpDurationForHeight = (height: number, _velocity: number = 1.5): number => {
+  void _velocity
   const clampedHeight = Math.max(0.02, Math.min(1.0, height))
   return clampedHeight * 4000
 }
 
 const jumpPreset = (height: number = 0.25, initialVelocity: number = 1.5, targetDuration?: number): PresetResult => {
+  void initialVelocity
   // If targetDuration is provided (from timeline), use it to space keyframes
   // and calculate height from duration using linear formula.
   // This ensures the animation always completes within the clip.
@@ -181,16 +184,16 @@ const popPreset = (peakScale: number = 1.6, wobble: boolean = false, speed: numb
     duration,
     scale: [
       { time: 0, value: 1 },
-      { time: duration * 0.5, value: peakScale, easing: 'easeOutQuad' as any },
+      { time: duration * 0.5, value: peakScale, easing: 'easeOutQuad' as UnsafeAny },
       ...(collapse
         ? [
-            { time: burstStart, value: wobble ? wobbleScale : peakScale, easing: (wobble ? 'easeOutBack' : 'easeOutQuad') as any },
-            { time: burstEnd, value: 0, easing: 'easeInQuad' as any },
+            { time: burstStart, value: wobble ? wobbleScale : peakScale, easing: (wobble ? 'easeOutBack' : 'easeOutQuad') as UnsafeAny },
+            { time: burstEnd, value: 0, easing: 'easeInQuad' as UnsafeAny },
           ]
         : [
-            { time: burstStart, value: wobble ? wobbleScale : peakScale, easing: (wobble ? 'easeOutBack' : 'easeOutQuad') as any },
+            { time: burstStart, value: wobble ? wobbleScale : peakScale, easing: (wobble ? 'easeOutBack' : 'easeOutQuad') as UnsafeAny },
             // hold scale at peak; only opacity will drop
-            { time: burstEnd, value: peakScale, easing: 'linear' as any },
+            { time: burstEnd, value: peakScale, easing: 'linear' as UnsafeAny },
           ]),
     ],
     opacity: [
@@ -198,11 +201,11 @@ const popPreset = (peakScale: number = 1.6, wobble: boolean = false, speed: numb
       ...(collapse
         ? [
             { time: burstStart, value: 1 },
-            { time: burstEnd, value: 0, easing: 'easeInQuad' as any },
+            { time: burstEnd, value: 0, easing: 'easeInQuad' as UnsafeAny },
           ]
         : [
             { time: burstStart, value: 1 },
-            { time: burstEnd, value: 0, easing: 'easeInQuad' as any },
+            { time: burstEnd, value: 0, easing: 'easeInQuad' as UnsafeAny },
           ]),
     ],
     meta: { popScale: peakScale, wobble, collapse },
@@ -290,8 +293,8 @@ export const ANIMATION_BASE_DURATION = 1500
 const fadeInPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult => ({
   duration,
   opacity: [
-    { time: 0, value: 0, easing: 'easeInOutQuad' as any },
-    { time: duration, value: 1, easing: 'easeInOutQuad' as any },
+    { time: 0, value: 0, easing: 'easeInOutQuad' as UnsafeAny },
+    { time: duration, value: 1, easing: 'easeInOutQuad' as UnsafeAny },
   ]
 })
 
@@ -299,21 +302,21 @@ const slideInPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult
   duration,
   // Shape slides in during first 50%, opacity fades in over full duration
   position: [
-    { time: 0, value: { x: -0.2, y: 0 }, easing: 'easeOutQuad' as any },
-    { time: duration * 0.5, value: { x: 0, y: 0 }, easing: 'easeOutQuad' as any },
-    { time: duration, value: { x: 0, y: 0 }, easing: 'easeOutQuad' as any },
+    { time: 0, value: { x: -0.2, y: 0 }, easing: 'easeOutQuad' as UnsafeAny },
+    { time: duration * 0.5, value: { x: 0, y: 0 }, easing: 'easeOutQuad' as UnsafeAny },
+    { time: duration, value: { x: 0, y: 0 }, easing: 'easeOutQuad' as UnsafeAny },
   ],
   opacity: [
-    { time: 0, value: 0, easing: 'easeInOutQuad' as any },
-    { time: duration, value: 1, easing: 'easeInOutQuad' as any },
+    { time: 0, value: 0, easing: 'easeInOutQuad' as UnsafeAny },
+    { time: duration, value: 1, easing: 'easeInOutQuad' as UnsafeAny },
   ]
 })
 
 const growInPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult => ({
   duration,
   scale: [
-    { time: 0, value: 0, easing: 'easeOutBack' as any },
-    { time: duration, value: 1, easing: 'easeOutBack' as any },
+    { time: 0, value: 0, easing: 'easeOutBack' as UnsafeAny },
+    { time: duration, value: 1, easing: 'easeOutBack' as UnsafeAny },
   ],
   opacity: [
     { time: 0, value: 0 },
@@ -324,8 +327,8 @@ const growInPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult 
 const shrinkInPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult => ({
   duration,
   scale: [
-    { time: 0, value: 2, easing: 'easeOutExpo' as any },
-    { time: duration, value: 1, easing: 'easeOutExpo' as any },
+    { time: 0, value: 2, easing: 'easeOutExpo' as UnsafeAny },
+    { time: duration, value: 1, easing: 'easeOutExpo' as UnsafeAny },
   ],
   opacity: [
     { time: 0, value: 0 },
@@ -336,12 +339,12 @@ const shrinkInPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResul
 const spinInPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult => ({
   duration,
   rotation: [
-    { time: 0, value: -Math.PI * 2, easing: 'easeOutBack' as any },
-    { time: duration, value: 0, easing: 'easeOutBack' as any },
+    { time: 0, value: -Math.PI * 2, easing: 'easeOutBack' as UnsafeAny },
+    { time: duration, value: 0, easing: 'easeOutBack' as UnsafeAny },
   ],
   scale: [
-    { time: 0, value: 0, easing: 'easeOutBack' as any },
-    { time: duration, value: 1, easing: 'easeOutBack' as any },
+    { time: 0, value: 0, easing: 'easeOutBack' as UnsafeAny },
+    { time: duration, value: 1, easing: 'easeOutBack' as UnsafeAny },
   ],
   opacity: [
     { time: 0, value: 0 },
@@ -352,28 +355,28 @@ const spinInPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult 
 const twistInPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult => ({
   duration,
   rotation: [
-    { time: 0, value: -Math.PI / 2, easing: 'easeInOutQuad' as any }, // -90deg
-    { time: duration, value: 0, easing: 'easeInOutQuad' as any },
+    { time: 0, value: -Math.PI / 2, easing: 'easeInOutQuad' as UnsafeAny }, // -90deg
+    { time: duration, value: 0, easing: 'easeInOutQuad' as UnsafeAny },
   ],
   scale: [
-    { time: 0, value: 0, easing: 'easeInOutQuad' as any },
-    { time: duration, value: 1, easing: 'easeInOutQuad' as any },
+    { time: 0, value: 0, easing: 'easeInOutQuad' as UnsafeAny },
+    { time: duration, value: 1, easing: 'easeInOutQuad' as UnsafeAny },
   ],
   opacity: [
-    { time: 0, value: 0, easing: 'easeInOutQuad' as any },
-    { time: duration, value: 1, easing: 'easeInOutQuad' as any },
+    { time: 0, value: 0, easing: 'easeInOutQuad' as UnsafeAny },
+    { time: duration, value: 1, easing: 'easeInOutQuad' as UnsafeAny },
   ]
 })
 
 const moveScaleInPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult => ({
   duration,
   position: [
-    { time: 0, value: { x: 0, y: 0.2 }, easing: 'easeOutBack' as any },
-    { time: duration, value: { x: 0, y: 0 }, easing: 'easeOutBack' as any },
+    { time: 0, value: { x: 0, y: 0.2 }, easing: 'easeOutBack' as UnsafeAny },
+    { time: duration, value: { x: 0, y: 0 }, easing: 'easeOutBack' as UnsafeAny },
   ],
   scale: [
-    { time: 0, value: 0.5, easing: 'easeOutBack' as any },
-    { time: duration, value: 1, easing: 'easeOutBack' as any },
+    { time: 0, value: 0.5, easing: 'easeOutBack' as UnsafeAny },
+    { time: duration, value: 1, easing: 'easeOutBack' as UnsafeAny },
   ],
   opacity: [
     { time: 0, value: 0 },
@@ -385,8 +388,8 @@ const moveScaleInPreset = (duration: number = ANIMATION_BASE_DURATION): PresetRe
 const fadeOutPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult => ({
   duration,
   opacity: [
-    { time: 0, value: 1, easing: 'easeInQuad' as any },
-    { time: duration, value: 0, easing: 'easeInQuad' as any },
+    { time: 0, value: 1, easing: 'easeInQuad' as UnsafeAny },
+    { time: duration, value: 0, easing: 'easeInQuad' as UnsafeAny },
   ]
 })
 
@@ -394,9 +397,9 @@ const slideOutPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResul
   duration,
   // Shape stays in place for first 50%, then slides out during second half
   position: [
-    { time: 0, value: { x: 0, y: 0 }, easing: 'easeInQuad' as any },
-    { time: duration * 0.5, value: { x: 0, y: 0 }, easing: 'easeInQuad' as any },
-    { time: duration, value: { x: 0.2, y: 0 }, easing: 'easeInQuad' as any },
+    { time: 0, value: { x: 0, y: 0 }, easing: 'easeInQuad' as UnsafeAny },
+    { time: duration * 0.5, value: { x: 0, y: 0 }, easing: 'easeInQuad' as UnsafeAny },
+    { time: duration, value: { x: 0.2, y: 0 }, easing: 'easeInQuad' as UnsafeAny },
   ],
   // Opacity fades over the full duration
   opacity: [
@@ -408,8 +411,8 @@ const slideOutPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResul
 const growOutPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult => ({
   duration,
   scale: [
-    { time: 0, value: 1, easing: 'easeInBack' as any },
-    { time: duration, value: 2, easing: 'easeInBack' as any },
+    { time: 0, value: 1, easing: 'easeInBack' as UnsafeAny },
+    { time: duration, value: 2, easing: 'easeInBack' as UnsafeAny },
   ],
   opacity: [
     { time: duration * 0.5, value: 1 },
@@ -420,8 +423,8 @@ const growOutPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult
 const shrinkOutPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult => ({
   duration,
   scale: [
-    { time: 0, value: 1, easing: 'easeInBack' as any },
-    { time: duration, value: 0, easing: 'easeInBack' as any },
+    { time: 0, value: 1, easing: 'easeInBack' as UnsafeAny },
+    { time: duration, value: 0, easing: 'easeInBack' as UnsafeAny },
   ],
   opacity: [
     { time: duration * 0.8, value: 1 },
@@ -432,12 +435,12 @@ const shrinkOutPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResu
 const spinOutPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult => ({
   duration,
   rotation: [
-    { time: 0, value: 0, easing: 'easeInBack' as any },
-    { time: duration, value: Math.PI * 2, easing: 'easeInBack' as any },
+    { time: 0, value: 0, easing: 'easeInBack' as UnsafeAny },
+    { time: duration, value: Math.PI * 2, easing: 'easeInBack' as UnsafeAny },
   ],
   scale: [
-    { time: 0, value: 1, easing: 'easeInBack' as any },
-    { time: duration, value: 0, easing: 'easeInBack' as any },
+    { time: 0, value: 1, easing: 'easeInBack' as UnsafeAny },
+    { time: duration, value: 0, easing: 'easeInBack' as UnsafeAny },
   ],
   opacity: [
     { time: duration * 0.8, value: 1 },
@@ -448,28 +451,28 @@ const spinOutPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult
 const twistOutPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult => ({
   duration,
   rotation: [
-    { time: 0, value: 0, easing: 'easeInOutQuad' as any },
-    { time: duration, value: Math.PI / 2, easing: 'easeInOutQuad' as any }, // +90deg
+    { time: 0, value: 0, easing: 'easeInOutQuad' as UnsafeAny },
+    { time: duration, value: Math.PI / 2, easing: 'easeInOutQuad' as UnsafeAny }, // +90deg
   ],
   scale: [
-    { time: 0, value: 1, easing: 'easeInOutQuad' as any },
-    { time: duration, value: 2, easing: 'easeInOutQuad' as any },
+    { time: 0, value: 1, easing: 'easeInOutQuad' as UnsafeAny },
+    { time: duration, value: 2, easing: 'easeInOutQuad' as UnsafeAny },
   ],
   opacity: [
-    { time: 0, value: 1, easing: 'easeInOutQuad' as any },
-    { time: duration, value: 0, easing: 'easeInOutQuad' as any },
+    { time: 0, value: 1, easing: 'easeInOutQuad' as UnsafeAny },
+    { time: duration, value: 0, easing: 'easeInOutQuad' as UnsafeAny },
   ]
 })
 
 const moveScaleOutPreset = (duration: number = ANIMATION_BASE_DURATION): PresetResult => ({
   duration,
   position: [
-    { time: 0, value: { x: 0, y: 0 }, easing: 'easeInBack' as any },
-    { time: duration, value: { x: 0, y: 0.2 }, easing: 'easeInBack' as any },
+    { time: 0, value: { x: 0, y: 0 }, easing: 'easeInBack' as UnsafeAny },
+    { time: duration, value: { x: 0, y: 0.2 }, easing: 'easeInBack' as UnsafeAny },
   ],
   scale: [
-    { time: 0, value: 1, easing: 'easeInBack' as any },
-    { time: duration, value: 0.5, easing: 'easeInBack' as any },
+    { time: 0, value: 1, easing: 'easeInBack' as UnsafeAny },
+    { time: duration, value: 0.5, easing: 'easeInBack' as UnsafeAny },
   ],
   opacity: [
     { time: duration * 0.8, value: 1 },
@@ -520,10 +523,10 @@ const panZoomPreset = (
   // Determine easing function
   const getEasing = (easingType: string) => {
     switch (easingType) {
-      case 'linear': return 'linear' as any
-      case 'smooth': return 'easeInOutQuint' as any // Aggressive S-curve like Jitter
+      case 'linear': return 'linear' as UnsafeAny
+      case 'smooth': return 'easeInOutQuint' as UnsafeAny // Aggressive S-curve easing
       case 'ease-in-out': 
-      default: return 'easeInOutQuad' as any
+      default: return 'easeInOutQuad' as UnsafeAny
     }
   }
   const animEasing = getEasing(easing)
@@ -539,7 +542,7 @@ const panZoomPreset = (
       // Zoom in complete: offset to center target rectangle
       { time: zoomInEnd, value: { x: offsetX, y: offsetY }, easing: animEasing },
       // Hold: stay at offset
-      { time: holdEnd, value: { x: offsetX, y: offsetY }, easing: 'linear' as any },
+      { time: holdEnd, value: { x: offsetX, y: offsetY }, easing: 'linear' as UnsafeAny },
       // Zoom out complete: back to normal
       { time: duration, value: { x: 0, y: 0 }, easing: animEasing },
     ],
@@ -549,7 +552,7 @@ const panZoomPreset = (
       // Zoom in complete: scaled up
       { time: zoomInEnd, value: targetScale, easing: animEasing },
       // Hold: stay scaled
-      { time: holdEnd, value: targetScale, easing: 'linear' as any },
+      { time: holdEnd, value: targetScale, easing: 'linear' as UnsafeAny },
       // Zoom out complete: back to normal
       { time: duration, value: 1, easing: animEasing },
     ],
@@ -627,7 +630,7 @@ const typewriterPreset = (duration: number = TYPEWRITER_BASE_DURATION, showCurso
   meta: {
     textAnimation: 'typewriter',
     showCursor,
-  } as any,
+  } as UnsafeAny,
 })
 
 export const BOUNCE_IN_DURATION = 1000
@@ -639,7 +642,7 @@ const bounceInPreset = (duration: number = BOUNCE_IN_DURATION): PresetResult => 
   opacity: [],
   meta: {
     textAnimation: 'bounce_in',
-  } as any,
+  } as UnsafeAny,
 })
 
 const bounceOutPreset = (duration: number = BOUNCE_IN_DURATION): PresetResult => ({
@@ -648,7 +651,7 @@ const bounceOutPreset = (duration: number = BOUNCE_IN_DURATION): PresetResult =>
   opacity: [],
   meta: {
     textAnimation: 'bounce_out',
-  } as any,
+  } as UnsafeAny,
 })
 
 const scramblePreset = (duration: number = 2000): PresetResult => ({
@@ -657,7 +660,7 @@ const scramblePreset = (duration: number = 2000): PresetResult => ({
   opacity: [],
   meta: {
     textAnimation: 'scramble',
-  } as any,
+  } as UnsafeAny,
 })
 
 export const FADE_IN_CHAR_DURATION = 1500
@@ -669,7 +672,7 @@ const fadeInCharPreset = (duration: number = FADE_IN_CHAR_DURATION): PresetResul
   opacity: [],
   meta: {
     textAnimation: 'fade_in_char',
-  } as any,
+  } as UnsafeAny,
 })
 
 const fadeOutCharPreset = (duration: number = FADE_IN_CHAR_DURATION): PresetResult => ({
@@ -679,20 +682,20 @@ const fadeOutCharPreset = (duration: number = FADE_IN_CHAR_DURATION): PresetResu
   opacity: [],
   meta: {
     textAnimation: 'fade_out_char',
-  } as any,
+  } as UnsafeAny,
 })
 
 const colorPreset = (duration: number = 1000, fromColor: number = 0xffffff, toColor: number = 0xff0000, easing: string = 'linear'): PresetResult => ({
   duration,
   color: [
     { time: 0, value: fromColor },
-    { time: duration, value: toColor, easing: easing as any },
+    { time: duration, value: toColor, easing: easing as UnsafeAny },
   ],
   meta: {
     colorFrom: fromColor,
     colorTo: toColor,
     colorEasing: easing,
-  } as any,
+  } as UnsafeAny,
 })
 
 const resizePreset = (
@@ -706,11 +709,11 @@ const resizePreset = (
   duration,
   width: [
     { time: 0, value: fromWidth },
-    { time: duration, value: toWidth, easing: easing as any },
+    { time: duration, value: toWidth, easing: easing as UnsafeAny },
   ],
   height: [
     { time: 0, value: fromHeight },
-    { time: duration, value: toHeight, easing: easing as any },
+    { time: duration, value: toHeight, easing: easing as UnsafeAny },
   ],
   meta: {
     resizeFromWidth: fromWidth,
@@ -718,7 +721,7 @@ const resizePreset = (
     resizeToWidth: toWidth,
     resizeToHeight: toHeight,
     resizeEasing: easing,
-  } as any,
+  } as UnsafeAny,
 })
 
 // Rotate preset: animates rotation from one angle to another
@@ -736,13 +739,13 @@ const rotatePreset = (
     duration,
     rotation: [
       { time: 0, value: fromRad },
-      { time: duration, value: toRad, easing: easing as any },
+      { time: duration, value: toRad, easing: easing as UnsafeAny },
     ],
     meta: {
       rotateFromAngle: fromAngle,
       rotateToAngle: toAngle,
       rotateEasing: easing,
-    } as any,
+    } as UnsafeAny,
   }
 }
 

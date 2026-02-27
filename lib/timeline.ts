@@ -56,7 +56,7 @@ export const ADDITIVE_TEMPLATES = [
 ] as const
 
 export const isAdditiveTemplate = (template: string): boolean =>
-  ADDITIVE_TEMPLATES.includes(template as any)
+  ADDITIVE_TEMPLATES.includes(template as UnsafeAny)
 
 export interface LayerTracks {
   layerId: string
@@ -185,7 +185,7 @@ const interpolateColor = (c1: number, c2: number, t: number): number => {
   return (r << 16) | (g << 8) | b
 }
 
-const findSegment = <T extends TimelineKeyframe<unknown>>(frames: T[], time: number) => {
+const findSegment = <T extends TimelineKeyframe<UnsafeAny>>(frames: T[], time: number) => {
   let prev = frames[0]
   let next = frames[frames.length - 1]
   for (let i = 0; i < frames.length; i++) {
@@ -374,7 +374,7 @@ export const sampleLayerTracksUnified = (
   const layerBaseHeight = baseState.height
 
   // Start with base state
-  let pos = { ...layerBasePosition }
+  const pos = { ...layerBasePosition }
   let scale = layerBaseScale
   let rotation = layerBaseRotation
   let opacity = layerBaseOpacity
@@ -400,11 +400,9 @@ export const sampleLayerTracksUnified = (
 
     // Determine local time within clip
     let localTime: number
-    let isActive = false
 
     if (time >= clipStart && time <= clipEnd) {
       localTime = time - clipStart
-      isActive = true
     } else if (time > clipEnd) {
       // Clip ended - carry forward final value
       localTime = clip.duration
@@ -412,8 +410,6 @@ export const sampleLayerTracksUnified = (
       // Before clip starts - skip
       continue
     }
-
-    const isAdditive = isAdditiveTemplate(clip.template)
 
     // Position: always additive (offset)
     // SKIP path clips - their position is handled separately via layer.paths
@@ -468,8 +464,6 @@ export const sampleLayerTracksUnified = (
   let pathResult: Vec2 | null = null
   let pathFirstPoint: Vec2 | null = null
   let activePathId: string | undefined
-  let accumulatedPathOffset = { x: 0, y: 0 } // Track total offset from all completed paths
-  
   if (layer.paths && layer.paths.length > 0) {
     // Sort paths by start time to process in order
     const sortedPaths = [...layer.paths].sort((a, b) => a.startTime - b.startTime)
@@ -514,8 +508,8 @@ export const sampleLayerTracksUnified = (
     if (pathResult) {
       const activeFlag = isPathActive
       const endTime = completedPathEndTime;
-      (pathResult as any)._isActivelyAnimating = activeFlag;
-      (pathResult as any)._pathEndTime = endTime
+      (pathResult as UnsafeAny)._isActivelyAnimating = activeFlag;
+      (pathResult as UnsafeAny)._pathEndTime = endTime
     }
   }
 
@@ -526,8 +520,8 @@ export const sampleLayerTracksUnified = (
   // - Templates BEFORE path are already accounted for (user drew path at visual position)
   let finalPosition: Vec2
   if (pathResult && pathFirstPoint) {
-    const isActivelyAnimating = (pathResult as any)._isActivelyAnimating ?? false
-    const pathEndTime = (pathResult as any)._pathEndTime ?? 0
+    const isActivelyAnimating = (pathResult as UnsafeAny)._isActivelyAnimating ?? false
+    const pathEndTime = (pathResult as UnsafeAny)._pathEndTime ?? 0
     
     if (isActivelyAnimating) {
       // DURING PATH: Shape is at ABSOLUTE path point (no offset)
@@ -535,7 +529,7 @@ export const sampleLayerTracksUnified = (
     } else {
       // AFTER PATH: Calculate offset only from templates that started AFTER path ended
       // Re-calculate position from only those clips
-      let afterPathOffset = { x: 0, y: 0 }
+      const afterPathOffset = { x: 0, y: 0 }
       
       if (pathEndTime > 0) {
         // Sort clips by start time

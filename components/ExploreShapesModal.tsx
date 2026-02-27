@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useRef, useCallback } from 'react'
+import Image from 'next/image'
 import { X, Search, Loader2 } from 'lucide-react'
 import { searchIcons, getSvgUrl, getPopularIcons, type IconifySearchResult } from '@/lib/iconify'
 
@@ -23,7 +24,7 @@ export function ExploreShapesModal({ isOpen, onClose, onSelectIcon }: ExploreSha
     if (isOpen && !results) {
       loadPopularIcons()
     }
-  }, [isOpen])
+  }, [isOpen, results])
 
   // Close on escape key
   useEffect(() => {
@@ -165,10 +166,13 @@ export function ExploreShapesModal({ isOpen, onClose, onSelectIcon }: ExploreSha
                   title={iconName}
                 >
                   {/* Icon Preview */}
-                  <img
+                  <Image
                     src={getSvgUrl(iconName, 'ffffff')}
                     alt={iconName}
-                    className="w-7 h-7 object-contain opacity-70 group-hover:opacity-100 group-hover:scale-110 transition-all duration-200"
+                    width={28}
+                    height={28}
+                    unoptimized
+                    className="h-7 w-7 object-contain opacity-70 transition-all duration-200 group-hover:scale-110 group-hover:opacity-100"
                     loading="lazy"
                   />
                   
@@ -184,7 +188,7 @@ export function ExploreShapesModal({ isOpen, onClose, onSelectIcon }: ExploreSha
             </div>
           ) : results && results.icons.length === 0 ? (
             <div className="text-center py-12 text-neutral-500">
-              <p>No icons found for "{query}"</p>
+              <p>No icons found for &quot;{query}&quot;</p>
               <p className="text-sm mt-1">Try different keywords</p>
             </div>
           ) : null}

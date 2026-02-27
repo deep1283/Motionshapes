@@ -1,0 +1,52 @@
+name: Feature idea (what should we add?)
+description: Suggest product ideas (for example, Figma plugin, new presets, or workflow upgrades).
+title: "idea: "
+labels: ["idea", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Got an idea for MotionShapes? Propose it here.
+        Examples: Figma plugin, new template packs, animation curve presets, export improvements.
+  - type: textarea
+    id: idea
+    attributes:
+      label: Idea
+      description: Describe the idea in plain language.
+      placeholder: Add a Figma plugin to import layers as editable motion objects.
+    validations:
+      required: true
+  - type: textarea
+    id: user_value
+    attributes:
+      label: Why this matters
+      description: Who benefits and how?
+      placeholder: Helps design teams move from static mockups to motion faster.
+    validations:
+      required: true
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - Integrations
+        - Editor UX
+        - Animation capabilities
+        - Export pipeline
+        - Collaboration
+        - Developer experience
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: references
+    attributes:
+      label: References or examples
+      description: Add links, screenshots, or similar flows from other tools.
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and did not find the same idea.
+          required: true

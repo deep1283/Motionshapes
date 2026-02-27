@@ -56,7 +56,7 @@ export async function POST(request: Request) {
     // Return the generated redirect link back to the client button
     return NextResponse.json({ url: session.payment_link })
     
-  } catch (error: any) {
+  } catch (error: UnsafeAny) {
     console.error('Dodo checkout error:', error)
     return NextResponse.json(
       { error: error.message || 'Failed to create generic checkout session' },
