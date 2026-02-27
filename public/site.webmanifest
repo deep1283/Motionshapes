@@ -1,0 +1,16 @@
+{
+  "name": "MotionShapes",
+  "short_name": "MotionShapes",
+  "description": "Open-source browser-based motion design tool.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "icons": [
+    {
+      "src": "/resources/logo.png",
+      "sizes": "500x500",
+      "type": "image/png"
+    }
+  ]
+}
