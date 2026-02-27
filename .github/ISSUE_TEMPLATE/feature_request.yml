@@ -1,0 +1,44 @@
+name: Feature request
+description: Propose a new feature or workflow improvement.
+title: "feat: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Share the user problem first, then the proposed solution.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What user problem are we solving?
+      placeholder: As a ..., I struggle with ...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the feature and expected behavior.
+      placeholder: Add a ... panel that allows users to ...
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any alternative approaches or tradeoffs?
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: What would count as done?
+      placeholder: |
+        - [ ] Users can ...
+        - [ ] Export includes ...
+  - type: input
+    id: impact
+    attributes:
+      label: Impact area
+      description: Which area is impacted most?
+      placeholder: editor UX, timeline, rendering, export, docs

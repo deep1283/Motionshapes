@@ -1,0 +1,10 @@
+# Default ownership
+* @deep1283
+
+# CI and repo meta
+.github/** @deep1283
+
+# App and UI code
+app/** @deep1283
+components/** @deep1283
+lib/** @deep1283
