@@ -2,17 +2,38 @@
 
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { ArrowRight, Play, Layers, Zap, Coffee } from 'lucide-react'
+import { ArrowRight, Play, Layers, Zap, Coffee, Star, Github } from 'lucide-react'
 import { Spotlight } from '@/components/ui/spotlight'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
 
 export default function Home() {
   const router = useRouter()
+  const repositoryUrl = 'https://github.com/deep1283/Motionshapes'
+
   // Open-source version: users can immediately start creating anonymously
   const handleStartCreating = () => {
     // Open-source version: Directly go to the dashboard without requiring an account
     router.push('/dashboard')
+  }
+
+  const handleSponsorCheckout = async (button: HTMLButtonElement) => {
+    const originalText = button.innerHTML
+    button.innerHTML = '<span class="animate-pulse">Loading...</span>'
+    button.disabled = true
+
+    try {
+      const res = await fetch('/api/checkout', { method: 'POST' })
+      const data = await res.json()
+      if (data.url) window.open(data.url, '_blank')
+      else throw new Error(data.error || 'Failed to create checkout')
+    } catch (err) {
+      console.error(err)
+      alert('Failed to initialize sponsor checkout.')
+    } finally {
+      button.innerHTML = originalText
+      button.disabled = false
+    }
   }
 
 
@@ -40,20 +61,6 @@ export default function Home() {
       />
 
       <div className="relative z-10 flex w-full max-w-7xl flex-col items-center px-4 pt-20 md:pt-32">
-        {/* Badge */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.5 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.5 }}
-          className="mb-8 inline-flex items-center gap-2 rounded-full border border-white/5 bg-white/5 px-4 py-1.5 text-sm font-medium text-neutral-300 backdrop-blur-md shadow-[0_0_15px_rgba(255,255,255,0.05)] hover:bg-white/10 transition-colors duration-300"
-        >
-          <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-violet-400 opacity-75"></span>
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-violet-500"></span>
-          </span>
-          <span className="tracking-wide text-xs uppercase text-neutral-400">v1.0 is now live</span>
-        </motion.div>
-
         {/* Hero Title */}
         <motion.h1
           initial={{ opacity: 0, y: 20 }}
@@ -108,6 +115,26 @@ export default function Home() {
           >
             Contact Founder
           </Button>
+
+          <button
+            onClick={(e) => {
+              void handleSponsorCheckout(e.currentTarget)
+            }}
+            className="inline-flex h-12 items-center gap-2 rounded-full border border-[#8b5cf6]/40 bg-[#8b5cf6]/10 px-6 text-sm font-medium text-[#c4b5fd] transition-all hover:border-[#8b5cf6]/60 hover:bg-[#8b5cf6]/20"
+          >
+            <Coffee className="h-4 w-4" />
+            <span>Sponsor my date</span>
+          </button>
+
+          <a
+            href={repositoryUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex h-12 items-center gap-2 rounded-full border border-white/20 bg-transparent px-6 text-sm font-medium text-white transition-all hover:border-white/40 hover:bg-white/10"
+          >
+            <Star className="h-4 w-4" />
+            <span>Star us on GitHub</span>
+          </a>
         </motion.div>
 
         {/* Hero Visual / UI Mock */}
@@ -339,29 +366,24 @@ export default function Home() {
               </p>
               
               <button 
-                onClick={async (e) => {
-                    const btn = e.currentTarget;
-                    const originalText = btn.innerHTML;
-                    btn.innerHTML = '<span class="animate-pulse">Loading...</span>';
-                    btn.disabled = true;
-                    try {
-                        const res = await fetch('/api/checkout', { method: 'POST' });
-                        const data = await res.json();
-                        if (data.url) window.open(data.url, "_blank");
-                        else throw new Error(data.error || "Failed to create checkout");
-                    } catch (err) {
-                        console.error(err);
-                        alert("Failed to initialize sponsor checkout.");
-                    } finally {
-                        btn.innerHTML = originalText;
-                        btn.disabled = false;
-                    }
+                onClick={(e) => {
+                  void handleSponsorCheckout(e.currentTarget)
                 }}
                 className="mt-6 inline-flex items-center gap-2 px-6 py-2.5 rounded-full bg-[#8b5cf6]/10 text-[#a78bfa] border border-[#8b5cf6]/30 hover:bg-[#8b5cf6]/20 hover:border-[#8b5cf6]/50 transition-all font-medium text-sm shadow-[0_0_15px_rgba(139,92,246,0.15)] hover:shadow-[0_0_25px_rgba(139,92,246,0.3)]"
               >
                 <Coffee className="w-4 h-4" />
                 <span>Sponsor my date</span>
               </button>
+
+              <a
+                href={repositoryUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/20 bg-transparent px-6 py-2.5 text-sm font-medium text-white transition-all hover:border-white/40 hover:bg-white/10"
+              >
+                <Github className="h-4 w-4" />
+                <span>Star us on GitHub</span>
+              </a>
             </div>
           </div>
           
