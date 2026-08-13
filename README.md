@@ -2,9 +2,8 @@
 
 [![Website](https://img.shields.io/website?url=https%3A%2F%2Fwww.motionshapes.com&up_message=online&down_message=offline&style=flat-square&label=MotionShapes)](https://www.motionshapes.com)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Sponsor my date](https://img.shields.io/badge/Sponsor-my%20date-8b5cf6?style=flat-square&logo=githubsponsors&logoColor=white)](https://www.motionshapes.com/#founder-contact)
 
-**MotionShapes** ([www.motionshapes.com](https://www.motionshapes.com)) is a modern, blazing-fast web-based design tool that allows users to create stunning, animated 2D shapes and interactive motion graphics right in their browser. 
+**MotionShapes** ([www.motionshapes.com](https://www.motionshapes.com)) is a browser-based design tool for creating animated 2D shapes and interactive motion graphics.
 
 Whether you need a dynamic hero asset for your landing page, a text animation sequence, or a complex particle effect, MotionShapes gives you a powerful visual node editor to build it, animate it, and export it as an optimized MP4 or WebM video—all without leaving the browser.
 
